@@ -24,6 +24,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { InlineLoader } from "./loader";
 import { cn } from "@/lib/utils";
+import { Label } from "./label";
+import { Separator } from "@radix-ui/react-dropdown-menu";
 
 export interface FormFieldConfig {
   name: string;
@@ -44,9 +46,15 @@ export interface FormFieldConfig {
   xlCols?: number; // Extra large screens (1280px+)
 }
 
+export interface SubFormConfig {
+  subform_title?: string;
+  fields: FormFieldConfig[];
+};
+
 export interface GenericFormProps {
   form: UseFormReturn<any>;
-  fields: FormFieldConfig[];
+  // fields: FormFieldConfig[];
+  fields: SubFormConfig[];
   onSubmit: (data: any) => void;
   loading?: boolean;
   submitText?: string;
@@ -205,15 +213,37 @@ const GenericForm: React.FC<GenericFormProps> = ({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className={cn("space-y-6", className)}>
         {/* Check if any field has custom column configuration */}
-        {fields.some(field => field.cols || field.smCols || field.mdCols || field.lgCols || field.xlCols) ? (
+        {fields.flatMap((subform) => subform.fields).some(field => field.cols || field.smCols || field.mdCols || field.lgCols || field.xlCols) ? (
           // Use 12-column grid when fields have custom column configuration
           <div className="grid grid-cols-12 gap-6">
-            {fields.map(renderField)}
+            {
+              fields.map((field, index) => (
+                <div key={index} className="col-span-12">
+                  {field.subform_title && (
+                    <div className="col-span-12">
+                      <Label className="col-span-12 font-bold text-lg">{field.subform_title}</Label>
+                    </div>
+                  )}
+                  {field.fields.map(renderField)}
+                  {field.subform_title && (
+                    <div className="col-span-12 border-b" />
+                  )}
+                </div>
+              ))
+            }
           </div>
         ) : (
           // Fallback to old grid system for backward compatibility
           <div className={cn("grid gap-6", gridClasses[gridCols])}>
-            {fields.map(renderField)}
+            {
+              fields.map((field, index) => (
+                <div key={index} className="col-span-12">
+                  {field.subform_title && <Label className="col-span-12 font-bold text-lg">{field.subform_title}</Label>}
+                  {field.fields.map(renderField)}
+                  {field.subform_title && <Separator className="my-4" />}
+                </div>
+              ))
+            }
           </div>
         )}
 
@@ -234,7 +264,7 @@ const GenericForm: React.FC<GenericFormProps> = ({
           </Button>
         </div>
       </form>
-    </Form>
+    </Form >
   );
 };
 

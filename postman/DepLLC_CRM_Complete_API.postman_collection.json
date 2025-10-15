@@ -718,7 +718,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"{{roleId}}\",\n  \"department\": \"{{departmentId}}\",\n  \"position\": \"Software Developer\",\n  \"phone\": \"+1234567890\"\n}"
+              "raw": "{\n  \"name\": \"Afzal Habib\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"role\": \"{{roleId}}\",\n  \"department\": \"{{departmentId}}\",\n  \"position\": \"Software Developer\",\n  \"phone\": \"+1234567890\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/users",
@@ -763,7 +763,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"John Doe Updated\",\n  \"position\": \"Senior Software Developer\",\n  \"phone\": \"+1234567891\"\n}"
+              "raw": "{\n  \"name\": \"Afzal Habib Updated\",\n  \"position\": \"Senior Software Developer\",\n  \"phone\": \"+1234567891\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/users/{{userId}}",

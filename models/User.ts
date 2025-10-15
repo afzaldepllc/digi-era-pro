@@ -13,8 +13,15 @@ export interface IUser extends Document {
   position?: string
   reportsTo?: mongoose.Types.ObjectId // For subordinate relationships
   assignedTo?: mongoose.Types.ObjectId[] // For assignment tracking
-  status: "active" | "inactive" | "suspended"
+  status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" // Extended for clients
   permissions: string[] // Additional permissions beyond role
+  
+  // Client-specific fields
+  isClient: boolean // Flag to identify client users
+  leadId?: mongoose.Types.ObjectId // Reference to Lead model (for clients created from leads)
+  clientStatus?: "qualified" | "unqualified" // Client-specific status
+  company?: string // Client's company name
+  projectInterests?: string[] // Areas of interest for projects
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
@@ -55,6 +62,10 @@ export interface IUser extends Document {
   comparePassword(candidatePassword: string): Promise<boolean>
   generatePasswordResetToken(): string
   changedPasswordAfter(JWTTimestamp: number): boolean
+  
+  // Client-specific methods
+  qualifyClient(): Promise<void>
+  unqualifyClient(reason?: string): Promise<void>
 }
 
 const UserSchema = new Schema<IUser>(
@@ -130,13 +141,47 @@ const UserSchema = new Schema<IUser>(
     }],
     status: {
       type: String,
-      enum: ["active", "inactive", "suspended"],
+      enum: ["active", "inactive", "suspended", "qualified", "unqualified"],
       default: "active",
       index: true,
     },
     permissions: [{
       type: String,
       trim: true,
+    }],
+    
+    // Client-specific fields
+    isClient: {
+      type: Boolean,
+      default: false,
+      index: true, // For filtering clients vs regular users
+    },
+    leadId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Lead',
+      required: false,
+      index: true,
+    },
+    clientStatus: {
+      type: String,
+      enum: ["qualified", "unqualified"],
+      required: function(this: IUser) {
+        return this.isClient; // Only required for client users
+      },
+      index: true,
+    },
+    company: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Company name cannot exceed 200 characters"],
+      required: function(this: IUser) {
+        return this.isClient; // Company required for clients
+      },
+    },
+    projectInterests: [{
+      type: String,
+      trim: true,
+      maxlength: [100, "Project interest cannot exceed 100 characters"],
     }],
     lastLogin: {
       type: Date,
@@ -239,6 +284,13 @@ UserSchema.index({ 'resetPasswordExpire': 1 }, {
 UserSchema.index({ 'metadata.tags': 1 }, { sparse: true });
 UserSchema.index({ emailVerified: 1, status: 1 });
 
+// Client-specific indexes
+UserSchema.index({ isClient: 1, status: 1 }); // Filter clients vs regular users
+UserSchema.index({ isClient: 1, clientStatus: 1 }); // Client status filtering
+UserSchema.index({ leadId: 1 }, { sparse: true }); // Link to leads
+UserSchema.index({ isClient: 1, createdAt: -1 }); // Client chronological listing
+UserSchema.index({ company: 1 }, { sparse: true }); // Company-based searches
+
 // Virtual for full name (if needed)
 UserSchema.virtual('fullName').get(function() {
   return this.name;
@@ -256,6 +308,14 @@ UserSchema.virtual('roleDetails', {
 UserSchema.virtual('departmentDetails', {
   ref: 'Department',
   localField: 'department',
+  foreignField: '_id',
+  justOne: true,
+});
+
+// Virtual to populate lead details (for clients)
+UserSchema.virtual('leadDetails', {
+  ref: 'Lead',
+  localField: 'leadId',
   foreignField: '_id',
   justOne: true,
 });
@@ -399,6 +459,115 @@ UserSchema.methods.canManageUser = async function(targetUser: any): Promise<bool
   return this.hasPermission('users', 'update')
 }
 
+// Client-specific methods
+UserSchema.methods.isClientUser = function(): boolean {
+  return this.isClient === true
+}
+
+UserSchema.methods.isQualifiedClient = function(): boolean {
+  return this.isClient && this.clientStatus === 'qualified'
+}
+
+UserSchema.methods.qualifyClient = async function(): Promise<void> {
+  if (!this.isClient) {
+    throw new Error('User is not a client')
+  }
+  
+  this.clientStatus = 'qualified'
+  this.status = 'qualified'
+  await this.save()
+}
+
+UserSchema.methods.unqualifyClient = async function(reason?: string): Promise<void> {
+  if (!this.isClient) {
+    throw new Error('User is not a client')
+  }
+  
+  this.clientStatus = 'unqualified'
+  this.status = 'unqualified'
+  
+  // Update metadata with unqualification reason
+  if (reason) {
+    this.metadata = this.metadata || {}
+    this.metadata.notes = reason
+  }
+  
+  await this.save()
+}
+
+// Static methods for client management
+UserSchema.statics.createClientFromLead = async function(leadData: any, createdBy: string) {
+  // Find the client role
+  const Role = mongoose.model('Role')
+  const clientRole = await Role.findOne({ name: /^client$/i })
+
+  if (!clientRole) {
+    throw new Error('Client role not found. Please create a client role first.')
+  }
+
+  // Always enforce isClient: true
+  const clientUser = new this({
+    ...leadData,
+    name: leadData.name,
+    email: leadData.email,
+    phone: leadData.phone,
+    company: leadData.company,
+    role: clientRole._id,
+    isClient: true, // Explicitly enforce
+    clientStatus: 'qualified',
+    status: 'qualified',
+    leadId: leadData._id,
+    department: leadData.createdByDepartment, // Use sales department
+    emailVerified: false,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    projectInterests: leadData.projectRequirements || [],
+    metadata: {
+      createdBy: createdBy,
+      notes: `Created from lead qualification on ${new Date().toISOString()}`
+    }
+  })
+
+  // Ensure isClient is true (redundant but defensive)
+  clientUser.isClient = true;
+  return await clientUser.save()
+}
+
+UserSchema.statics.getClientStats = async function(filter = {}) {
+  const clientFilter = { ...filter, isClient: true }
+  
+  const stats = await this.aggregate([
+    { $match: clientFilter },
+    {
+      $group: {
+        _id: '$clientStatus',
+        count: { $sum: 1 }
+      }
+    }
+  ])
+
+  const result = {
+    totalClients: 0,
+    qualifiedClients: 0,
+    unqualifiedClients: 0
+  }
+
+  stats.forEach((stat: any) => {
+    result.totalClients += stat.count
+    
+    switch (stat._id) {
+      case 'qualified':
+        result.qualifiedClients = stat.count
+        break
+      case 'unqualified':
+        result.unqualifiedClients = stat.count
+        break
+    }
+  })
+
+  return result
+}
+
 // Static method to get user roles and permissions
 UserSchema.statics.getRolePermissions = function(role: string): string[] {
   const rolePermissions: Record<string, string[]> = {
@@ -431,6 +600,8 @@ UserSchema.statics.getRolePermissions = function(role: string): string[] {
 // Interface for static methods
 interface IUserModel extends mongoose.Model<IUser> {
   getRolePermissions(role: string): string[];
+  createClientFromLead(leadData: any, createdBy: string): Promise<IUser>;
+  getClientStats(filter?: any): Promise<any>;
 }
 
 export default mongoose.models.User as IUserModel || mongoose.model<IUser, IUserModel>("User", UserSchema)

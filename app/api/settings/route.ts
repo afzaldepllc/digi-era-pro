@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { genericApiRoutesMiddleware } from "@/lib/middleware/route-middleware"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { AuditLogger } from "@/lib/security/audit-logger"
 import { SecurityUtils } from "@/lib/security/validation"
@@ -49,8 +49,6 @@ export async function GET(request: NextRequest) {
       return createErrorResponse("Access denied. Admin privileges required.", 403)
     }
 
-    await connectDB()
-
     const { searchParams } = new URL(request.url)
     const queryParams = Object.fromEntries(searchParams.entries())
 
@@ -65,21 +63,23 @@ export async function GET(request: NextRequest) {
     const { category, includePrivate } = validation.data
 
     // Build query
-    const query: any = {}
+    const filter: any = {}
     if (category) {
-      query.category = category
+      filter.category = category
     }
 
     // Only include public settings for non-super admins
     if (!isSuperAdmin && !includePrivate) {
-      query.isPublic = true
+      filter.isPublic = true
     }
 
-    const settings = await Settings.find(query)
-      .select('key value description category isPublic metadata')
-      .sort({ category: 1, key: 1 })
-      .lean()
-      .exec()
+    const settings = await executeGenericDbQuery(async () => {
+      return await Settings.find(filter)
+        .select('key value description category isPublic metadata')
+        .sort({ category: 1, key: 1 })
+        .lean()
+        .exec()
+    }, `settings-${JSON.stringify(filter)}`, 300000) // 5-minute cache
 
     // Log successful access
     await AuditLogger.logUserAction({
@@ -118,10 +118,14 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     // Apply middleware - Only super admins can modify settings
+    // Use 'api' rate limit for admin settings (more lenient than 'sensitive')
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(
       request, 
       'settings', 
-      'update'
+      'update',
+      {
+        rateLimitType: 'api'
+      }
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
@@ -175,29 +179,32 @@ export async function PUT(request: NextRequest) {
       return createErrorResponse("Invalid input detected", 400)
     }
 
-    await connectDB()
-
     const { key, value, description, category, isPublic } = validatedData
 
-    // Update or create setting
-    const updatedSetting = await Settings.findOneAndUpdate(
-      { key },
-      {
-        key,
-        value,
-        description: description || '',
-        category: category || 'general',
-        isPublic: isPublic || false,
-        'metadata.updatedBy': userEmail,
-        'metadata.updatedAt': new Date()
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-        setDefaultsOnInsert: true
-      }
-    )
+    // Update or create setting with automatic connection management
+    const updatedSetting = await executeGenericDbQuery(async () => {
+      return await Settings.findOneAndUpdate(
+        { key },
+        {
+          key,
+          value,
+          description: description || '',
+          category: category || 'general',
+          isPublic: isPublic || false,
+          'metadata.updatedBy': userEmail,
+          'metadata.updatedAt': new Date()
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true
+        }
+      )
+    })
+
+    // Clear settings cache
+    clearCache('settings')
 
     // Set createdBy for new documents
     if (!updatedSetting.metadata?.createdBy) {
@@ -251,10 +258,14 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Apply middleware - Only super admins can create settings
+    // Use 'api' rate limit for admin settings (more lenient than 'sensitive')
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(
       request, 
       'settings', 
-      'create'
+      'create',
+      {
+        rateLimitType: 'api'
+      }
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
@@ -275,7 +286,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await connectDB()
 
     const createdSettings = []
     

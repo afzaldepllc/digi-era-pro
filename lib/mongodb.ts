@@ -5,58 +5,53 @@ import '@/models/User'
 import '@/models/Role'
 import '@/models/Department'
 import '@/models/SystemPermission'
+import '@/models/Communication'
+import '@/models/Channel'
 
-// Global interface for caching connection
-declare global {
-  var mongoose: {
-    conn: typeof import('mongoose') | null
-    promise: Promise<typeof import('mongoose')> | null
-  }
-}
-
-// Use global variable to cache connection across hot reloads
+// Connection caching for Next.js environment
 let cached = global.mongoose
 
 if (!cached) {
   cached = global.mongoose = { conn: null, promise: null }
 }
 
-async function connectDB() {
+// Simple cache for query results
+const queryCache = new Map<string, { data: any; timestamp: number; ttl: number }>()
+
+/**
+ * MongoDB connection with singleton pattern
+ * Ensures only one connection per application lifecycle
+ */
+async function connectDB(): Promise<{ db: mongoose.Connection['db'] }> {
   // Return existing connection if available
   if (cached.conn) {
-    console.log('🔄 Using existing MongoDB connection')
-    return cached.conn
+    return { db: cached.conn.connection.db }
   }
 
-  // If no MONGODB_URI is provided, throw error
+  // Validate environment variable
   if (!process.env.MONGODB_URI) {
-    throw new Error('MONGODB_URI environment variable is not defined')
+    throw new Error('❌ MONGODB_URI environment variable is not defined')
   }
 
   // If no promise exists, create one
   if (!cached.promise) {
-    console.log('🚀 Creating new MongoDB connection...')
-    
-    // Modern mongoose connection options
+    console.log('🚀 Connecting to MongoDB...')
+
     const opts = {
-      bufferCommands: false,
       maxPoolSize: 10,
-      minPoolSize: 5,
+      minPoolSize: 2,
       maxIdleTimeMS: 30000,
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
-      family: 4, // Use IPv4
     }
 
-    // Create the connection promise
     cached.promise = mongoose.connect(process.env.MONGODB_URI, opts).then((mongoose) => {
-      console.log('✅ Successfully connected to MongoDB')
+      console.log('✅ MongoDB connected successfully')
       console.log(`📊 Database: ${mongoose.connection.db?.databaseName}`)
-      console.log(`🔗 Host: ${mongoose.connection.host}:${mongoose.connection.port}`)
       return mongoose
     }).catch((error) => {
       console.error('❌ MongoDB connection failed:', error.message)
-      cached.promise = null // Reset promise on error
+      cached.promise = null // Reset on error
       throw error
     })
   }
@@ -64,35 +59,97 @@ async function connectDB() {
   try {
     cached.conn = await cached.promise
   } catch (error) {
-    console.error('💥 Failed to establish MongoDB connection:', error)
+    console.error('💥 Connection error:', error)
     cached.promise = null
     cached.conn = null
     throw error
   }
 
-  return cached.conn
+  return { db: cached.conn.connection.db }
+}
+
+/**
+ * Enhanced query function with optional caching
+ */
+async function executeGenericDbQuery<T>(
+  queryFn: () => Promise<T>, 
+  cacheKey?: string, 
+  cacheTtl: number = 30000
+): Promise<T> {
+  // Check cache first
+  if (cacheKey && queryCache.has(cacheKey)) {
+    const cached = queryCache.get(cacheKey)!
+    if (Date.now() - cached.timestamp < cached.ttl) {
+      return cached.data
+    }
+    queryCache.delete(cacheKey)
+  }
+
+  // Ensure connection
+  await connectDB()
+
+  // Execute query
+  const result = await queryFn()
+
+  // Cache result
+  if (cacheKey) {
+    queryCache.set(cacheKey, {
+      data: result,
+      timestamp: Date.now(),
+      ttl: cacheTtl
+    })
+  }
+
+  return result
+}
+
+/**
+ * Clear cache by pattern
+ */
+function clearCache(pattern?: string): void {
+  if (!pattern) {
+    queryCache.clear()
+    return
+  }
+
+  for (const key of queryCache.keys()) {
+    if (key.includes(pattern)) {
+      queryCache.delete(key)
+    }
+  }
 }
 
 // Connection event handlers
 mongoose.connection.on('connected', () => {
-  console.log('🟢 MongoDB connection established')
+  console.log('🟢 MongoDB ready')
 })
 
 mongoose.connection.on('error', (error) => {
-  console.error('🔴 MongoDB connection error:', error)
+  console.error('🔴 MongoDB error:', error.message)
 })
 
 mongoose.connection.on('disconnected', () => {
-  console.log('🟡 MongoDB connection lost')
+  console.log('🟡 MongoDB disconnected')
+  cached.conn = null
+  cached.promise = null
 })
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
   if (cached.conn) {
     await mongoose.connection.close()
-    console.log('🔌 MongoDB connection closed through app termination')
+    console.log('🔌 MongoDB connection closed')
     process.exit(0)
   }
 })
 
+// Global type for Next.js caching
+declare global {
+  var mongoose: {
+    conn: typeof import('mongoose') | null
+    promise: Promise<typeof import('mongoose')> | null
+  }
+}
+
 export default connectDB
+export { executeGenericDbQuery, clearCache }

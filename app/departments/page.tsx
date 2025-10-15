@@ -217,9 +217,6 @@ export default function DepartmentsPage() {
     setPagination({ limit, page: 1 });
   }, [setPagination]);
 
-  const handleEditDepartment = useCallback((department: Department) => {
-    router.push(`/departments/edit/${department._id}`);
-  }, [router]);
 
 
   const handleDeleteDepartment = useCallback(async (department: Department) => {

@@ -17,7 +17,7 @@ import GenericForm from "@/components/ui/generic-form";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { createRoleFormSchema, CreateRoleFormData } from "@/lib/validations/role";
 
-export default function CreateRolePage(){
+export default function CreateRolePage() {
   const router = useRouter();
   const { toast } = useToast();
   const { createRole, actionLoading, error, clearError } = useRoles();
@@ -103,78 +103,82 @@ export default function CreateRolePage(){
   // Define form fields configuration
   const formFields = [
     {
-      name: "displayName",
-      label: "Display Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "Senior Developer",
-      description: "Human-readable name for the role",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "name",
-      label: "Internal Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "senior_developer",
-      description: "System identifier (auto-generated)",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "department",
-      label: "Department",
-      type: "select" as const,
-      required: true,
-      placeholder: "Select department",
-      description: "Department this role belongs to",
-      options: departments.map(dept => ({
-        value: dept._id!,
-        label: dept.name,
-      })),
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "hierarchyLevel",
-      label: "Hierarchy Level",
-      type: "select" as const,
-      required: true,
-      placeholder: "Select level",
-      description: "Authority level (1-10)",
-      options: Array.from({ length: 10 }, (_, i) => i + 1).map((level) => ({
-        value: level,
-        label: `Level ${level} ${level === 1 ? '(Lowest)' : level === 10 ? '(Highest)' : ''}`,
-      })),
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "maxUsers",
-      label: "Max Users",
-      type: "number" as const,
-      placeholder: "Unlimited",
-      description: "Maximum users allowed (optional)",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "description",
-      label: "Description",
-      type: "textarea" as const,
-      placeholder: "Describe the role's responsibilities and scope...",
-      description: "Optional description of the role's purpose and responsibilities",
-      rows: 3,
-      cols: 12,
-      mdCols: 12,
-      lgCols: 12,
-    },
+      fields: [
+        {
+          name: "displayName",
+          label: "Display Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Senior Developer",
+          description: "Human-readable name for the role",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "name",
+          label: "Internal Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "senior_developer",
+          description: "System identifier (auto-generated)",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "department",
+          label: "Department",
+          type: "select" as const,
+          required: true,
+          placeholder: "Select department",
+          description: "Department this role belongs to",
+          options: departments.map(dept => ({
+            value: dept._id!,
+            label: dept.name,
+          })),
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "hierarchyLevel",
+          label: "Hierarchy Level",
+          type: "select" as const,
+          required: true,
+          placeholder: "Select level",
+          description: "Authority level (1-10)",
+          options: Array.from({ length: 10 }, (_, i) => i + 1).map((level) => ({
+            value: level,
+            label: `Level ${level} ${level === 1 ? '(Lowest)' : level === 10 ? '(Highest)' : ''}`,
+          })),
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "maxUsers",
+          label: "Max Users",
+          type: "number" as const,
+          placeholder: "Unlimited",
+          description: "Maximum users allowed (optional)",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "description",
+          label: "Description",
+          type: "textarea" as const,
+          placeholder: "Describe the role's responsibilities and scope...",
+          description: "Optional description of the role's purpose and responsibilities",
+          rows: 3,
+          cols: 12,
+          mdCols: 12,
+          lgCols: 12,
+        },
+      ]
+    }
   ];
 
   return (

@@ -22,6 +22,8 @@ export const RESOURCES = {
   AUDIT_LOGS: 'audit_logs',
   SETTINGS: 'settings',
   BACKUP: 'backup',
+  COMMUNICATIONS: 'communications',
+  PROFILE: 'profile',
 } as const
 
 export const ACTIONS = {
@@ -48,6 +50,307 @@ export const CONDITIONS = {
   UNRESTRICTED: 'unrestricted',
 } as const
 
+// ===== COMPREHENSIVE PERMISSION DEFINITIONS =====
+export interface PermissionDefinition {
+  resource: string
+  displayName?: string
+  description?: string
+  category: string
+  availableActions?: Array<{
+    action: string
+    description: string
+    conditions?: string[]
+  }>
+  isCore?: boolean
+}
+
+// ===== MAIN COMPREHENSIVE PERMISSION DEFINITIONS =====
+/**
+ * Single source of truth for all permissions
+ * Contains both simple permission objects and detailed definitions
+ */
+export const COMPREHENSIVE_PERMISSIONS: Record<string, PermissionDefinition> = {
+  // ===== USER MANAGEMENT =====
+  USERS: {
+    resource: 'users',
+    displayName: 'User Management',
+    description: 'Manage user accounts and profiles',
+    category: 'user_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new users', conditions: ['department', 'subordinates'] },
+      { action: 'read', description: 'View user information', conditions: ['own', 'department', 'subordinates', 'unrestricted'] },
+      { action: 'update', description: 'Update user information', conditions: ['own', 'department', 'subordinates', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate users', conditions: ['department', 'subordinates'] },
+      { action: 'assign', description: 'Assign users to roles or departments', conditions: ['department', 'subordinates'] },
+    ]
+  },
+
+  // ===== DEPARTMENT MANAGEMENT =====
+  DEPARTMENTS: {
+    resource: 'departments',
+    displayName: 'Department Management',
+    description: 'Manage organizational departments',
+    category: 'department_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new departments' },
+      { action: 'read', description: 'View department information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update department information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate departments' },
+      { action: 'assign', description: 'Assign users to departments' },
+    ]
+  },
+
+  // ===== COMMUNICATION MANAGEMENT =====
+  COMMUNICATIONS: {
+    resource: 'communications',
+    displayName: 'Communication Management',
+    description: 'Manage organizational communications',
+    category: 'communication_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new communications' },
+      { action: 'read', description: 'View communication information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update communication information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate communications' },
+      { action: 'assign', description: 'Assign users to communications' },
+    ]
+  },
+
+  // ===== ROLE MANAGEMENT =====
+  ROLES: {
+    resource: 'roles',
+    displayName: 'Role Management',
+    description: 'Manage user roles and permissions',
+    category: 'role_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new roles', conditions: ['department'] },
+      { action: 'read', description: 'View role information', conditions: ['department', 'unrestricted'] },
+      { action: 'update', description: 'Update role permissions', conditions: ['department', 'unrestricted'] },
+      { action: 'delete', description: 'Delete roles', conditions: ['department'] },
+      { action: 'assign', description: 'Assign roles to users', conditions: ['department', 'subordinates'] },
+    ]
+  },
+
+  // ===== PROJECT MANAGEMENT =====
+  PROJECTS: {
+    resource: 'projects',
+    displayName: 'Projects Management',
+    description: 'Manage organizational projects',
+    category: 'project_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new projects' },
+      { action: 'read', description: 'View project information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update project information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate projects' },
+      { action: 'assign', description: 'Assign users to projects' },
+    ]
+  },
+
+  // ===== TASK MANAGEMENT =====
+  TASKS: {
+    resource: 'tasks',
+    displayName: 'Tasks Management',
+    description: 'Manage organizational tasks',
+    category: 'task_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new tasks' },
+      { action: 'read', description: 'View task information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update task information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate tasks' },
+      { action: 'assign', description: 'Assign users to tasks' },
+    ]
+  },
+
+  // ===== LEAD MANAGEMENT =====
+  LEADS: {
+    resource: 'leads',
+    displayName: 'Leads Management',
+    description: 'Manage organizational leads',
+    category: 'lead_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new leads' },
+      { action: 'read', description: 'View lead information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update lead information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate leads' },
+      { action: 'assign', description: 'Assign users to leads' },
+    ]
+  },
+
+  // ===== PROPOSAL MANAGEMENT =====
+  PROPOSALS: {
+    resource: 'proposals',
+    displayName: 'Proposals Management',
+    description: 'Manage organizational proposals',
+    category: 'proposal_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create new proposals' },
+      { action: 'read', description: 'View proposal information', conditions: ['own', 'unrestricted'] },
+      { action: 'update', description: 'Update proposal information', conditions: ['own', 'unrestricted'] },
+      { action: 'delete', description: 'Delete/deactivate proposals' },
+      { action: 'assign', description: 'Assign users to proposals' },
+    ]
+  },
+
+  // ===== SYSTEM ADMINISTRATION =====
+  SYSTEM: {
+    resource: 'system',
+    displayName: 'System Administration',
+    description: 'System-wide configuration and maintenance',
+    category: 'system_administration',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View system information' },
+      { action: 'manage', description: 'Manage system operations' },
+      { action: 'configure', description: 'Configure system settings' },
+      { action: 'audit', description: 'Audit system activities' },
+      { action: 'archive', description: 'Archive system data' },
+      { action: 'export', description: 'Export system data' },
+      { action: 'import', description: 'Import system data' },
+    ]
+  },
+
+  // ===== PERMISSION MANAGEMENT =====
+  PERMISSIONS: {
+    resource: 'permissions',
+    displayName: 'Permission Management',
+    description: 'Manage system permissions',
+    category: 'system_administration',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View permissions' },
+      { action: 'manage', description: 'Manage permissions' },
+    ]
+  },
+
+  // ===== REPORTING =====
+  REPORTS: {
+    resource: 'reports',
+    displayName: 'Reports and Analytics',
+    description: 'Generate and view system reports',
+    category: 'reporting',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Generate reports', conditions: ['department', 'unrestricted'] },
+      { action: 'read', description: 'View reports', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'update', description: 'Modify existing reports', conditions: ['own', 'department'] },
+      { action: 'delete', description: 'Delete reports', conditions: ['own', 'department'] },
+      { action: 'export', description: 'Export report data' },
+    ]
+  },
+
+  // ===== DASHBOARD =====
+  DASHBOARD: {
+    resource: 'dashboard',
+    displayName: 'Dashboard Access',
+    description: 'Access to various dashboard views',
+    category: 'reporting',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View dashboard', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'export', description: 'Export dashboard data' },
+    ]
+  },
+
+  // ===== AUDIT LOGS =====
+  AUDIT_LOGS: {
+    resource: 'audit_logs',
+    displayName: 'Audit Logs',
+    description: 'View and manage audit logs',
+    category: 'security',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View audit logs', conditions: ['department', 'unrestricted'] },
+      { action: 'export', description: 'Export audit logs' },
+      { action: 'archive', description: 'Archive old audit logs' },
+    ]
+  },
+
+  // ===== SETTINGS =====
+  SETTINGS: {
+    resource: 'settings',
+    displayName: 'System Settings',
+    description: 'Manage application settings',
+    category: 'system_administration',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View settings', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'update', description: 'Update settings', conditions: ['own', 'department', 'unrestricted'] },
+    ]
+  },
+
+  // ===== BACKUP =====
+  BACKUP: {
+    resource: 'backup',
+    displayName: 'Backup and Recovery',
+    description: 'System backup and data recovery operations',
+    category: 'system_administration',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Create system backups' },
+      { action: 'read', description: 'View backup status' },
+      { action: 'export', description: 'Export backup files' },
+      { action: 'import', description: 'Import/restore from backups' },
+    ]
+  },
+
+  // ===== PROFILE =====
+  PROFILE: {
+    resource: 'profile',
+    displayName: 'Profile Management',
+    description: 'Manage personal profile and settings',
+    category: 'user_management',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'View own profile', conditions: ['own'] },
+      { action: 'update', description: 'Update own profile', conditions: ['own'] },
+    ]
+  },
+
+  // ===== DEBUG =====
+  DEBUG: {
+    resource: 'debug',
+    displayName: 'Debug and Testing',
+    description: 'Debug endpoints for testing permissions and authentication',
+    category: 'system_administration',
+    isCore: false,
+    availableActions: [
+      { action: 'read', description: 'Access debug information and test endpoints' },
+    ]
+  },
+}
+
+// ===== LEGACY PERMISSIONS FOR BACKWARD COMPATIBILITY =====
+/**
+ * Generate simple permission objects from comprehensive definitions
+ * This eliminates duplication while maintaining backward compatibility
+ */
+const generateSimplePermissions = (): Record<string, { resource: string; action: string }> => {
+  const permissions: Record<string, { resource: string; action: string }> = {}
+
+  Object.values(COMPREHENSIVE_PERMISSIONS).forEach(permission => {
+    const resourceUpper = permission.resource.toUpperCase()
+    permission.availableActions?.forEach(action => {
+      const actionUpper = action.action.toUpperCase()
+      const key = `${resourceUpper}_${actionUpper}`
+      permissions[key] = {
+        resource: permission.resource,
+        action: action.action
+      }
+    })
+  })
+
+  return permissions
+}
+
+export const PERMISSIONS = generateSimplePermissions()
+
 // ===== PERMISSION INTERFACES =====
 export interface PermissionCheck {
   resource: string
@@ -55,101 +358,44 @@ export interface PermissionCheck {
   condition?: 'own' | 'department' | 'assigned' | 'subordinates' | 'unrestricted'
 }
 
-// ===== MAIN PERMISSION DEFINITIONS =====
+// ===== UTILITY FUNCTIONS =====
 /**
- * All application permissions defined in one place
- * Simple, direct object definitions - no unnecessary function calls
+ * Get all comprehensive permission definitions as an array
  */
-export const PERMISSIONS = {
-  // ===== DEPARTMENT PERMISSIONS =====
-  DEPARTMENTS_READ: { resource: 'departments', action: 'read' },
-  DEPARTMENTS_CREATE: { resource: 'departments', action: 'create' },
-  DEPARTMENTS_UPDATE: { resource: 'departments', action: 'update' },
-  DEPARTMENTS_DELETE: { resource: 'departments', action: 'delete'  },
+export const getAllComprehensivePermissions = (): PermissionDefinition[] => {
+  return Object.values(COMPREHENSIVE_PERMISSIONS) as PermissionDefinition[]
+}
 
-  // ===== PROFILE PERMISSIONS =====
-  PROFILE_READ: { resource: 'profile', action: 'read' },
-  PROFILE_UPDATE: { resource: 'profile', action: 'update' },
+/**
+ * Get comprehensive permission definition by resource
+ */
+export const getComprehensivePermissionByResource = (resource: string): PermissionDefinition | undefined => {
+  return Object.values(COMPREHENSIVE_PERMISSIONS).find(perm => perm.resource === resource) as PermissionDefinition | undefined
+}
 
-  
-  // ===== ROLE PERMISSIONS =====
-  ROLES_READ: { resource: 'roles', action: 'read' },
-  ROLES_CREATE: { resource: 'roles', action: 'create' },
-  ROLES_UPDATE: { resource: 'roles', action: 'update' },
-  ROLES_DELETE: { resource: 'roles', action: 'delete' },
-  ROLES_ASSIGN: { resource: 'roles', action: 'assign' },
-  
-  // ===== USER PERMISSIONS =====
-  USERS_READ: { resource: 'users', action: 'read' },
-  USERS_CREATE: { resource: 'users', action: 'create' },
-  USERS_UPDATE: { resource: 'users', action: 'update' },
-  USERS_DELETE: { resource: 'users', action: 'delete' },
-  USERS_ASSIGN: { resource: 'users', action: 'assign' },
-  
-  // ===== PROJECT PERMISSIONS =====
-  PROJECTS_READ: { resource: 'projects', action: 'read' },
-  PROJECTS_CREATE: { resource: 'projects', action: 'create' },
-  PROJECTS_UPDATE: { resource: 'projects', action: 'update' },
-  PROJECTS_DELETE: { resource: 'projects', action: 'delete' },
-  PROJECTS_ASSIGN: { resource: 'projects', action: 'assign' },
-  
-  // ===== TASK PERMISSIONS =====
-  TASKS_READ: { resource: 'tasks', action: 'read' },
-  TASKS_CREATE: { resource: 'tasks', action: 'create' },
-  TASKS_UPDATE: { resource: 'tasks', action: 'update' },
-  TASKS_DELETE: { resource: 'tasks', action: 'delete' },
-  TASKS_ASSIGN: { resource: 'tasks', action: 'assign' },
-  
-  // ===== LEAD PERMISSIONS =====
-  LEADS_READ: { resource: 'leads', action: 'read' },
-  LEADS_CREATE: { resource: 'leads', action: 'create' },
-  LEADS_UPDATE: { resource: 'leads', action: 'update' },
-  LEADS_DELETE: { resource: 'leads', action: 'delete' },
-  LEADS_ASSIGN: { resource: 'leads', action: 'assign' },
-  
-  // ===== PROPOSAL PERMISSIONS =====
-  PROPOSALS_READ: { resource: 'proposals', action: 'read' },
-  PROPOSALS_CREATE: { resource: 'proposals', action: 'create' },
-  PROPOSALS_UPDATE: { resource: 'proposals', action: 'update' },
-  PROPOSALS_DELETE: { resource: 'proposals', action: 'delete' },
-  PROPOSALS_ASSIGN: { resource: 'proposals', action: 'assign' },
-  
-  // ===== SYSTEM PERMISSIONS =====
-  SYSTEM_READ: { resource: 'system', action: 'read' },
-  SYSTEM_MANAGE: { resource: 'system', action: 'manage' },
-  SYSTEM_CONFIGURE: { resource: 'system', action: 'configure' },
-  SYSTEM_AUDIT: { resource: 'system', action: 'audit' },
-  
-  // ===== PERMISSION MANAGEMENT =====
-  PERMISSIONS_READ: { resource: 'permissions', action: 'read' },
-  PERMISSIONS_MANAGE: { resource: 'permissions', action: 'manage' },
-  
-  // ===== DASHBOARD & REPORTS =====
-  DASHBOARD_READ: { resource: 'dashboard', action: 'read' },
-  DASHBOARD_EXPORT: { resource: 'dashboard', action: 'export' },
-  
-  REPORTS_READ: { resource: 'reports', action: 'read' },
-  REPORTS_CREATE: { resource: 'reports', action: 'create' },
-  REPORTS_UPDATE: { resource: 'reports', action: 'update' },
-  REPORTS_DELETE: { resource: 'reports', action: 'delete' },
-  REPORTS_EXPORT: { resource: 'reports', action: 'export' },
-  
-  // ===== AUDIT & SETTINGS =====
-  AUDIT_LOGS_READ: { resource: 'audit_logs', action: 'read' },
-  AUDIT_LOGS_EXPORT: { resource: 'audit_logs', action: 'export' },
-  AUDIT_LOGS_ARCHIVE: { resource: 'audit_logs', action: 'archive' },
-  
-  SETTINGS_READ: { resource: 'settings', action: 'read' },
-  SETTINGS_UPDATE: { resource: 'settings', action: 'update' },
-  
-  BACKUP_CREATE: { resource: 'backup', action: 'create' },
-  BACKUP_READ: { resource: 'backup', action: 'read' },
-  BACKUP_EXPORT: { resource: 'backup', action: 'export' },
-  BACKUP_IMPORT: { resource: 'backup', action: 'import' },
-} as const
+/**
+ * Get all core permissions
+ */
+export const getCorePermissions = (): PermissionDefinition[] => {
+  return Object.values(COMPREHENSIVE_PERMISSIONS).filter(perm => perm.isCore) as PermissionDefinition[]
+}
+
+/**
+ * Get permissions by category
+ */
+export const getPermissionsByCategory = (category: string): PermissionDefinition[] => {
+  return Object.values(COMPREHENSIVE_PERMISSIONS).filter(perm => perm.category === category) as PermissionDefinition[]
+}
+
+/**
+ * Get all available actions for a resource
+ */
+export const getAvailableActionsForResource = (resource: string): string[] => {
+  const permission = getComprehensivePermissionByResource(resource)
+  return permission?.availableActions?.map(action => action.action) || []
+}
 
 /**
  * Alias for the main permissions - keeps existing code working
- * Now both PERMISSIONS and COMMON_PERMISSIONS point to the same clean structure
  */
 export const COMMON_PERMISSIONS = PERMISSIONS

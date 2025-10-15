@@ -147,6 +147,7 @@ const baseUserSchema = z.object({
   preferences: preferencesSchema,
   metadata: metadataSchema,
   emergencyContact: emergencyContactSchema,
+  isClient: z.boolean().default(false).optional(),
 })
 
 // Create user schema (for POST /api/users)

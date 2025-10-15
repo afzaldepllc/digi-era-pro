@@ -71,49 +71,49 @@ const CustomModal: React.FC<CustomModalProps> = ({
 
       {/* Modal Container */}
       <div
-        className="relative z-10 w-full max-h-[90vh] overflow-hidden mx-4"
+        className="relative z-10 w-full max-h-[95vh] overflow-hidden mx-4"
         onClick={onClose}
       >
         <div
           className={cn(
-            "relative w-full mx-auto bg-background border border-border rounded-lg shadow-lg transform transition-all duration-300 scale-100 opacity-100",
-            "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2",
-            modalSizes[modalSize],
-            className
+        "relative w-full mx-auto bg-background border border-border rounded-lg shadow-lg transform transition-all duration-300 scale-100 opacity-100",
+        "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2",
+        modalSizes[modalSize],
+        className
           )}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-border">
-            <h3
-              id="modal-title"
-              className="text-lg font-semibold text-foreground"
-            >
-              {title}
-            </h3>
-            {showCloseButton && (
-              <button
-                onClick={onClose}
-                className="p-1 hover:bg-muted rounded-sm transition-colors duration-200 text-muted-foreground hover:text-foreground"
-                aria-label="Close modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
+        <h3
+          id="modal-title"
+          className="text-lg font-semibold text-foreground"
+        >
+          {title}
+        </h3>
+        {showCloseButton && (
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-muted rounded-sm transition-colors duration-200 text-muted-foreground hover:text-foreground"
+            aria-label="Close modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
           </div>
 
           {/* Content */}
-          <div className="max-h-[60vh] overflow-y-auto scrollbar-hide">
-            <div className="p-6">
-              {children}
-            </div>
+          <div className="max-h-[65vh] overflow-y-auto scrollbar-hide">
+        <div className="p-6">
+          {children}
+        </div>
           </div>
 
           {/* Actions */}
           {actions && (
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-border bg-muted/30">
-              {actions}
-            </div>
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border bg-muted/30">
+          {actions}
+        </div>
           )}
         </div>
       </div>

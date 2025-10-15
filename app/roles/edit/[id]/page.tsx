@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";  
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,7 +22,8 @@ export default function EditRolePage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const roleId = params.id as string;
+  const roleId = params?.id as string;
+
 
   const {
     roles,
@@ -55,7 +56,7 @@ export default function EditRolePage() {
 
   // Load data on mount
   useEffect(() => {
-    
+
 
     const loadData = async () => {
       try {
@@ -72,7 +73,7 @@ export default function EditRolePage() {
       }
     };
     loadData();
-  }, [ router, fetchRoles, fetchDepartments, toast]);
+  }, [router, fetchRoles, fetchDepartments, toast]);
 
   // Load specific role data
   useEffect(() => {
@@ -158,96 +159,100 @@ export default function EditRolePage() {
   // Define form fields configuration
   const formFields = [
     {
-      name: "name",
-      label: "Role Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "Enter role name",
-      description: "A unique name for this role",
-      disabled: isProtectedRole,
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "displayName",
-      label: "Display Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "Enter display name",
-      description: "Human-readable name for the role",
-      disabled: isProtectedRole,
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "department",
-      label: "Department",
-      type: "select" as const,
-      required: true,
-      placeholder: "Select department",
-      description: "The department this role belongs to",
-      disabled: isProtectedRole,
-      options: departments.map(dept => ({
-        value: dept._id!,
-        label: dept.name,
-      })),
-      cols: 12,
-      mdCols: 4,
-      lgCols: 3,
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select" as const,
-      required: true,
-      placeholder: "Select status",
-      disabled: isProtectedRole,
-      options: [
-        { value: "active", label: "Active" },
-        { value: "inactive", label: "Inactive" },
-        { value: "archived", label: "Archived" },
-      ],
-      cols: 12,
-      mdCols: 4,
-      lgCols: 3,
-    },
-    {
-      name: "hierarchyLevel",
-      label: "Authority Level",
-      type: "number" as const,
-      required: true,
-      placeholder: "1-10",
-      description: "Higher numbers indicate more authority (1-10)",
-      disabled: isProtectedRole,
-      cols: 12,
-      mdCols: 4,
-      lgCols: 3,
-    },
-    {
-      name: "maxUsers",
-      label: "Max Users",
-      type: "number" as const,
-      placeholder: "Unlimited",
-      description: "Maximum number of users for this role (optional)",
-      disabled: isProtectedRole,
-      cols: 12,
-      mdCols: 4,
-      lgCols: 3,
-    },
-    {
-      name: "description",
-      label: "Description",
-      type: "textarea" as const,
-      placeholder: "Describe the role's purpose and responsibilities...",
-      description: "Optional description of the role's purpose and responsibilities",
-      disabled: isProtectedRole,
-      rows: 4,
-      cols: 12,
-      mdCols: 12,
-      lgCols: 12,
-    },
+      fields: [
+        {
+          name: "name",
+          label: "Role Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Enter role name",
+          description: "A unique name for this role",
+          disabled: isProtectedRole,
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "displayName",
+          label: "Display Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Enter display name",
+          description: "Human-readable name for the role",
+          disabled: isProtectedRole,
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "department",
+          label: "Department",
+          type: "select" as const,
+          required: true,
+          placeholder: "Select department",
+          description: "The department this role belongs to",
+          disabled: isProtectedRole,
+          options: departments.map(dept => ({
+            value: dept._id!,
+            label: dept.name,
+          })),
+          cols: 12,
+          mdCols: 4,
+          lgCols: 3,
+        },
+        {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          required: true,
+          placeholder: "Select status",
+          disabled: isProtectedRole,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+            { value: "archived", label: "Archived" },
+          ],
+          cols: 12,
+          mdCols: 4,
+          lgCols: 3,
+        },
+        {
+          name: "hierarchyLevel",
+          label: "Authority Level",
+          type: "number" as const,
+          required: true,
+          placeholder: "1-10",
+          description: "Higher numbers indicate more authority (1-10)",
+          disabled: isProtectedRole,
+          cols: 12,
+          mdCols: 4,
+          lgCols: 3,
+        },
+        {
+          name: "maxUsers",
+          label: "Max Users",
+          type: "number" as const,
+          placeholder: "Unlimited",
+          description: "Maximum number of users for this role (optional)",
+          disabled: isProtectedRole,
+          cols: 12,
+          mdCols: 4,
+          lgCols: 3,
+        },
+        {
+          name: "description",
+          label: "Description",
+          type: "textarea" as const,
+          placeholder: "Describe the role's purpose and responsibilities...",
+          description: "Optional description of the role's purpose and responsibilities",
+          disabled: isProtectedRole,
+          rows: 4,
+          cols: 12,
+          mdCols: 12,
+          lgCols: 12,
+        },
+      ]
+    }
   ];
 
   return (

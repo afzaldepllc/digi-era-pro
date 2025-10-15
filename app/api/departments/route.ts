@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Department from "@/models/Department"
 import { createDepartmentSchema, departmentQuerySchema } from "@/lib/validations/department"
 import { SecurityUtils } from '@/lib/security/validation'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
-import { createAPIErrorResponse, createAPISuccessResponse } from "@/lib/utils/api-responses"
-
+import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 
 
 // Helper to create consistent error responses
@@ -49,11 +48,8 @@ export async function GET(request: NextRequest) {
 
     const validatedParams = departmentQuerySchema.parse(parsedParams)
 
-
-    await connectDB()
-
     // Build query
-    const query: any = {}
+    const filter: any = {}
 
     // Search implementation - use regex for more reliable results
     if (validatedParams.search) {
@@ -77,48 +73,54 @@ export async function GET(request: NextRequest) {
 
       if (searchTerm.length > 0) {
         // Use regex search for more predictable results
-        query.$or = [
+        filter.$or = [
           { name: { $regex: searchTerm, $options: 'i' } },
           { description: { $regex: searchTerm, $options: 'i' } }
         ]
-        console.log('Applied search query:', JSON.stringify(query.$or, null, 2))
+        console.log('Applied search query:', JSON.stringify(filter.$or, null, 2))
       }
     }
 
     if (validatedParams.status) {
-      query.status = validatedParams.status
+      filter.status = validatedParams.status
     }
 
-    console.log('Final query before execution:', JSON.stringify(query, null, 2))
+    console.log('Final query before execution:', JSON.stringify(filter, null, 2))
 
-    // Debug: Check all departments first
-    const allDepts = await Department.find({ status: 'active' }).select('name description').lean()
-    console.log('All active departments:', allDepts)
-
-    // Build sort
-    const sort: any = {}
-    sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
-
-    // Execute queries in parallel
+    // Execute queries with automatic connection management and caching
     const [departments, total, stats] = await Promise.all([
-      Department.find(query)
-        .sort(sort)
-        .skip((validatedParams.page - 1) * validatedParams.limit)
-        .limit(validatedParams.limit)
-        .lean(),
+      executeGenericDbQuery(async () => {
+        // Debug: Check all departments first
+        const allDepts = await Department.find({ status: 'active' }).select('name description').lean()
+        console.log('All active departments:', allDepts)
 
-      Department.countDocuments(query),
+        // Build sort
+        const sort: any = {}
+        sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
 
-      Department.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalDepartments: { $sum: 1 },
-            activeDepartments: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
-            inactiveDepartments: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } }
+        return await Department.find(filter)
+          .sort(sort)
+          .skip((validatedParams.page - 1) * validatedParams.limit)
+          .limit(validatedParams.limit)
+          .lean()
+      }, `departments-${JSON.stringify(validatedParams)}`, 60000), // 1-minute cache
+
+      executeGenericDbQuery(async () => {
+        return await Department.countDocuments(filter)
+      }, `departments-count-${JSON.stringify(filter)}`, 60000),
+
+      executeGenericDbQuery(async () => {
+        return await Department.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalDepartments: { $sum: 1 },
+              activeDepartments: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+              inactiveDepartments: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } }
+            }
           }
-        }
-      ])
+        ])
+      }, 'departments-stats', 300000) // 5-minute cache for stats
     ])
 
     const pages = Math.ceil(total / validatedParams.limit)
@@ -164,21 +166,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = createDepartmentSchema.parse(body)
 
-    await connectDB()
+    // Create department with automatic connection management
+    const department = await executeGenericDbQuery(async () => {
+      // Check if department name already exists (case insensitive)
+      const existingDepartment = await Department.findOne({
+        name: { $regex: new RegExp(`^${validatedData.name}$`, 'i') },
+        status: 'active'
+      })
 
-    // Check if department name already exists (case insensitive)
-    const existingDepartment = await Department.findOne({
-      name: { $regex: new RegExp(`^${validatedData.name}$`, 'i') },
-      status: 'active'
+      if (existingDepartment) {
+        throw new Error("Department name already exists")
+      }
+
+      // Create department
+      const newDepartment = new Department(validatedData)
+      await newDepartment.save()
+      return newDepartment
     })
 
-    if (existingDepartment) {
-      return NextResponse.json({ success: false, error: "Department name already exists" }, { status: 400 })
-    }
-
-    // Create department
-    const department = new Department(validatedData)
-    await department.save()
+    // Clear department-related caches
+    clearCache('departments')
 
 
     return NextResponse.json({

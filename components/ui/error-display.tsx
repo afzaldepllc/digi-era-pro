@@ -1,13 +1,14 @@
 /**
- * Permission Error Display Component
- * Shows user-friendly error messages when permission is denied
+ * Error Display Component
+ * Shows user-friendly error messages for various error types
  */
 
 import React from 'react'
-import { AlertTriangle, Lock, RefreshCw, Home } from 'lucide-react'
+import { AlertCircle, Lock, RefreshCw, Home, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 interface PermissionErrorProps {
   title?: string
@@ -31,15 +32,15 @@ export function PermissionError({
   className = ""
 }: PermissionErrorProps) {
   const router = useRouter()
-  
+
   // Generate contextual message based on resource and action
   const getContextualMessage = () => {
     if (message) return message
-    
+
     if (resource && action) {
       const resourceName = resource.replace(/[-_]/g, ' ').toLowerCase()
       const actionName = action.toLowerCase()
-      
+
       switch (actionName) {
         case 'read':
         case 'view':
@@ -59,14 +60,14 @@ export function PermissionError({
           return `You don't have permission to perform this action on ${resourceName}.`
       }
     }
-    
+
     return "You don't have sufficient permissions to access this resource."
   }
-  
+
   const handleGoHome = () => {
     router.push('/dashboard')
   }
-  
+
   const handleRetry = () => {
     if (onRetry) {
       onRetry()
@@ -74,7 +75,7 @@ export function PermissionError({
       window.location.reload()
     }
   }
-  
+
   return (
     <div className={`flex items-center justify-center min-h-[400px] p-4 ${className}`}>
       <Card className="w-full max-w-md">
@@ -93,7 +94,7 @@ export function PermissionError({
           <div className="text-sm text-gray-500">
             Contact your administrator if you believe this is an error.
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {showGoHome && (
               <Button
@@ -105,7 +106,7 @@ export function PermissionError({
                 Go to Dashboard
               </Button>
             )}
-            
+
             {showRetry && (
               <Button
                 onClick={handleRetry}
@@ -144,7 +145,7 @@ export function NetworkError({
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100">
-            <AlertTriangle className="h-6 w-6 text-yellow-600" />
+            <AlertCircle className="h-6 w-6 text-yellow-600" />
           </div>
           <CardTitle className="text-xl font-semibold text-gray-900">
             {title}
@@ -200,7 +201,7 @@ export function ErrorDisplay({
       />
     )
   }
-  
+
   if (error?.statusCode === 401 || error?.code === 'AUTH_REQUIRED') {
     return (
       <PermissionError
@@ -212,7 +213,7 @@ export function ErrorDisplay({
       />
     )
   }
-  
+
   if (!navigator.onLine || error?.code === 'NETWORK_ERROR') {
     return (
       <NetworkError
@@ -221,14 +222,14 @@ export function ErrorDisplay({
       />
     )
   }
-  
+
   // Default error display
   return (
     <div className={`flex items-center justify-center min-h-[400px] p-4 ${className}`}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-            <AlertTriangle className="h-6 w-6 text-red-600" />
+            <AlertCircle className="h-6 w-6 text-red-600" />
           </div>
           <CardTitle className="text-xl font-semibold text-gray-900">
             Something went wrong
@@ -253,3 +254,127 @@ export function ErrorDisplay({
     </div>
   )
 }
+
+/**
+ * Error Display Component
+ * Shows user-friendly error messages for various error types
+ */
+
+interface BaseErrorDisplayProps {
+  error?: string | Error | null;
+  title?: string;
+  variant?: 'default' | 'destructive' | 'warning' | 'minimal';
+  size?: 'sm' | 'md' | 'lg';
+  showIcon?: boolean;
+  showDismiss?: boolean;
+  showRetry?: boolean;
+  onDismiss?: () => void;
+  onRetry?: () => void;
+  className?: string;
+  children?: React.ReactNode;
+}
+
+export function BaseErrorDisplay({
+  error,
+  title = 'Error',
+  variant = 'destructive',
+  size = 'md',
+  showIcon = true,
+  showDismiss = false,
+  showRetry = false,
+  onDismiss,
+  onRetry,
+  className,
+  children,
+}: BaseErrorDisplayProps) {
+  if (!error) return null;
+
+  const errorMessage = typeof error === 'string' ? error : error.message || 'An unexpected error occurred';
+
+  const variants = {
+    default: 'bg-gray-50 border-gray-200 text-gray-900',
+    destructive: 'bg-red-50 border-red-200 text-red-900',
+    warning: 'bg-yellow-50 border-yellow-200 text-yellow-900',
+    minimal: 'bg-transparent border-transparent text-red-600',
+  };
+
+  const sizes = {
+    sm: 'p-3 text-sm',
+    md: 'p-4 text-sm',
+    lg: 'p-6 text-base',
+  };
+
+  const iconVariants = {
+    default: 'text-gray-400',
+    destructive: 'text-red-400',
+    warning: 'text-yellow-400',
+    minimal: 'text-red-500',
+  };
+
+  return (
+    <div
+      className={cn(
+        'border rounded-lg flex items-start space-x-3',
+        variants[variant],
+        sizes[size],
+        className
+      )}
+      role="alert"
+      aria-live="polite"
+    >
+      {showIcon && (
+        <AlertCircle className={cn('h-5 w-5 mt-0.5 flex-shrink-0', iconVariants[variant])} />
+      )}
+
+      <div className="flex-1 min-w-0">
+        {title && (
+          <h3 className="font-medium mb-1">
+            {title}
+          </h3>
+        )}
+        <p className="text-sm opacity-90">
+          {errorMessage}
+        </p>
+        {children && (
+          <div className="mt-2">
+            {children}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 flex-shrink-0">
+        {showRetry && onRetry && (
+          <button
+            onClick={onRetry}
+            className={cn(
+              'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors',
+              'h-8 w-8 hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-offset-2',
+              variant === 'destructive' && 'hover:bg-red-100 focus:ring-red-500',
+              variant === 'warning' && 'hover:bg-yellow-100 focus:ring-yellow-500',
+              variant === 'default' && 'hover:bg-gray-100 focus:ring-gray-500'
+            )}
+            title="Retry"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        )}
+
+        {showDismiss && onDismiss && (
+          <button
+            onClick={onDismiss}
+            className={cn(
+              'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors',
+              'h-8 w-8 hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-offset-2',
+              variant === 'destructive' && 'hover:bg-red-100 focus:ring-red-500',
+              variant === 'warning' && 'hover:bg-yellow-100 focus:ring-yellow-500',
+              variant === 'default' && 'hover:bg-gray-100 focus:ring-gray-500'
+            )}
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};

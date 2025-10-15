@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { genericApiRoutesMiddleware } from "@/lib/middleware/route-middleware"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 import User from "@/models/User"
 import { updateProfileSchema, changePasswordSchema, type UpdateProfileData, type ChangePasswordData } from "@/lib/validations/profile"
 import { AuditLogger } from "@/lib/security/audit-logger"
@@ -21,12 +21,12 @@ export async function GET(request: NextRequest) {
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user: currentUser, userEmail } = await genericApiRoutesMiddleware(request, 'profile', 'read')
 
-    await connectDB()
-
-    const user = await User.findById(session.user.id)
-      .populate('role', 'name displayName hierarchyLevel permissions')
-      .populate('department', 'name')
-      .select('+lastLogin')
+    const user = await executeGenericDbQuery(async () => {
+      return await User.findById(session.user.id)
+        .populate('role', 'name displayName hierarchyLevel permissions')
+        .populate('department', 'name')
+        .select('+lastLogin')
+    }, `profile-${session.user.id}`, 300000) // 5-minute cache
 
     if (!user) {
       return NextResponse.json(
@@ -119,24 +119,26 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    await connectDB()
-
-    const user = await User.findById(session.user.id)
+    const user = await executeGenericDbQuery(async () => {
+      return await User.findById(session.user.id)
+    }, `user-${session.user.id}`, 60000) // 1-minute cache
     if (!user) {
       return createErrorResponse("User not found", 404)
     }
 
     // Update user profile
     const updateData = validatedData.data
-    const updatedUser = await User.findByIdAndUpdate(
-      session.user.id,
-      {
-        ...updateData,
-        'metadata.updatedBy': session.user.id,
-        updatedAt: new Date(),
-      },
-      { new: true, runValidators: true }
-    ).populate('role', 'name displayName').populate('department', 'name')
+    const updatedUser = await executeGenericDbQuery(async () => {
+      return await User.findByIdAndUpdate(
+        session.user.id,
+        {
+          ...updateData,
+          'metadata.updatedBy': session.user.id,
+          updatedAt: new Date(),
+        },
+        { new: true, runValidators: true }
+      ).populate('role', 'name displayName').populate('department', 'name')
+    })
 
     if (!updatedUser) {
       return createErrorResponse("Failed to update profile", 500)
@@ -195,9 +197,9 @@ async function handlePasswordChange(request: NextRequest, userId: string, body: 
 
     const { currentPassword, newPassword } = validatedData.data
 
-    await connectDB()
-
-    const user = await User.findById(userId).select('+password')
+    const user = await executeGenericDbQuery(async () => {
+      return await User.findById(userId).select('+password')
+    })
     if (!user) {
       return NextResponse.json(
         { success: false, error: "User not found" },
@@ -219,10 +221,12 @@ async function handlePasswordChange(request: NextRequest, userId: string, body: 
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds)
 
     // Update password
-    await User.findByIdAndUpdate(userId, {
-      password: hashedPassword,
-      passwordChangedAt: new Date(),
-      'metadata.updatedBy': userId,
+    await executeGenericDbQuery(async () => {
+      return await User.findByIdAndUpdate(userId, {
+        password: hashedPassword,
+        passwordChangedAt: new Date(),
+        'metadata.updatedBy': userId,
+      })
     })
 
     // Log password change

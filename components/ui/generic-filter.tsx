@@ -139,10 +139,10 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
                 <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`} />
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
-                {field.options?.map((option) => (
+                {field.options?.filter(option => option.value !== '' && option.value != null).map((option) => (
                   <SelectItem 
                     key={option.value} 
-                    value={option.value}
+                    value={option.value.toString()}
                     className="focus:bg-accent focus:text-accent-foreground"
                   >
                     {option.label}

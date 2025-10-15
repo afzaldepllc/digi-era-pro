@@ -1,14 +1,27 @@
 "use client"
 
-import { useSession } from "next-auth/react"
 import { Users, Building2, Target, TrendingUp } from "lucide-react"
+import { useAuthUser } from "@/hooks/use-auth-user"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardCharts } from "@/components/dashboard/charts"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useSession } from "next-auth/react"
 
 export default function DashboardPage() {
-  const { data: session } = useSession()
+  const { user, loading } = useAuthUser()
+  const { data: session } = useSession() // Added to access session data
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
 
   const stats = [
     {
@@ -46,13 +59,13 @@ export default function DashboardPage() {
       {/* Welcome Section */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back, {session?.user?.name}!</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Welcome back, {user?.name || 'User'}!</h1>
           <p className="text-muted-foreground">Here&apos;s what&apos;s happening with your CRM today.</p>
         </div>
         <div className="flex items-center space-x-4">
           <Avatar className="h-12 w-12">
-            {session?.user?.image ? (
-              <AvatarImage src={session.user.image} />
+            {(session?.user as any).avatar ? (
+              <AvatarImage src={(session?.user as any).avatar} alt={(session?.user as any).name || "User"} className="object-cover" />
             ) : (
               <AvatarFallback className="bg-primary text-white text-xl font-semibold">
                 {session?.user?.name
@@ -95,21 +108,21 @@ export default function DashboardPage() {
             <CardDescription>Common tasks to get you started</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div className="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors">
               <Users className="h-5 w-5 text-blue-600" />
               <div>
                 <p className="font-medium">Manage Users</p>
                 <p className="text-sm text-muted-foreground">Add or edit system users</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div className="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors">
               <Target className="h-5 w-5 text-green-600" />
               <div>
                 <p className="font-medium">View Deals</p>
                 <p className="text-sm text-muted-foreground">Track your sales pipeline</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors">
+            <div className="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors">
               <Building2 className="h-5 w-5 text-purple-600" />
               <div>
                 <p className="font-medium">Companies</p>
@@ -130,7 +143,7 @@ export default function DashboardPage() {
               <div className="w-2 h-2 rounded-full bg-blue-600 mt-2"></div>
               <div className="flex-1">
                 <p className="text-sm font-medium">New user registered</p>
-                <p className="text-xs text-muted-foreground">John Doe joined the system</p>
+                <p className="text-xs text-muted-foreground">Afzal Habib joined the system</p>
                 <p className="text-xs text-muted-foreground">2 hours ago</p>
               </div>
             </div>
@@ -183,7 +196,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Your Role</span>
-              <span className="text-sm font-medium capitalize">{(session?.user as any)?.role || "User"}</span>
+              <span className="text-sm font-medium capitalize">{user?.roleDisplayName || user?.role || "User"}</span>
             </div>
           </CardContent>
         </Card>

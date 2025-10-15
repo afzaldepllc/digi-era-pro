@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 import User from "@/models/User"
 import Department from "@/models/Department"
 import mongoose from "mongoose"
@@ -13,8 +13,7 @@ import { getClientInfo } from "@/lib/security/error-handler"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse, createAPISuccessResponse } from "@/lib/utils/api-responses"
 
-// Simple in-memory cache for better performance
-const cache = new Map()
+// Cache TTL for user queries
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 
@@ -45,6 +44,8 @@ export async function GET(request: NextRequest) {
       hasRolePermissions: !!user.role?.permissions,
       permissionsCount: user.permissions?.length || user.role?.permissions?.length || 0
     });
+    
+    console.log("🔍 Users API: Applied filters 48:", applyFilters);
     // Parse and validate query parameters
     const { searchParams } = new URL(request.url)
     const queryParams = Object.fromEntries(searchParams.entries())
@@ -58,31 +59,29 @@ export async function GET(request: NextRequest) {
 
     const { page, limit, search, role, status, department, sortBy, sortOrder } = validation.data
 
-    // Generate cache key
-    const cacheKey = `users:${page}:${limit}:${search}:${role}:${status}:${department}:${sortBy}:${sortOrder}`
+    // Generate user-specific cache key to prevent cross-user cache pollution
+    const userCacheIdentifier = isSuperAdmin ? 'superadmin' : `user_${user._id || user.id}_${user.role?.name || 'no_role'}_${user.department || 'no_dept'}`
+    const cacheKey = `users:${userCacheIdentifier}:${page}:${limit}:${search}:${role}:${status}:${department}:${sortBy}:${sortOrder}`
 
-    // Check cache
-    const cached = cache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json({
-        success: true,
-        data: cached.data,
-        message: 'Users retrieved successfully (cached)'
-      })
-    }
+    // Execute database query with optimized connection and caching
+    const result = await executeGenericDbQuery(async () => {
+      // Ensure models are registered (fix for populate issues)
+      if (!mongoose.models.Role) {
+        require('@/models/Role')
+      }
+      if (!mongoose.models.Department) {
+        require('@/models/Department')
+      }
 
-    await connectDB()
-
-    // Ensure models are registered (fix for populate issues)
-    if (!mongoose.models.Role) {
-      require('@/models/Role')
-    }
-    if (!mongoose.models.Department) {
-      require('@/models/Department')
-    }
-
-    // Build secure and optimized query
-    const query: any = { status: 'active' }
+      // Build secure and optimized query
+      const filter: any = { 
+        status: 'active',
+        // Exclude client users from the regular users list
+        $or: [
+          { isClient: { $exists: false } },
+          { isClient: false }
+        ]
+      }
 
     // Secure search implementation
     if (search) {
@@ -103,10 +102,10 @@ export async function GET(request: NextRequest) {
 
       if (sanitizedSearch.length >= 2) {
         // Use MongoDB text search for better performance
-        query.$text = { $search: sanitizedSearch }
+        filter.$text = { $search: sanitizedSearch }
       } else {
         // Fallback to regex for short terms
-        query.$or = [
+        filter.$or = [
           { name: { $regex: sanitizedSearch, $options: 'i' } },
           { email: { $regex: sanitizedSearch, $options: 'i' } }
         ]
@@ -118,14 +117,14 @@ export async function GET(request: NextRequest) {
     if (role && role !== 'all') {
       // Check if it's a valid ObjectId
       if (mongoose.Types.ObjectId.isValid(role)) {
-        query.role = role
+        filter.role = role
       } else {
         // If not a valid ObjectId, set impossible condition to return no results
-        query.role = new mongoose.Types.ObjectId()
+        filter.role = new mongoose.Types.ObjectId()
       }
     }
 
-    if (status) query.status = status
+    if (status) filter.status = status
 
     // For department filter, handle ObjectId lookup if needed
     if (department) {
@@ -133,7 +132,7 @@ export async function GET(request: NextRequest) {
 
       // Check if it's already a valid ObjectId
       if (mongoose.Types.ObjectId.isValid(sanitizedDepartment)) {
-        query.department = sanitizedDepartment
+        filter.department = sanitizedDepartment
       } else {
         // Look up department by name
         try {
@@ -142,14 +141,14 @@ export async function GET(request: NextRequest) {
           }).select('_id').lean()
 
           if (deptDoc) {
-            query.department = (deptDoc as any)._id
+            filter.department = (deptDoc as any)._id
           } else {
             // If department not found, set impossible condition
-            query.department = new mongoose.Types.ObjectId()
+            filter.department = new mongoose.Types.ObjectId()
           }
         } catch (error) {
           console.log('Department lookup error:', error)
-          query.department = new mongoose.Types.ObjectId()
+          filter.department = new mongoose.Types.ObjectId()
         }
       }
     }
@@ -159,20 +158,24 @@ export async function GET(request: NextRequest) {
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1
 
     console.log('🔥 Users API: About to apply filters:', {
-      originalQuery: query,
+      originalQuery: filter,
       isSuperAdmin,
       userEmail: userEmail,
-      applyFiltersType: typeof applyFilters
+      userId: user._id || user.id,
+      userDepartment: user.department,
+      userRole: user.role?.name,
+      applyFiltersType: typeof applyFilters,
+      userPermissions: user.permissions?.length || user.role?.permissions?.length || 0
     })
 
     // 🔥 Apply permission-based filters - THIS IS THE KEY CHANGE
-    const filteredQuery = await applyFilters(query)
+    const filteredQuery = await applyFilters(filter)
 
     console.log('🔥 Users API: Query filtering applied:', {
       isSuperAdmin,
-      originalQuery: query,
+      originalQuery: filter,
       filteredQuery,
-      wasFiltered: JSON.stringify(filteredQuery) !== JSON.stringify(query),
+      wasFiltered: JSON.stringify(filteredQuery) !== JSON.stringify(filter),
       userPermissions: user.role?.permissions?.map((p: any) => ({ 
         resource: p.resource, 
         conditions: p.conditions 
@@ -246,11 +249,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Cache result
-    cache.set(cacheKey, {
-      data: responseData,
-      timestamp: Date.now()
-    })
+      // Return result for caching by cachedQuery
+      return responseData
 
     // Log successful access
     console.log('Users list accessed:', {
@@ -263,9 +263,12 @@ export async function GET(request: NextRequest) {
       ip: getClientInfo(request).ipAddress
     })
 
+      return responseData
+    }, cacheKey, CACHE_TTL)
+
     return NextResponse.json({
       success: true,
-      data: responseData,
+      data: result,
       message: 'Users retrieved successfully'
     })
 
@@ -299,6 +302,11 @@ export async function POST(request: NextRequest) {
 
     const validatedData = validation.data
 
+    // Prevent creating client users through regular user endpoint
+    if (validatedData.isClient === true) {
+      return createErrorResponse("Cannot create client users directly. Use lead qualification process instead.", 400)
+    }
+
     // Additional security checks
     const dataString = JSON.stringify(validatedData)
     if (SecurityUtils.containsSQLInjection && SecurityUtils.containsXSS) {
@@ -313,13 +321,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await connectDB()
-
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      email: validatedData.email,
-      status: 'active'
-    }).lean()
+    // Execute user creation with database connection
+    const result = await executeGenericDbQuery(async () => {
+      // Check if user already exists
+      const existingUser = await User.findOne({
+        email: validatedData.email,
+        status: 'active'
+      }).lean()
 
     if (existingUser) {
       console.log('Duplicate user creation attempt:', {
@@ -361,6 +369,7 @@ export async function POST(request: NextRequest) {
       phoneVerified: false,
       twoFactorEnabled: false,
       status: 'active',
+      isClient: false, // Explicitly set to false for regular users
       metadata: {
         createdBy: session.user.email || 'unknown',
         updatedBy: session.user.email || 'unknown',
@@ -377,7 +386,8 @@ export async function POST(request: NextRequest) {
     await user.save()
 
     // Clear relevant caches
-    cache.clear()
+    const { clearCache } = await import('@/lib/mongodb')
+    clearCache('users') // Clear user-related cache
 
     // Prepare response (exclude sensitive data)
     const { password, ...userResponse } = user.toObject()
@@ -391,9 +401,12 @@ export async function POST(request: NextRequest) {
       ip: getClientInfo(request).ipAddress
     })
 
+      return userResponse
+    })
+
     return NextResponse.json({
       success: true,
-      data: userResponse,
+      data: result,
       message: 'User created successfully'
     }, { status: 201 })
 

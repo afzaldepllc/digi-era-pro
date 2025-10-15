@@ -50,6 +50,7 @@ const systemRoles = [
       { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "delete", "assign"]},
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["create", "read", "update", "delete", "assign"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["create", "read", "update", "delete", "assign"]},
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "delete", "assign"]},
       { permission: PERMISSIONS.SYSTEM_READ, actions: ["create", "read", "update", "delete", "manage", "configure", "audit", "archive", "export", "import"], conditions: { unrestricted: true } },
       { permission: PERMISSIONS.AUDIT_LOGS_READ, actions: ["read", "export", "archive"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["create", "read", "update", "delete", "export"] },
@@ -70,6 +71,7 @@ const systemRoles = [
       { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "assign"], conditions: { subordinates: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read", "update"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read", "assign"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["create", "read", "export"] },
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
       { permission: PERMISSIONS.AUDIT_LOGS_READ, actions: ["read"] },
@@ -86,6 +88,7 @@ const systemRoles = [
       { permission: PERMISSIONS.USERS_READ, actions: ["read", "update"], conditions: { department: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["create", "read", "export"] },
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
     ])
@@ -101,6 +104,7 @@ const systemRoles = [
       { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
     ])
@@ -112,8 +116,9 @@ const systemRoles = [
     hierarchyLevel: 1,
     isSystemRole: false,
         permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true , department: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true } },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["read"] },
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["read"], conditions: { own: true } },
     ])
@@ -252,6 +257,57 @@ export async function seedSystemRoles() {
           console.log(`✅ Created department role: ${roleName}`)
         }
       }
+    }
+
+    // ========================================
+    // ENSURE ALL ROLES HAVE COMMUNICATION PERMISSIONS
+    // ========================================
+    console.log('\n📡 Ensuring all roles have communication permissions...')
+
+    const allRoles = await Role.find({ status: 'active' }).lean()
+    let communicationUpdated = 0
+
+    for (const role of allRoles) {
+      const hasCommunicationPermission = role.permissions.some((p: any) => 
+        p.resource === PERMISSIONS.COMMUNICATIONS_READ.resource
+      )
+
+      if (!hasCommunicationPermission) {
+        // Determine communication permissions based on hierarchy level
+        let communicationActions: string[]
+        if (role.hierarchyLevel >= 6) {
+          // High-level roles: full communication access
+          communicationActions = ["create", "read", "update", "assign"]
+        } else if (role.hierarchyLevel >= 2) {
+          // Mid-level roles: read and update
+          communicationActions = ["read", "update"]
+        } else {
+          // Low-level roles: read-only
+          communicationActions = ["read"]
+        }
+
+        const communicationPermission = {
+          resource: PERMISSIONS.COMMUNICATIONS_READ.resource,
+          actions: communicationActions,
+          conditions: {}
+        }
+
+        // Add communication permission to the role
+        await Role.findByIdAndUpdate(role._id, {
+          $push: { permissions: communicationPermission },
+          'metadata.updatedBy': 'system_seeder',
+          'metadata.lastCommunicationUpdate': new Date()
+        })
+
+        communicationUpdated++
+        console.log(`📡 Added communication permissions to role: ${role.name} (${communicationActions.join(', ')})`)
+      }
+    }
+
+    if (communicationUpdated > 0) {
+      console.log(`✅ Added communication permissions to ${communicationUpdated} roles`)
+    } else {
+      console.log('✅ All roles already have communication permissions')
     }
 
     // Summary

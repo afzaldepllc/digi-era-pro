@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Role, { type IRole } from "@/models/Role"
 import Department, { type IDepartment } from "@/models/Department"
 import { SecurityUtils } from "@/lib/security/validation"
@@ -34,9 +33,6 @@ export async function GET(request: NextRequest) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'read')
-    
-
-    await connectDB()
 
     // Parse and validate query parameters
     const { searchParams } = new URL(request.url)
@@ -56,8 +52,9 @@ export async function GET(request: NextRequest) {
     // Extract user info for superadmin check
     const isSuperAdmin = user.role === 'super_admin';
 
-    // Generate cache key
-    const cacheKey = `roles:${page}:${limit}:${search}:${department}:${hierarchyLevel}:${isSystemRole}:${status}:${sortBy}:${sortOrder}:${isSuperAdmin}`
+    // Generate user-specific cache key to prevent cross-user contamination
+    const userCacheIdentifier = isSuperAdmin ? 'superadmin' : `user_${user._id || user.id}_${user.role?.name || 'no_role'}`
+    const cacheKey = `roles:${userCacheIdentifier}:${page}:${limit}:${search}:${department}:${hierarchyLevel}:${isSystemRole}:${status}:${sortBy}:${sortOrder}`
 
     // Check cache
     const cached = cache.get(cacheKey)
@@ -196,8 +193,12 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     })
 
-    // Clear cache on error to avoid serving stale data
-    cache.clear()
+    // Clear relevant cache entries on error to avoid serving stale data
+    for (const key of cache.keys()) {
+      if (key.startsWith('roles:')) {
+        cache.delete(key)
+      }
+    }
 
     // Handle middleware errors (like permission denied)
     if (error instanceof Response) {
@@ -215,8 +216,6 @@ export async function POST(request: NextRequest) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'create')
-
-    await connectDB()
 
     // User info already extracted by middleware
     // Parse and validate request body
@@ -265,17 +264,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify department exists
-    const department = await Department.findById(validatedData.department).lean() as (IDepartment & Document) | null
+    const department = await executeGenericDbQuery(async () => {
+      return await Department.findById(validatedData.department).lean()
+    }) as (IDepartment & Document) | null
     if (!department) {
       return createErrorResponse("Department not found", 404)
     }
 
     // Check if role name already exists in the same department
-    const existingRole = await Role.findOne({
-      name: validatedData.name,
-      department: validatedData.department,
-      status: 'active'
-    }).lean()
+    const existingRole = await executeGenericDbQuery(async () => {
+      return await Role.findOne({
+        name: validatedData.name,
+        department: validatedData.department,
+        status: 'active'
+      }).lean()
+    }) as (IRole & Document) | null
 
     if (existingRole) {
       console.log('Duplicate role creation attempt:', {
@@ -307,8 +310,12 @@ export async function POST(request: NextRequest) {
     // Populate department details for response
     await role.populate('departmentDetails', 'name description')
 
-    // Clear relevant caches
-    cache.clear()
+    // Clear role-related cache entries
+    for (const key of cache.keys()) {
+      if (key.startsWith('roles:')) {
+        cache.delete(key)
+      }
+    }
 
     // Log successful role creation
     console.log('Role created successfully:', {

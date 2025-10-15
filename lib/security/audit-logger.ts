@@ -1,4 +1,4 @@
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 import { Schema, model, models } from "mongoose"
 
 // Audit log schema
@@ -49,11 +49,11 @@ export class AuditLogger {
     errorMessage?: string
   }) {
     try {
-      await connectDB()
-      
-      await AuditLog.create({
-        ...params,
-        timestamp: new Date(),
+      await executeGenericDbQuery(async () => {
+        return await AuditLog.create({
+          ...params,
+          timestamp: new Date(),
+        })
       })
     } catch (error) {
       // Log to console if database logging fails
@@ -200,12 +200,12 @@ export class AuditLogger {
   // Query methods for audit logs
   static async getUserAuditLogs(userId: string, limit: number = 50) {
     try {
-      await connectDB()
-      
-      return await AuditLog.find({ userId })
-        .sort({ timestamp: -1 })
-        .limit(limit)
-        .lean()
+      return await executeGenericDbQuery(async () => {
+        return await AuditLog.find({ userId })
+          .sort({ timestamp: -1 })
+          .limit(limit)
+          .lean()
+      }, `user-audit-logs-${userId}`, 60000) // 1-minute cache
     } catch (error) {
       console.error("Failed to retrieve user audit logs:", error)
       return []
@@ -214,12 +214,12 @@ export class AuditLogger {
 
   static async getResourceAuditLogs(resource: string, resourceId: string, limit: number = 50) {
     try {
-      await connectDB()
-      
-      return await AuditLog.find({ resource, resourceId })
-        .sort({ timestamp: -1 })
-        .limit(limit)
-        .lean()
+      return await executeGenericDbQuery(async () => {
+        return await AuditLog.find({ resource, resourceId })
+          .sort({ timestamp: -1 })
+          .limit(limit)
+          .lean()
+      }, `resource-audit-logs-${resource}-${resourceId}`, 60000) // 1-minute cache
     } catch (error) {
       console.error("Failed to retrieve resource audit logs:", error)
       return []
@@ -228,15 +228,15 @@ export class AuditLogger {
 
   static async getFailedLogins(timeframe: Date, limit: number = 100) {
     try {
-      await connectDB()
-      
-      return await AuditLog.find({
-        action: "LOGIN_FAILED",
-        timestamp: { $gte: timeframe },
-      })
-        .sort({ timestamp: -1 })
-        .limit(limit)
-        .lean()
+      return await executeGenericDbQuery(async () => {
+        return await AuditLog.find({
+          action: "LOGIN_FAILED",
+          timestamp: { $gte: timeframe },
+        })
+          .sort({ timestamp: -1 })
+          .limit(limit)
+          .lean()
+      }, `failed-logins-${timeframe.getTime()}`, 300000) // 5-minute cache
     } catch (error) {
       console.error("Failed to retrieve failed login attempts:", error)
       return []

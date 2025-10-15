@@ -27,6 +27,25 @@ const authSlice = createSlice({
     clearAuth: (state) => {
       state.isAuthenticated = false
       state.user = null
+      
+      // Clear localStorage when clearing auth state
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('logged_in_user')
+        localStorage.removeItem('user_permissions')
+        localStorage.removeItem('user_role')
+        localStorage.removeItem('user_department')
+        
+        // Clear any other cached user data
+        const keysToRemove = Object.keys(localStorage).filter(key => 
+          key.startsWith('user_') || 
+          key.startsWith('auth_') || 
+          key.startsWith('session_')
+        )
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+        
+        // Clear sessionStorage as well
+        sessionStorage.clear()
+      }
     },
   },
 })

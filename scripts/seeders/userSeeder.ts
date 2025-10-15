@@ -127,7 +127,7 @@ export const userSeeds: IUserSeed[] = [
   // Clients
   {
     name: 'ABC Company',
-    email: 'contact@abccompany.com',
+    email: 'client@gmail.com',
     password: 'Client@123',
     legacyRole: 'user',
     departmentName: 'Sales',

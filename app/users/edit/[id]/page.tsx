@@ -23,6 +23,9 @@ export default function EditUserPage() {
   const params = useParams();
   const dispatch = useAppDispatch();
   const { toast } = useToast();
+
+  const userId = params?.id as string;
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -96,10 +99,10 @@ export default function EditUserPage() {
   }, [form, selectedDepartment, handleDepartmentChange]);
 
   useEffect(() => {
-    if (params.id) {
-      fetchUser(params.id as string);
+    if (userId) {
+      fetchUser(userId);
     }
-  }, [params.id]);
+  }, [userId]);
 
   const fetchUser = async (userId: string) => {
     try {
@@ -172,12 +175,12 @@ export default function EditUserPage() {
   };
 
   const handleSubmit = async (data: UpdateUserData) => {
-    if (!params.id) return;
+    if (!userId) return;
     setSaving(true);
     try {
       // The updateUserSchema with transformation will handle converting flat form data to nested structure
       const updateData = {
-        _id: params.id as string,
+        _id: userId,
         ...data, // The schema transformation will handle the nested structure conversion
       };
 
@@ -205,205 +208,208 @@ export default function EditUserPage() {
   };
 
   const formFields = [
-    // Basic Information Section
     {
-      name: "name",
-      label: "Full Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "Enter full name",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "email",
-      label: "Email Address",
-      type: "email" as const,
-      required: true,
-      placeholder: "Enter email address",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "phone",
-      label: "Phone Number",
-      type: "text" as const,
-      placeholder: "Enter phone number",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "department",
-      label: "Department",
-      type: "select" as const,
-      required: true,
-      placeholder: "Select department",
-      loading: departmentsLoading,
-      options: departments.map(dept => ({
-        value: dept._id!,
-        label: dept.name,
-      })),
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "role",
-      label: "Role",
-      type: "select" as const,
-      required: true,
-      placeholder: selectedDepartment ? "Select role" : "Select department first",
-      disabled: !selectedDepartment || availableRoles.length === 0,
-      loading: rolesLoading,
-      options: availableRoles.map(role => ({
-        value: role._id!,
-        label: `${role.displayName} (Level ${role.hierarchyLevel})`,
-      })),
-      cols: 12,
-      mdCols: 6,
-      lgCols: 6,
-    },
-    {
-      name: "position",
-      label: "Position",
-      type: "text" as const,
-      placeholder: "Enter position/title",
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select" as const,
-      required: true,
-      options: [
-        { value: "active", label: "Active" },
-        { value: "inactive", label: "Inactive" },
-        { value: "suspended", label: "Suspended" },
-      ],
-      cols: 12,
-      mdCols: 6,
-      lgCols: 4,
-    },
+      fields: [
+        {
+          name: "name",
+          label: "Full Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Enter full name",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "email",
+          label: "Email Address",
+          type: "email" as const,
+          required: true,
+          placeholder: "Enter email address",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "phone",
+          label: "Phone Number",
+          type: "text" as const,
+          placeholder: "Enter phone number",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "department",
+          label: "Department",
+          type: "select" as const,
+          required: true,
+          placeholder: "Select department",
+          loading: departmentsLoading,
+          options: departments.map(dept => ({
+            value: dept._id!,
+            label: dept.name,
+          })),
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "role",
+          label: "Role",
+          type: "select" as const,
+          required: true,
+          placeholder: selectedDepartment ? "Select role" : "Select department first",
+          disabled: !selectedDepartment || availableRoles.length === 0,
+          loading: rolesLoading,
+          options: availableRoles.map(role => ({
+            value: role._id!,
+            label: `${role.displayName} (Level ${role.hierarchyLevel})`,
+          })),
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "position",
+          label: "Position",
+          type: "text" as const,
+          placeholder: "Enter position/title",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+            { value: "suspended", label: "Suspended" },
+          ],
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
 
-    // Address Information
-    {
-      name: "street",
-      label: "Street Address",
-      type: "text" as const,
-      placeholder: "Enter street address",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "city",
-      label: "City",
-      type: "text" as const,
-      placeholder: "Enter city",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "state",
-      label: "State/Province",
-      type: "text" as const,
-      placeholder: "Enter state or province",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "country",
-      label: "Country",
-      type: "text" as const,
-      placeholder: "Enter country",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "zipCode",
-      label: "ZIP/Postal Code",
-      type: "text" as const,
-      placeholder: "Enter ZIP or postal code",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    // Emergency Contact
-    {
-      name: "emergencyName",
-      label: "Emergency Contact Name",
-      type: "text" as const,
-      placeholder: "Enter emergency contact name",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "emergencyPhone",
-      label: "Emergency Contact Phone",
-      type: "text" as const,
-      placeholder: "Enter emergency contact phone",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "emergencyRelationship",
-      label: "Relationship",
-      type: "text" as const,
-      placeholder: "Enter relationship (e.g., Spouse, Parent)",
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    // Preferences
-    {
-      name: "language",
-      label: "Language",
-      type: "select" as const,
-      options: [
-        { value: "en", label: "English" },
-        { value: "es", label: "Spanish" },
-        { value: "fr", label: "French" },
-        { value: "de", label: "German" },
-      ],
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "timezone",
-      label: "Timezone",
-      type: "select" as const,
-      options: [
-        { value: "UTC", label: "UTC" },
-        { value: "America/New_York", label: "Eastern Time" },
-        { value: "America/Chicago", label: "Central Time" },
-        { value: "America/Denver", label: "Mountain Time" },
-        { value: "America/Los_Angeles", label: "Pacific Time" },
-      ],
-      cols: 12,      // Full width on mobile
-      mdCols: 6,     // Half width on medium screens
-      lgCols: 4,     // Third width on large screens
-    },
-    {
-      name: "bio",
-      label: "Bio/Notes",
-      type: "textarea" as const,
-      placeholder: "Enter user bio or notes (optional)",
-      rows: 3,
-      cols: 12,      // Full width on mobile
-      mdCols: 12,     // Half width on medium screens
-      lgCols: 12,     // Third width on large screens
-    },
+        // Address Information
+        {
+          name: "street",
+          label: "Street Address",
+          type: "text" as const,
+          placeholder: "Enter street address",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "city",
+          label: "City",
+          type: "text" as const,
+          placeholder: "Enter city",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "state",
+          label: "State/Province",
+          type: "text" as const,
+          placeholder: "Enter state or province",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "country",
+          label: "Country",
+          type: "text" as const,
+          placeholder: "Enter country",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "zipCode",
+          label: "ZIP/Postal Code",
+          type: "text" as const,
+          placeholder: "Enter ZIP or postal code",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        // Emergency Contact
+        {
+          name: "emergencyName",
+          label: "Emergency Contact Name",
+          type: "text" as const,
+          placeholder: "Enter emergency contact name",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "emergencyPhone",
+          label: "Emergency Contact Phone",
+          type: "text" as const,
+          placeholder: "Enter emergency contact phone",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "emergencyRelationship",
+          label: "Relationship",
+          type: "text" as const,
+          placeholder: "Enter relationship (e.g., Spouse, Parent)",
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        // Preferences
+        {
+          name: "language",
+          label: "Language",
+          type: "select" as const,
+          options: [
+            { value: "en", label: "English" },
+            { value: "es", label: "Spanish" },
+            { value: "fr", label: "French" },
+            { value: "de", label: "German" },
+          ],
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "timezone",
+          label: "Timezone",
+          type: "select" as const,
+          options: [
+            { value: "UTC", label: "UTC" },
+            { value: "America/New_York", label: "Eastern Time" },
+            { value: "America/Chicago", label: "Central Time" },
+            { value: "America/Denver", label: "Mountain Time" },
+            { value: "America/Los_Angeles", label: "Pacific Time" },
+          ],
+          cols: 12,      // Full width on mobile
+          mdCols: 6,     // Half width on medium screens
+          lgCols: 4,     // Third width on large screens
+        },
+        {
+          name: "bio",
+          label: "Bio/Notes",
+          type: "textarea" as const,
+          placeholder: "Enter user bio or notes (optional)",
+          rows: 3,
+          cols: 12,      // Full width on mobile
+          mdCols: 12,     // Half width on medium screens
+          lgCols: 12,     // Third width on large screens
+        },
+      ]
+    }
   ];
 
   if (loading) {

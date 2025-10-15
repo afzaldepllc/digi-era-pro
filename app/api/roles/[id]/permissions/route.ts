@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Role from "@/models/Role"
 import { z } from "zod"
 import mongoose from "mongoose"
@@ -65,39 +65,43 @@ export async function PUT(
 
     const { permissions } = validation.data
 
-    await connectDB()
-
-    // Check if role exists
-    const existingRole = await Role.findById(id)
-    if (!existingRole) {
-      return createErrorResponse('Role not found', 404)
-    }
-
-    // CRITICAL: Prevent modification of superadmin role
-    if (existingRole.name === 'super_admin' || existingRole.name === 'superadmin') {
-      return createErrorResponse(
-        'Super Administrator role permissions cannot be modified for security reasons',
-        403
-      )
-    }
-
-    // Update only the permissions field
-    const updatedRole = await Role.findByIdAndUpdate(
-      id,
-      {
-        permissions,
-        updatedAt: new Date(),
-      },
-      {
-        new: true,
-        runValidators: true,
-        select: '-__v'
+    // Update role permissions with automatic connection management
+    const updatedRole = await executeGenericDbQuery(async () => {
+      // Check if role exists
+      const existingRole = await Role.findById(id)
+      if (!existingRole) {
+        throw new Error('Role not found')
       }
-    ).populate('departmentDetails', 'name description status')
 
-    if (!updatedRole) {
-      return createErrorResponse('Failed to update role permissions', 500)
-    }
+      // CRITICAL: Prevent modification of superadmin role
+      if (existingRole.name === 'super_admin' || existingRole.name === 'superadmin') {
+        throw new Error('Super Administrator role permissions cannot be modified for security reasons')
+      }
+
+      // Update only the permissions field
+      const updated = await Role.findByIdAndUpdate(
+        id,
+        {
+          permissions,
+          updatedAt: new Date(),
+        },
+        {
+          new: true,
+          runValidators: true,
+          select: '-__v'
+        }
+      ).populate('departmentDetails', 'name description status')
+
+      if (!updated) {
+        throw new Error('Failed to update role permissions')
+      }
+
+      return updated
+    })
+
+    // Clear role-related caches
+    clearCache(`role-${id}`)
+    clearCache('roles')
 
     // Log the permission update (userEmail already extracted by middleware)
     console.log('Role permissions updated:', {
@@ -109,10 +113,14 @@ export async function PUT(
       timestamp: new Date().toISOString()
     })
 
-    // Clear the role cache to ensure fresh data on next fetch
+    // Clear all role-related cache entries to ensure fresh data on next fetch
     const roleCache = require('../route').roleCache
     if (roleCache && roleCache.delete) {
-      roleCache.delete(id)
+      for (const key of roleCache.keys()) {
+        if (key.startsWith(id + '_')) {
+          roleCache.delete(key)
+        }
+      }
     }
 
     return NextResponse.json({

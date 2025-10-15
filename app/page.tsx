@@ -1,5 +1,14 @@
-import { redirect } from "next/navigation"
+'use client'
+import { useLayoutEffect } from "react"
+import { useRouter } from "next/navigation"
 
 export default function HomePage() {
-  redirect("/dashboard")
+  console.log('from home page')
+  const router = useRouter()
+
+  useLayoutEffect(() => {
+    router.replace("/dashboard") // replace avoids adding to history
+  }, [router])
+
+  return null // or empty fragment, no flicker
 }

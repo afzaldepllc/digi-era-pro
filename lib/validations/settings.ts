@@ -1,8 +1,8 @@
 import { z } from "zod"
 
 // Theme variant validation
-export const themeVariantSchema = z.enum(['default', 'ocean', 'forest', 'sunset'], {
-  errorMap: () => ({ message: "Invalid theme variant. Must be one of: default, ocean, forest, sunset" })
+export const themeVariantSchema = z.enum(['default', 'ocean', 'forest', 'sunset', 'coral', 'amber'], {
+  errorMap: () => ({ message: "Invalid theme variant. Must be one of: default, ocean, forest, sunset, coral, amber" })
 })
 
 // Setting validation schemas
@@ -101,7 +101,18 @@ export const settingValidators = {
   
   enable_email_notifications: z.boolean(),
   
-  backup_frequency: z.enum(['daily', 'weekly', 'monthly'])
+  backup_frequency: z.enum(['daily', 'weekly', 'monthly']),
+  
+  backup_directory: z.string()
+    .min(1, "Backup directory is required")
+    .max(500, "Backup directory path is too long"),
+  
+  backup_retention_days: z.number()
+    .int("Must be a whole number")
+    .min(1, "Must keep backups for at least 1 day")
+    .max(365, "Cannot keep backups for more than 365 days"),
+  
+  auto_backup_enabled: z.boolean()
 }
 
 // Validate setting value based on key

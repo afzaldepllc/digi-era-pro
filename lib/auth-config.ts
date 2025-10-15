@@ -1,7 +1,7 @@
 import CredentialsProvider from "next-auth/providers/credentials"
 import { MongoDBAdapter } from "@auth/mongodb-adapter"
 import { MongoClient } from "mongodb"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 import User from "@/models/User"
 import Role from "@/models/Role"
 import { loginSchema } from "@/lib/validations/auth"
@@ -26,6 +26,29 @@ export const authOptions = {
             throw new Error("Email and password are required")
           }
 
+          // Apply rate limiting (if applyRateLimit is available)
+          try {
+            const { applyRateLimit } = await import("@/lib/security/rate-limiter")
+            const mockRequest = {
+              ip: req?.headers?.['x-forwarded-for'] as string || "unknown",
+              headers: req?.headers || {},
+            } as any
+
+            const rateLimitResponse = await applyRateLimit(mockRequest, "auth")
+            if (rateLimitResponse) {
+              // Rate limit exceeded - extract error message from response
+              const errorBody = await rateLimitResponse.json().catch(() => ({ error: "Too many login attempts" }))
+              throw new Error(errorBody.error || "Too many login attempts. Please wait before trying again.")
+            }
+          } catch (rateLimitError: any) {
+            // If it's a rate limit error, re-throw it
+            if (rateLimitError.message && rateLimitError.message.includes("Too many")) {
+              throw rateLimitError
+            }
+            // If rate limiting fails for other reasons, continue with authentication but log the error
+            console.warn("Rate limiting check failed:", rateLimitError)
+          }
+
           // Validate input with security checks
           const validatedFields = loginSchema.safeParse(credentials)
           if (!validatedFields.success) {
@@ -38,10 +61,9 @@ export const authOptions = {
             throw new Error("Invalid email format")
           }
 
-          await connectDB()
-
           // Find user with password field and populate role WITH PERMISSIONS
-          const user = await User.findOne({ email: credentials.email.toLowerCase() })
+          const user = await executeGenericDbQuery(async () => {
+            return await User.findOne({ email: credentials.email.toLowerCase() })
             .select("+password")
             .populate({
               path: 'role',
@@ -53,6 +75,7 @@ export const authOptions = {
               }
             })
             .populate('department', 'name')
+          })
 
           if (!user) {
             // Log failed login attempt
@@ -140,38 +163,91 @@ export const authOptions = {
   jwt: {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
+  events: {
+    async signOut(message: any) {
+      // Clear localStorage when user signs out
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('logged_in_user')
+        localStorage.removeItem('user_permissions')
+        localStorage.removeItem('user_role')
+        localStorage.removeItem('user_department')
+        
+        // Clear any other cached user data
+        const keysToRemove = Object.keys(localStorage).filter(key => 
+          key.startsWith('user_') || 
+          key.startsWith('auth_') || 
+          key.startsWith('session_')
+        )
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+      }
+    },
+  },
   callbacks: {
-    async jwt({ token, user }: { token: any; user: any }) {
+    async jwt({ token, user, trigger, session }: any) {
+      // Handle session updates (including avatar changes)
+      if (trigger === "update" && session) {
+        console.log('JWT callback - updating session with:', session)
+
+        // Update specific fields from session update
+        if (session.avatar !== undefined) {
+          token.avatar = session.avatar
+          console.log('JWT callback - avatar updated to:', session.avatar)
+        }
+
+        // Merge any other user data updates
+        if (session.user) {
+          token.user = { ...token.user, ...session.user }
+        }
+
+        return token
+      }
+
       if (user) {
         token.role = user.role
         token.roleDisplayName = user.roleDisplayName
         token.department = user.department
         token.avatar = user.avatar
-        token.permissions = user.permissions // Store permissions in JWT
-        token.sessionStartTime = Date.now() // Add session start time
+        token.permissions = user.permissions
+        token.sessionStartTime = Date.now()
       }
       return token
     },
+
     async session({ session, token }: { session: any; token: any }) {
       if (token) {
         session.user.id = token.sub!
         session.user.role = token.role as string
         session.user.roleDisplayName = token.roleDisplayName as string
         session.user.department = token.department as string
-        session.user.avatar = token.avatar as string
-        session.user.permissions = token.permissions || [] // Add permissions to session
-        session.user.sessionStartTime = token.sessionStartTime // Add session start time
-        session.user.iat = token.iat // Add token issued at time
-        
+        session.user.avatar = token.avatar as string  // This will now be updated properly
+        session.user.permissions = token.permissions || []
+        session.user.sessionStartTime = token.sessionStartTime
+        session.user.iat = token.iat
+
         // Store permissions in localStorage for faster access
         if (typeof window !== 'undefined' && token.permissions) {
           try {
-            localStorage.setItem('user_permissions', JSON.stringify(token.permissions))
+            localStorage.setItem('user_permissions', JSON.stringify(token.permissions));
           } catch (error) {
             // Silently handle localStorage errors
           }
         }
-      } 
+      }
+
+      // Store complete user data in localStorage for dashboard access
+      if (typeof window !== 'undefined') {
+        try {
+          const currentStoredUser = localStorage.getItem('logged_in_user');
+          const newUserData = JSON.stringify(session.user);
+
+          if (currentStoredUser !== newUserData) {
+            localStorage.setItem('logged_in_user', newUserData);
+          }
+        } catch (error) {
+          console.error('Error storing user in localStorage:', error);
+        }
+      }
+
       return session
     },
   },

@@ -18,7 +18,8 @@ export default function RolePermissionsPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const roleId = params.id as string;
+  const roleId = params?.id as string;
+
 
   const {
     roles,

@@ -63,7 +63,7 @@ flowchart TD
 
 ## Requirements Summary
 
-1. **Admins**: 2FA on every login + VPN/Office network access
+1. **Admins**: 2FA on every login + without VPN access
 2. **Employees**: Credential-based login + Must be on VPN/Office network
 3. **Clients**: Credential-based login + Access from anywhere (client portal only)
 
@@ -158,7 +158,7 @@ Request Flow:
 │ 2. Next.js Middleware (runs on every request)           │
 │    ├─ Check user security tier from JWT                 │
 │    ├─ Validate network location (IP-based)              │
-│    ├─ Admin: Allow if VPN/Office + 2FA verified         │
+│    ├─ Admin: Allow globally on 2FA verified on every login│
 │    ├─ Employee: Allow ONLY if VPN/Office                │
 │    └─ Client: Allow from anywhere (portal routes only)  │
 ├─────────────────────────────────────────────────────────┤

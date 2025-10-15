@@ -30,7 +30,9 @@ export default function EditDepartmentPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const departmentId = params.id as string;
+  const departmentId = params?.id as string;
+
+ 
 
   // Redux state
   const {
@@ -124,36 +126,40 @@ export default function EditDepartmentPage() {
 
   const formFields = [
     {
-      name: "name",
-      label: "Department Name",
-      type: "text" as const,
-      required: true,
-      placeholder: "Enter department name",
-      description: "A unique name for the department",
-      cols: 12,
-      mdCols: 8,
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select" as const,
-      required: true,
-      options: [
-        { value: "active", label: "Active" },
-        { value: "inactive", label: "Inactive" },
-      ],
-      cols: 12,
-      mdCols: 4,
-    },
-    {
-      name: "description",
-      label: "Description",
-      type: "textarea" as const,
-      placeholder: "Enter department description (optional)",
-      description: "Brief description of the department's purpose and responsibilities",
-      cols: 12,
-      rows: 4,
-    },
+      fields: [
+        {
+          name: "name",
+          label: "Department Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Enter department name",
+          description: "A unique name for the department",
+          cols: 12,
+          mdCols: 8,
+        },
+        {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "description",
+          label: "Description",
+          type: "textarea" as const,
+          placeholder: "Enter department description (optional)",
+          description: "Brief description of the department's purpose and responsibilities",
+          cols: 12,
+          rows: 4,
+        },
+      ]
+    }
   ];
 
   // Show loading skeleton while fetching department data

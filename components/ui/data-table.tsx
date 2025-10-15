@@ -530,7 +530,7 @@ const DataTable = <T extends Record<string, any>>({
     <div className={cn("space-y-4", className)}>
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Rows per page:</span>
+          <span className="text-sm text-muted-foreground">Records per page:</span>
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange?.(Number(e.target.value))}

@@ -1,3 +1,6 @@
+// Communication types - re-export from communication module
+export * from './communication'
+
 // Permission interface
 export interface Permission {
   resource: string
@@ -53,8 +56,15 @@ export interface User {
   phone?: string
   department: string | Department // Reference to Department ID or populated Department object
   position?: string
-  status: "active" | "inactive" | "suspended"
+  status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" // Extended for clients
   permissions: string[]
+
+  // Client-specific fields (optional for regular users)
+  isClient?: boolean // Flag to identify client users
+  leadId?: string | Lead // Reference to Lead model (for clients created from leads)
+  clientStatus?: "qualified" | "unqualified" // Client-specific status
+  company?: string // Client's company name
+  projectInterests?: string[] // Areas of interest for projects
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
@@ -93,6 +103,7 @@ export interface User {
   // Virtual fields
   roleDetails?: Role
   departmentDetails?: Department
+  leadDetails?: Lead // For client users
 }
 
 export interface AuthUser {
@@ -205,4 +216,569 @@ export interface FilterField {
 export interface FilterConfig {
   fields: FilterField[]
   defaultValues?: Record<string, any>
+}
+
+// =============================================================================
+// LEAD TYPES
+// =============================================================================
+
+export interface Lead {
+  _id?: string
+  // Client Basic Info Section
+  name: string
+  email: string
+  phone?: string
+  company?: string
+
+  // Project Basic Info Section
+  projectName: string
+  projectDescription?: string
+  projectBudget?: number
+  projectTimeline?: string
+  projectType?: string
+  projectRequirements?: string[]
+
+  // Lead Management
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  createdBy: string | User // Reference to User (sales agent)
+  clientId?: string | User // Reference to User (populated after qualification)
+
+  // Lead Source & Tracking
+  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'other'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+
+  // Communication & Notes
+  notes?: string
+  lastContactDate?: Date
+  nextFollowUpDate?: Date
+
+  // Qualification Details
+  qualifiedAt?: Date
+  qualifiedBy?: string | User // Reference to User
+  unqualifiedReason?: string
+  unqualifiedAt?: Date
+
+  // Metadata
+  tags?: string[]
+  customFields?: Record<string, any>
+
+  // Timestamps
+  createdAt?: Date
+  updatedAt?: Date
+
+  // Virtual fields (populated)
+  createdByDetails?: User
+  clientDetails?: User
+  qualifiedByDetails?: User
+}
+
+export interface CreateLeadData {
+  // Client Basic Info Section
+  name: string
+  email: string
+  phone?: string
+  company?: string
+
+  // Project Basic Info Section  
+  projectName: string
+  projectDescription?: string
+  projectBudget?: number
+  projectTimeline?: string
+  projectRequirements?: string[]
+
+  // Lead Management
+  status?: 'active' | 'inactive'
+
+  // Lead Source & Tracking
+  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'other'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+
+  // Communication & Notes
+  notes?: string
+  lastContactDate?: Date
+  nextFollowUpDate?: Date
+
+  // Metadata
+  tags?: string[]
+  customFields?: Record<string, any>
+}
+
+export interface UpdateLeadData extends Partial<CreateLeadData> {
+  qualifiedBy?: string
+  unqualifiedReason?: string
+}
+
+export interface LeadFilters {
+  search?: string
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | ''
+  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'other' | ''
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+  createdBy?: string
+  createdAfter?: Date
+  createdBefore?: Date
+  minBudget?: number
+  maxBudget?: number
+  hasFollowUp?: boolean
+  followUpOverdue?: boolean
+}
+
+export interface LeadSort {
+  field: 'name' | 'email' | 'projectName' | 'status' | 'priority' | 'createdAt' | 'updatedAt'
+  direction: 'asc' | 'desc'
+}
+
+export interface LeadStats {
+  totalLeads: number
+  activeLeads: number
+  qualifiedLeads: number
+  unqualifiedLeads: number
+  inactiveLeads: number
+  totalBudget: number
+  averageBudget: number
+  conversionRate: number
+}
+
+export interface LeadStatusUpdate {
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  reason?: string
+}
+
+export interface FetchLeadsParams {
+  page?: number
+  limit?: number
+  filters?: LeadFilters
+  sort?: LeadSort
+}
+
+// =============================================================================
+// CLIENT TYPES (Extended User)
+// =============================================================================
+
+export interface Client extends Omit<User, 'status'> {
+  // Override status to include client statuses
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+
+  // Client-specific fields
+  isClient: true // Always true for clients
+  leadId?: string | Lead // Reference to Lead model (for clients created from leads)
+  clientStatus: 'qualified' | 'unqualified' // Client-specific status
+  company: string // Required for clients
+  projectInterests?: string[] // Areas of interest for projects
+
+  // Virtual fields (populated)
+  leadDetails?: Lead
+}
+
+export interface CreateClientData {
+  // Basic user fields
+  name: string
+  email: string
+  phone?: string
+
+  // Client-specific fields
+  leadId?: string
+  company: string
+  projectInterests?: string[]
+
+  // Optional fields
+  password?: string
+  role?: string
+  department?: string
+  position?: string
+  avatar?: string
+  address?: User['address']
+  socialLinks?: User['socialLinks']
+  preferences?: User['preferences']
+  metadata?: User['metadata']
+
+  // Client status fields
+  clientStatus?: 'qualified' | 'unqualified'
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
+}
+
+export interface UpdateClientData extends Partial<CreateClientData> {
+  password?: string // Allow password updates
+}
+
+export interface ClientFilters {
+  search?: string
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | ''
+  clientStatus?: 'qualified' | 'unqualified' | ''
+  company?: string
+  hasLead?: boolean
+  qualifiedAfter?: Date
+  qualifiedBefore?: Date
+}
+
+export interface ClientSort {
+  field: 'name' | 'email' | 'company' | 'clientStatus' | 'status' | 'createdAt' | 'updatedAt'
+  direction: 'asc' | 'desc'
+}
+
+export interface ClientStats {
+  totalClients: number
+  qualifiedClients: number
+  unqualifiedClients: number
+  activeClients: number
+  newClientsThisMonth: number
+  clientsWithProjects: number
+}
+
+export interface ClientStatusUpdate {
+  clientStatus: 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  reason?: string
+}
+
+export interface FetchClientsParams {
+  page?: number
+  limit?: number
+  filters?: ClientFilters
+  sort?: ClientSort
+}
+
+// =============================================================================
+// API RESPONSE TYPES
+// =============================================================================
+
+export interface LeadListResponse extends ApiResponse {
+  data: {
+    leads: Lead[]
+    pagination: {
+      page: number
+      limit: number
+      total: number
+      pages: number
+    }
+    stats: LeadStats
+    filters: LeadFilters
+  }
+}
+
+export interface LeadResponse extends ApiResponse {
+  data: Lead
+}
+
+export interface ClientListResponse extends ApiResponse {
+  data: {
+    clients: Client[]
+    pagination: {
+      page: number
+      limit: number
+      total: number
+      pages: number
+    }
+    stats: ClientStats
+    filters: ClientFilters
+  }
+}
+
+export interface ClientResponse extends ApiResponse {
+  data: Client
+}
+
+// =============================================================================
+// PROJECT TYPES
+// =============================================================================
+
+export interface Project {
+  _id?: string
+  name: string
+  description?: string
+  clientId: string
+  departmentIds: string[]
+  status: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  budget?: number
+  startDate?: string
+  endDate?: string
+  projectType?: string
+  requirements?: string
+  timeline?: string
+  createdBy: string
+  approvedBy?: string
+  approvedAt?: string
+  createdAt?: string
+  updatedAt?: string
+
+  // Virtual fields
+  client?: {
+    _id: string
+    name: string
+    email: string
+  }
+  departments?: Array<{
+    _id: string
+    name: string
+    status: string
+  }>
+  creator?: {
+    _id: string
+    name: string
+    email: string
+  }
+  taskCount?: number
+}
+
+export interface ProjectFilters {
+  search?: string
+  status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive' | ''
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+  clientId?: string
+  departmentId?: string
+}
+
+export interface ProjectSort {
+  field: 'name' | 'status' | 'priority' | 'createdAt' | 'updatedAt' | 'startDate' | 'endDate'
+  direction: 'asc' | 'desc'
+}
+
+export interface CreateProjectData {
+  name: string
+  description?: string
+  clientId: string
+  departmentIds?: string[]
+  status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  budget?: number
+  startDate?: Date
+  endDate?: Date
+  projectType?: string
+  requirements?: string
+  timeline?: string
+}
+
+export interface CreateProjectFormData {
+  name: string
+  description?: string
+  clientId: string
+  departmentIds?: string[]
+  status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  budget?: string
+  startDate?: string
+  endDate?: string
+  projectType?: string
+  requirements?: string
+  timeline?: string
+}
+
+export interface UpdateProjectData extends Partial<CreateProjectData> { }
+
+export interface UpdateProjectFormData extends Partial<CreateProjectFormData> { }
+
+export interface DepartmentSort {
+  field: keyof Department;
+  direction: 'asc' | 'desc';
+}
+
+// export interface ProjectFilters {
+//   search?: string;
+//   status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive' | ''
+//   departmentId?: string
+//   priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+//   clientId?: string
+// }
+
+
+export interface FetchProjectsParams {
+  page?: number
+  limit?: number
+  filters?: ProjectFilters
+  // search?: string
+  // status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive' | ''
+  // priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+  // clientId?: string
+  // departmentId?: string
+  // sort?: 'name' | 'status' | 'priority' | 'createdAt' | 'updatedAt' | 'startDate' | 'endDate'
+  sort?: DepartmentSort
+}
+
+export interface ProjectStats {
+  totalProjects: number
+  pendingProjects: number
+  activeProjects: number
+  completedProjects: number
+  approvedProjects: number
+  inactiveProjects: number
+  lowPriorityProjects: number
+  mediumPriorityProjects: number
+  highPriorityProjects: number
+  urgentPriorityProjects: number
+  totalBudget?: number
+  averageBudget?: number
+}
+
+export interface CategorizeDepartmentsData {
+  departmentIds: string[]
+}
+
+export interface ProjectPrefillData {
+  clientId: string
+  leadId?: string
+  name?: string
+  projectType?: string
+  requirements?: string
+  timeline?: string
+  budget?: number
+}
+
+// =============================================================================
+// TASK TYPES
+// =============================================================================
+
+export interface Task {
+  _id?: string
+  title: string
+  description?: string
+  projectId: string
+  departmentId: string
+  parentTaskId?: string
+  assigneeId?: string
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  type: 'task' | 'sub-task'
+  estimatedHours?: number
+  actualHours?: number
+  startDate?: string
+  dueDate?: string
+  completedAt?: string
+  createdBy: string
+  assignedBy?: string
+  createdAt?: string
+  updatedAt?: string
+
+  // Virtual fields
+  project?: {
+    _id: string
+    name: string
+    clientId: string
+  }
+  department?: {
+    _id: string
+    name: string
+  }
+  assignee?: {
+    _id: string
+    name: string
+    email: string
+  }
+  creator?: {
+    _id: string
+    name: string
+    email: string
+  }
+  assigner?: {
+    _id: string
+    name: string
+    email: string
+  }
+  parentTask?: {
+    _id: string
+    title: string
+  }
+  subTasks?: Task[]
+  subTaskCount?: number
+}
+
+export interface TaskFilters {
+  search?: string
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | ''
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+  type?: 'task' | 'sub-task' | ''
+  projectId?: string
+  departmentId?: string
+  assigneeId?: string
+  parentTaskId?: string
+}
+
+export interface TaskSort {
+  field: 'title' | 'status' | 'priority' | 'type' | 'createdAt' | 'updatedAt' | 'dueDate'
+  direction: 'asc' | 'desc'
+}
+
+export interface CreateTaskData {
+  title: string
+  description?: string
+  projectId: string
+  departmentId: string
+  parentTaskId?: string
+  assigneeId?: string
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  type?: 'task' | 'sub-task'
+  estimatedHours?: number
+  actualHours?: number
+  startDate?: Date
+  dueDate?: Date
+}
+
+export interface UpdateTaskData extends Partial<CreateTaskData> { }
+
+export interface FetchTasksParams {
+  page?: number
+  limit?: number
+  search?: string
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | ''
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
+  type?: 'task' | 'sub-task' | ''
+  projectId?: string
+  departmentId?: string
+  assigneeId?: string
+  parentTaskId?: string
+  sortBy?: 'title' | 'status' | 'priority' | 'type' | 'createdAt' | 'updatedAt' | 'dueDate'
+  sortOrder?: 'asc' | 'desc'
+}
+
+export interface TaskStats {
+  totalTasks: number
+  pendingTasks: number
+  inProgressTasks: number
+  completedTasks: number
+  onHoldTasks: number
+  cancelledTasks: number
+  mainTasks: number
+  subTasks: number
+  lowPriorityTasks: number
+  mediumPriorityTasks: number
+  highPriorityTasks: number
+  urgentPriorityTasks: number
+  totalEstimatedHours?: number
+  totalActualHours?: number
+}
+
+export interface TaskHierarchy {
+  _id: string
+  title: string
+  description?: string
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  departmentId: string
+  assigneeId?: string
+  estimatedHours?: number
+  actualHours?: number
+  dueDate?: string
+  createdAt: string
+
+  // Populated fields
+  assignee?: {
+    _id: string
+    name: string
+    email: string
+  }
+  department?: {
+    _id: string
+    name: string
+  }
+
+  // Sub-tasks
+  subTasks: Array<{
+    _id: string
+    title: string
+    status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+    priority: 'low' | 'medium' | 'high' | 'urgent'
+    assigneeId?: string
+    dueDate?: string
+    createdAt: string
+  }>
 }

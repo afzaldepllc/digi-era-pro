@@ -128,16 +128,26 @@ export async function routeMiddleware(
     // Enhanced department extraction - handle both object and string formats
     let userDepartment: string | undefined
     
-    // Try multiple sources for department information
-    if (user.department?._id) {
-      // MongoDB populated object format
-      userDepartment = user.department._id.toString()
-    } else if (user.department && typeof user.department === 'string') {
-      // Direct string format from session
-      userDepartment = user.department
-    } else if (sessionUser.department && typeof sessionUser.department === 'string') {
-      // Session user department (string format)
-      userDepartment = sessionUser.department
+    // Try multiple sources for department information with comprehensive logging
+    if (user.department) {
+      if (typeof user.department === 'object' && user.department._id) {
+        // MongoDB populated object format
+        userDepartment = user.department._id.toString()
+        console.log('Middleware: 🏢 Department extracted from user.department._id:', userDepartment)
+      } else if (typeof user.department === 'string') {
+        // Direct string format (ObjectId as string)
+        userDepartment = user.department
+        console.log('Middleware: 🏢 Department extracted from user.department (string):', userDepartment)
+      } else if (user.department.toString) {
+        // ObjectId object format
+        userDepartment = user.department.toString()
+        console.log('Middleware: 🏢 Department extracted from user.department.toString():', userDepartment)
+      }
+    } else if (sessionUser.department) {
+      if (typeof sessionUser.department === 'string') {
+        userDepartment = sessionUser.department
+        console.log('Middleware: 🏢 Department extracted from sessionUser.department:', userDepartment)
+      }
     }
     
     console.log('Middleware: Department extraction debug:', {
@@ -163,29 +173,39 @@ export async function routeMiddleware(
       // Extract permissions from user object - handle multiple possible structures
       let permissions = []
       
-      // Check if permissions are directly on user object (from session)
-      if (user.permissions && Array.isArray(user.permissions)) {
+      // Priority order: user.permissions > user.role.permissions
+      if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
         permissions = user.permissions
+        console.log('🔍 Middleware: Using user.permissions (direct):', permissions.length)
       }
       // Check if permissions are on user.role
-      else if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+      else if (user.role?.permissions && Array.isArray(user.role.permissions) && user.role.permissions.length > 0) {
         permissions = user.role.permissions
+        console.log('🔍 Middleware: Using user.role.permissions:', permissions.length)
+      }
+      else {
+        console.log('🔍 Middleware: ⚠️ No permissions found in user or role')
       }
       
+      const relevantPermissions = permissions.filter((p: any) => p.resource === resource)
       console.log('🔍 Middleware: Extracted permissions for filtering:', {
         resource: resource,
         userId: userId,
         userEmail: userEmail,
         userDepartment: filterContext.userDepartment,
+        isSuperAdmin: filterContext.isSuperAdmin,
         permissionsFound: permissions.length,
+        relevantPermissionsCount: relevantPermissions.length,
+        relevantPermissions: relevantPermissions.map((p: any) => ({
+          resource: p.resource,
+          actions: p.actions,
+          conditions: p.conditions
+        })),
         permissionSources: {
-          userDirectPermissions: !!user.permissions,
-          rolePermissions: !!user.role?.permissions
-        },
-        allPermissions: JSON.stringify(permissions, null, 2),
-        samplePermissions: permissions.slice(0, 2),
-        relevantPermissions: permissions.filter((p: any) => p.resource === resource),
-        relevantPermissionsCount: permissions.filter((p: any) => p.resource === resource).length
+          userDirectPermissions: !!user.permissions?.length,
+          rolePermissions: !!user.role?.permissions?.length,
+          usedSource: user.permissions?.length > 0 ? 'user.permissions' : 'user.role.permissions'
+        }
       })
       
       return await QueryFilters.applyPermissionFilters(

@@ -44,14 +44,29 @@ const initializeRateLimiters = async () => {
 };
 
 export async function applyRateLimit(
-  request: NextRequest,
+  request: NextRequest | any,
   type: "auth" | "api" | "sensitive" = "api"
 ): Promise<NextResponse | null> {
   try {
     const limiters = await initializeRateLimiters();
-    const ip = request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "anonymous"
+    
+    // Handle different request types (NextRequest vs mock request)
+    let ip: string;
+    if (request.headers && typeof request.headers.get === 'function') {
+      // NextRequest object
+      ip = request.headers.get("x-forwarded-for") ||
+        request.headers.get("x-real-ip") ||
+        "anonymous"
+    } else if (request.ip) {
+      // Mock request object with ip property
+      ip = request.ip
+    } else if (request.headers && request.headers['x-forwarded-for']) {
+      // Mock request with headers object
+      ip = request.headers['x-forwarded-for']
+    } else {
+      ip = "anonymous"
+    }
+    
     const rateLimiter = limiters[type]
 
     await rateLimiter.consume(ip)

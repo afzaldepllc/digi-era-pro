@@ -71,13 +71,18 @@ const SystemPermissionSchema = new Schema<ISystemPermission>({
     index: true,
     enum: [
       'user_management',
-      'department_management', 
+      'department_management',
       'role_management',
       'system_administration',
       'reporting',
       'data_management',
       'security',
       'integration',
+      'communication_management',
+      'project_management',
+      'task_management',
+      'lead_management',
+      'proposal_management',
       'custom'
     ]
   },

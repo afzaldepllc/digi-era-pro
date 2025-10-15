@@ -5,6 +5,7 @@ import "./globals.css"
 import { Providers } from "@/components/providers"
 import { cn } from "@/lib/utils"
 import { LayoutProvider } from "@/components/layout/layout-provider"
+import { Suspense } from "react"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,14 +30,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  console.log('we are in root layout')
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn(inter.variable, "font-sans antialiased")} suppressHydrationWarning>
-        <Providers>
-          <LayoutProvider>
-            {children}
-          </LayoutProvider>
-        </Providers>
+        <Suspense fallback={
+          <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
+            <div className="loader" />
+          </div>}>
+          <Providers>
+            <LayoutProvider>
+              {children}
+            </LayoutProvider>
+          </Providers>
+        </Suspense>
       </body>
     </html>
   )

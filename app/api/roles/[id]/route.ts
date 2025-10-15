@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Role, { type IRole } from "@/models/Role"
 import User from "@/models/User"
 import { z } from "zod"
@@ -59,8 +59,9 @@ export async function GET(
       return createErrorResponse('Invalid role ID', 400)
     }
 
-    // Check cache first
-    const cached = roleCache.get(id)
+    // Check user-specific cache first
+    const userCacheKey = `${id}_${user._id || user.id}_${user.role?.name || 'no_role'}`
+    const cached = roleCache.get(userCacheKey)
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return NextResponse.json({
         success: true,
@@ -68,46 +69,40 @@ export async function GET(
       })
     }
 
-    await connectDB()
+    const roleData = await executeGenericDbQuery(async () => {
+      const role = await Role.findById(id)
+        .populate('departmentDetails', 'name description status')
+        .populate('userCount')
+        .select('-__v') // Exclude version field but include all other fields including permissions
+        .lean()
+        .exec() as (IRole & Document) | null
 
-    const role = await Role.findById(id)
-      .populate('departmentDetails', 'name description status')
-      .populate('userCount')
-      .select('-__v') // Exclude version field but include all other fields including permissions
-      .lean()
-      .exec() as (IRole & Document) | null
-
-    if (!role) {
-      return createErrorResponse('Role not found', 404)
-    }
-
-    // Get additional role statistics
-    const [usersWithRole, activeUsersWithRole] = await Promise.all([
-      User.countDocuments({ role: role._id }),
-      User.countDocuments({ role: role._id, status: 'active' })
-    ])
-
-    const roleData = {
-      ...role,
-      statistics: {
-        totalUsers: usersWithRole,
-        activeUsers: activeUsersWithRole,
-        inactiveUsers: usersWithRole - activeUsersWithRole,
-        utilizationRate: role.maxUsers ? Math.round((usersWithRole / role.maxUsers) * 100) : null
+      if (!role) {
+        throw new Error('Role not found')
       }
-    }
 
-    // Cache the result
-    roleCache.set(id, {
-      data: roleData,
-      timestamp: Date.now()
-    })
+      // Get additional role statistics
+      const [usersWithRole, activeUsersWithRole] = await Promise.all([
+        User.countDocuments({ role: role._id }),
+        User.countDocuments({ role: role._id, status: 'active' })
+      ])
+
+      return {
+        ...role,
+        statistics: {
+          totalUsers: usersWithRole,
+          activeUsers: activeUsersWithRole,
+          inactiveUsers: usersWithRole - activeUsersWithRole,
+          utilizationRate: role.maxUsers ? Math.round((usersWithRole / role.maxUsers) * 100) : null
+        }
+      }
+    }, `role-${id}-${user._id || user.id}`, CACHE_TTL)
 
     // Log access
     console.log('Role accessed:', {
       userId: userEmail,
       roleId: id,
-      roleName: role.name,
+      roleName: roleData.name,
       ip: getClientInfo(request).ip
     })
 
@@ -151,10 +146,11 @@ export async function PUT(
 
     const updateData = validation.data
 
-    await connectDB()
 
     // Check if role exists
-    const existingRole = await Role.findById(id) as IRole | null
+    const existingRole = await executeGenericDbQuery(async () => {
+      return await Role.findById(id)
+    }) as IRole | null
     if (!existingRole || existingRole.status !== 'active') {
       return createErrorResponse('Role not found', 404)
     }
@@ -232,8 +228,12 @@ export async function PUT(
       .populate('departmentDetails', 'name description status')
       .lean() as (IRole & Document) | null
 
-    // Clear cache
-    roleCache.delete(id)
+    // Clear role-related cache entries
+    for (const key of roleCache.keys()) {
+      if (key.startsWith(id + '_')) {
+        roleCache.delete(key)
+      }
+    }
 
     // Log successful update
     console.log('Role updated successfully:', {
@@ -271,7 +271,6 @@ export async function DELETE(
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'delete')
 
-    await connectDB()
 
     // User info already extracted by middleware
     const isSuperAdmin = user.role === 'super_admin';
@@ -283,7 +282,9 @@ export async function DELETE(
     }
 
     // Check if role exists
-    const existingRole = await Role.findById(id) as (IRole & Document) | null
+    const existingRole = await executeGenericDbQuery(async () => {
+      return await Role.findById(id)
+    }) as (IRole & Document) | null
     if (!existingRole || existingRole.status !== 'active') {
       return createErrorResponse('Role not found', 404)
     }
@@ -319,8 +320,12 @@ export async function DELETE(
       'metadata.deletedAt': new Date(),
     })
 
-    // Clear cache
-    roleCache.delete(id)
+    // Clear role-related cache entries
+    for (const key of roleCache.keys()) {
+      if (key.startsWith(id + '_')) {
+        roleCache.delete(key)
+      }
+    }
 
     // Log successful deletion
     console.log('Role deleted successfully:', {

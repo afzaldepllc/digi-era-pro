@@ -7,174 +7,30 @@ config({ path: path.resolve(process.cwd(), '.env.local') })
 
 import connectDB from "../lib/mongodb"
 import SystemPermission from "../../models/SystemPermission"
+import { getAllComprehensivePermissions } from "../../lib/constants/permissions"
 
-// Define all system permissions with their available actions and conditions
-const systemPermissions = [
-  // User Management Permissions
-  {
-    resource: "users",
-    displayName: "User Management",
-    description: "Manage user accounts and profiles",
-    category: "user_management",
-    availableActions: [
-      { action: "create", description: "Create new users", conditions: ["department", "subordinates"] },
-      { action: "read", description: "View user information", conditions: ["own", "department", "subordinates", "all"] },
-      { action: "update", description: "Update user information", conditions: ["own", "department", "subordinates", "all"] },
-      { action: "delete", description: "Delete/deactivate users", conditions: ["department", "subordinates"] },
-      { action: "assign", description: "Assign users to roles or departments", conditions: ["department", "subordinates"] },
-    ],
-    isCore: true
-  },
-
-  // Department Management Permissions
-  {
-    resource: "departments",
-    displayName: "Department Management",
-    description: "Manage organizational departments",
-    category: "department_management",
-    availableActions: [
-      { action: "create", description: "Create new departments" },
-      { action: "read", description: "View department information", conditions: ["own", "all"] },
-      { action: "update", description: "Update department information", conditions: ["own", "all"] },
-      { action: "delete", description: "Delete/deactivate departments" },
-      { action: "assign", description: "Assign users to departments" },
-    ],
-    isCore: true
-  },
-
-  // Role Management Permissions
-  {
-    resource: "roles",
-    displayName: "Role Management",
-    description: "Manage user roles and permissions",
-    category: "role_management",
-    availableActions: [
-      { action: "create", description: "Create new roles", conditions: ["department"] },
-      { action: "read", description: "View role information", conditions: ["department", "all"] },
-      { action: "update", description: "Update role permissions", conditions: ["department", "all"] },
-      { action: "delete", description: "Delete roles", conditions: ["department"] },
-      { action: "assign", description: "Assign roles to users", conditions: ["department", "subordinates"] },
-    ],
-    isCore: true
-  },
-
-  // System Administration Permissions
-  {
-    resource: "system",
-    displayName: "System Administration",
-    description: "System-wide configuration and maintenance",
-    category: "system_administration",
-    availableActions: [
-      { action: "read", description: "View system information" },
-      { action: "update", description: "Update system configuration" },
-      { action: "archive", description: "Archive system data" },
-      { action: "export", description: "Export system data" },
-      { action: "import", description: "Import system data" },
-    ],
-    isCore: true
-  },
-
-  // Audit and Security Permissions
-  {
-    resource: "audit_logs",
-    displayName: "Audit Logs",
-    description: "View and manage audit logs",
-    category: "security",
-    availableActions: [
-      { action: "read", description: "View audit logs", conditions: ["department", "all"] },
-      { action: "export", description: "Export audit logs" },
-      { action: "archive", description: "Archive old audit logs" },
-    ],
-    isCore: true
-  },
-
-  // Reporting Permissions
-  {
-    resource: "reports",
-    displayName: "Reports and Analytics",
-    description: "Generate and view system reports",
-    category: "reporting",
-    availableActions: [
-      { action: "create", description: "Generate reports", conditions: ["department", "all"] },
-      { action: "read", description: "View reports", conditions: ["own", "department", "all"] },
-      { action: "update", description: "Modify existing reports", conditions: ["own", "department"] },
-      { action: "delete", description: "Delete reports", conditions: ["own", "department"] },
-      { action: "export", description: "Export report data" },
-    ],
-    isCore: true
-  },
-
-  // Profile Management Permissions
-  {
-    resource: "profile",
-    displayName: "Profile Management",
-    description: "Manage personal profile and settings",
-    category: "user_management",
-    availableActions: [
-      { action: "read", description: "View own profile", conditions: ["own"] },
-      { action: "update", description: "Update own profile", conditions: ["own"] },
-    ],
-    isCore: true
-  },
-
-  // Dashboard and Analytics
-  {
-    resource: "dashboard",
-    displayName: "Dashboard Access",
-    description: "Access to various dashboard views",
-    category: "reporting",
-    availableActions: [
-      { action: "read", description: "View dashboard", conditions: ["own", "department", "all"] },
-    ],
-    isCore: true
-  },
-
-  // Settings and Preferences
-  {
-    resource: "settings",
-    displayName: "System Settings",
-    description: "Manage application settings",
-    category: "system_administration",
-    availableActions: [
-      { action: "read", description: "View settings", conditions: ["own", "department", "all"] },
-      { action: "update", description: "Update settings", conditions: ["own", "department", "all"] },
-    ],
-    isCore: true
-  },
-
-  // Backup and Recovery
-  {
-    resource: "backup",
-    displayName: "Backup and Recovery",
-    description: "System backup and data recovery operations",
-    category: "system_administration",
-    availableActions: [
-      { action: "create", description: "Create system backups" },
-      { action: "read", description: "View backup status" },
-      { action: "export", description: "Export backup files" },
-      { action: "import", description: "Import/restore from backups" },
-    ],
-    isCore: true
-  },
-
-  // Debug and Testing (for development/testing purposes)
-  {
-    resource: "debug",
-    displayName: "Debug and Testing",
-    description: "Debug endpoints for testing permissions and authentication",
-    category: "system_administration",
-    availableActions: [
-      { action: "read", description: "Access debug information and test endpoints" },
-    ],
-    isCore: false
-  }
-]
+// Generate system permissions from centralized definitions
+const getSystemPermissionsFromCentralized = () => {
+  return getAllComprehensivePermissions().map(permission => ({
+    resource: permission.resource,
+    displayName: permission.displayName || permission.resource,
+    description: permission.description || `Manage ${permission.resource}`,
+    category: permission.category,
+    availableActions: permission.availableActions || [],
+    isCore: permission.isCore || false,
+    status: 'active' as const
+  }))
+}
 
 export async function seedSystemPermissions() {
   try {
     console.log('🌱 Starting system permissions seeding...')
     
     await connectDB()
+
+    // Get permissions from centralized definitions
+    const systemPermissions = getSystemPermissionsFromCentralized()
+    console.log(`📋 Found ${systemPermissions.length} permissions in centralized definitions`)
 
     // Get existing permissions
     const existingPermissions = await SystemPermission.find({}).lean()

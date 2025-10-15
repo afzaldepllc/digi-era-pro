@@ -37,6 +37,7 @@ import {
   ChevronDown,
   Menu,
   X,
+  MessageSquare,
   Settings as SettingsIcon
 } from "lucide-react"
 
@@ -105,54 +106,6 @@ const menuItems: MenuSection[] = [
         ],
       },
       {
-        title: "Departments",
-        href: "/departments",
-        icon: Building,
-        badge: null,
-        allowedResource: "departments",
-        allowedActions: ["read"],
-        subItems: [
-          {
-            title: "All Departments",
-            href: "/departments",
-            icon: Eye,
-            allowedResource: "departments",
-            allowedActions: ["read"],
-          },
-          {
-            title: "Add Department",
-            href: "/departments/add",
-            icon: Plus,
-            allowedResource: "departments",
-            allowedActions: ["create"],
-          },
-        ],
-      },
-      {
-        title: "Roles & Permissions",
-        href: "/roles",
-        icon: Lock,
-        badge: null,
-        allowedResource: "roles",
-        allowedActions: ["read"],
-        subItems: [
-          {
-            title: "All Roles",
-            href: "/roles",
-            icon: Eye,
-            allowedResource: "roles",
-            allowedActions: ["read"],
-          },
-          {
-            title: "Add Role",
-            href: "/roles/add",
-            icon: Plus,
-            allowedResource: "roles",
-            allowedActions: ["create"],
-          },
-        ],
-      },
-      {
         title: "Leads",
         href: "/leads",
         icon: Target,
@@ -180,6 +133,30 @@ const menuItems: MenuSection[] = [
             icon: Target,
             allowedResource: "leads",
             allowedActions: ["read"],
+          },
+        ],
+      },
+      {
+        title: "Clients",
+        href: "/clients",
+        icon: Target,
+        badge: null,
+        allowedResource: "clients",
+        allowedActions: ["read"],
+        subItems: [
+          {
+            title: "All Clients",
+            href: "/clients",
+            icon: Eye,
+            allowedResource: "clients",
+            allowedActions: ["read"],
+          },
+          {
+            title: "Add Client",
+            href: "/clients/add",
+            icon: Plus,
+            allowedResource: "clients",
+            allowedActions: ["create"],
           },
         ],
       },
@@ -278,6 +255,37 @@ const menuItems: MenuSection[] = [
         ],
       },
       {
+        title: "Communications",
+        href: "/communications",
+        icon: MessageSquare,
+        badge: null,
+        allowedResource: "communications",
+        allowedActions: ["read"],
+        subItems: [
+          {
+            title: "All Messages",
+            href: "/communications",
+            icon: Eye,
+            allowedResource: "communications",
+            allowedActions: ["read"],
+          },
+          {
+            title: "Create Channel",
+            href: "/communications?create=true",
+            icon: Plus,
+            allowedResource: "communications",
+            allowedActions: ["create"],
+          },
+          {
+            title: "Client Portal Chat",
+            href: "/client-portal/chat",
+            icon: MessageSquare,
+            allowedResource: "communications",
+            allowedActions: ["read"],
+          },
+        ]
+      },
+      {
         title: "HRM",
         href: '/departments',
         icon: Network,
@@ -297,6 +305,20 @@ const menuItems: MenuSection[] = [
             href: '/departments/add',
             icon: Plus,
             allowedResource: "departments",
+            allowedActions: ["create"],
+          },
+           {
+            title: "All Roles",
+            href: "/roles",
+            icon: Eye,
+            allowedResource: "roles",
+            allowedActions: ["read"],
+          },
+          {
+            title: "Add Role",
+            href: "/roles/add",
+            icon: Plus,
+            allowedResource: "roles",
             allowedActions: ["create"],
           },
         ]
@@ -323,10 +345,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const pathname = usePathname()
+  const isCommunicationsRoute = pathname.startsWith("/communications")||pathname.startsWith("/client-portal")
+  
+  const [collapsed, setCollapsed] = useState(isCommunicationsRoute)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])
-  const pathname = usePathname()
 
   // Get permissions
   const { canAccess, loading: permissionsLoading } = usePermissions()
@@ -365,6 +389,17 @@ export function Sidebar({ className }: SidebarProps) {
   // Close mobile sidebar when route changes
   useEffect(() => {
     setMobileOpen(false)
+  }, [pathname])
+
+  // Collapse sidebar for communications routes
+  useEffect(() => {
+      const isMobile = window.innerWidth < 1024
+      if (isMobile && isCommunicationsRoute) {
+        setCollapsed(false) // On mobile, always show full sidebar when open
+        setMobileOpen(false)
+      } else if (!isMobile && isCommunicationsRoute) {
+          setCollapsed(true)
+        }
   }, [pathname])
 
   // Prevent body scroll when mobile sidebar is open
@@ -440,27 +475,27 @@ export function Sidebar({ className }: SidebarProps) {
         )}
       >
         {/* Header */}
-        <div className="flex h-16 items-center justify-between border-b bg-sidebar/98 backdrop-blur-sm px-4 shrink-0">
+        <div className="flex h-16 items-center justify-between border-b bg-gradient-to-r from-sidebar/98 to-sidebar-accent/5 backdrop-blur-sm px-4 shrink-0 shadow-sm">
           {!collapsed && (
-            <div className="flex items-center space-x-3 min-w-0">
-              <div className="flex h-9 w-12 items-center justify-center shrink-0 overflow-hidden">
+            <Link href="/" className="flex items-center space-x-3 min-w-0 group">
+              <div className="flex h-9 w-12 items-center justify-center shrink-0 overflow-hidden transition-transform duration-300 group-hover:scale-110">
                 <Image
                   src="/digi-era-logo.webp"
                   width={80}
                   height={80}
                   alt="Logo"
-                  className="object-contain"
+                  className="object-contain drop-shadow-sm"
                 />
               </div>
               <div className="min-w-0">
-                <div className="text-lg font-bold tracking-tight text-sidebar-foreground truncate">
+                <div className="text-lg font-bold tracking-tight text-sidebar-foreground truncate transition-colors duration-300 group-hover:text-primary">
                   DIGI ERA PRO
                 </div>
-                <div className="text-xs text-muted-foreground/70 font-medium truncate">
+                <div className="text-xs text-muted-foreground/70 font-medium truncate transition-colors duration-300 group-hover:text-sidebar-foreground/80">
                   Customer Relations
                 </div>
               </div>
-            </div>
+            </Link>
           )}
 
           {/* Desktop toggle button */}
@@ -468,7 +503,7 @@ export function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={toggleCollapsed}
-            className="h-9 w-9 p-0 hover:bg-primary transition-all duration-200 hidden lg:flex shrink-0"
+            className="h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110"
           >
             <ChevronLeft className={cn(
               "h-4 w-4 transition-transform duration-300",
@@ -481,7 +516,7 @@ export function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={() => setMobileOpen(false)}
-            className="h-9 w-9 p-0 hover:bg-primary transition-all duration-200 lg:hidden shrink-0"
+            className="h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 lg:hidden shrink-0 hover:scale-110"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -542,18 +577,20 @@ export function Sidebar({ className }: SidebarProps) {
                                 <CollapsibleTrigger asChild>
                                   <div
                                     className={cn(
-                                      "group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 cursor-pointer",
-                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-sm",
+                                      "group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer",
+                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
+                                      "border border-transparent",
                                       isActive
-                                        ? "bg-gradient-to-r from-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-md font-semibold"
+                                        ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
                                         : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
                                     )}
                                   >
                                     <div className={cn(
-                                      "flex h-8 w-8 items-center justify-center rounded-lg transition-colors mr-3 shrink-0",
+                                      "flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-300 mr-3 shrink-0",
+                                      "transform group-hover:scale-110 group-hover:rotate-3",
                                       isActive
-                                        ? "bg-primary/15 text-primary"
-                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/40 group-hover:text-sidebar-foreground"
+                                        ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
+                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
                                     )}>
                                       <item.icon className="h-4 w-4" />
                                     </div>
@@ -580,18 +617,20 @@ export function Sidebar({ className }: SidebarProps) {
                                         <Link key={subIndex} href={subItem.href}>
                                           <div
                                             className={cn(
-                                              "group flex items-center rounded-md px-3 py-2 text-sm transition-all duration-200",
-                                              "hover:bg-sidebar-accent/30 hover:text-sidebar-accent-foreground",
+                                              "group flex items-center rounded-md px-3 py-2 text-sm transition-all duration-300",
+                                              "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
+                                              "border-l-2 border-transparent hover:border-sidebar-accent/50",
                                               isSubActive
-                                                ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground"
+                                                ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
                                                 : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
                                             )}
                                           >
                                             <div className={cn(
-                                              "flex h-6 w-6 items-center justify-center rounded-md transition-colors mr-3 shrink-0",
+                                              "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300 mr-3 shrink-0",
+                                              "transform group-hover:scale-110",
                                               isSubActive
-                                                ? "bg-primary/20 text-white"
-                                                : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground"
+                                                ? "bg-primary/20 text-white shadow-sm ring-1 ring-primary/30"
+                                                : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent/30"
                                             )}>
                                               <subItem.icon className="h-3.5 w-3.5" />
                                             </div>
@@ -610,20 +649,22 @@ export function Sidebar({ className }: SidebarProps) {
                                 <Link href={item.href}>
                                   <div
                                     className={cn(
-                                      "group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-sm",
+                                      "group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300",
+                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
+                                      "border border-transparent",
                                       isActive
-                                        ? "bg-gradient-to-r from-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-md font-semibold"
+                                        ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
                                         : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
                                       collapsed && "justify-center px-2",
                                     )}
                                   >
                                     <div className={cn(
-                                      "flex items-center justify-center rounded-lg transition-colors shrink-0",
+                                      "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                      "transform group-hover:scale-110 group-hover:rotate-3",
                                       collapsed ? "h-8 w-8" : "h-8 w-8 mr-3",
                                       isActive
-                                        ? "bg-primary/15 text-primary"
-                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/40 group-hover:text-sidebar-foreground"
+                                        ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
+                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
                                     )}>
                                       <item.icon className="h-4 w-4" />
                                     </div>

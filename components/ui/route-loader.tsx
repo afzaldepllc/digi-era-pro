@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 export function RouteLoader() {
   const [isLoading, setIsLoading] = useState(false);
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     // Only show loader for slower operations
@@ -18,7 +17,7 @@ export function RouteLoader() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   if (!isLoading) return null;
 

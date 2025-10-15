@@ -14,7 +14,7 @@ const nextConfig = {
   env: {
     MONGODB_URI: process.env.MONGODB_URI,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    NEXTAUTH_URL: process.env.NEXT_PUBLIC_URL,
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
   },
   webpack: (config, { isServer }) => {
     // Exclude rate-limiter-flexible from client-side bundling

@@ -7,6 +7,11 @@ import userSlice from "./slices/userSlice"
 import departmentSlice from "./slices/departmentSlice"
 import roleSlice from "./slices/roleSlice"
 import systemPermissionSlice from "./slices/systemPermissionSlice"
+import communicationSlice from "./slices/communicationSlice"
+import leadSlice from "./slices/leadSlice"
+import clientSlice from "./slices/clientSlice"
+import projectSlice from "./slices/projectSlice"
+import taskSlice from "./slices/taskSlice"
 
 const persistConfig = {
   key: "root",
@@ -20,6 +25,11 @@ const rootReducer = combineReducers({
   departments: departmentSlice,
   roles: roleSlice,
   systemPermissions: systemPermissionSlice,
+  communications: communicationSlice,
+  leads: leadSlice,
+  clients: clientSlice,
+  projects: projectSlice,
+  tasks: taskSlice,
 })
 
 const persistedReducer = persistReducer(persistConfig, rootReducer)

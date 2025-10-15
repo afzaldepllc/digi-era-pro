@@ -6,6 +6,7 @@ import {
   storePermissions, 
   clearStoredPermissions 
 } from '@/lib/permissions/client'
+import { getUserData } from '@/lib/utils/local-storage'
 import type { Permission } from '@/types'
 
 interface UsePermissionsReturn {
@@ -26,10 +27,6 @@ export function usePermissions(): UsePermissionsReturn {
   const [loading, setLoading] = useState(true) // Start with loading true
   const [permissionManager, setPermissionManager] = useState<ClientPermissionManager | null>(null)
   
-  // Get user info from session
-  const user = session?.user as any
-  const userRole = user?.role
-  const isSuperAdmin = user?.role === 'super_admin'
   // Load permissions from session or localStorage immediately when available
   useEffect(() => {
     if (status === 'loading') {
@@ -38,6 +35,12 @@ export function usePermissions(): UsePermissionsReturn {
     }
 
     if (session?.user) {
+      // Get user info from localStorage first, then fallback to session
+      const storedUser = getUserData()
+      const sessionUser = session?.user as any
+      const user = storedUser || sessionUser
+      const userRole = user?.role
+      
       let userPermissions: Permission[] = []
 
       // Try to get permissions from session first
@@ -63,7 +66,7 @@ export function usePermissions(): UsePermissionsReturn {
       clearStoredPermissions()
       setLoading(false)
     }
-  }, [session, user?.permissions, userRole, status])
+  }, [session, status])
 
   const hasPermission = useCallback((resource: string, action: string, condition?: string): boolean => {
     // If still loading or no permission manager, deny access

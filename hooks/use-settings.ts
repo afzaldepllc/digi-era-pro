@@ -48,23 +48,44 @@ export function useSettings(): UseSettingsReturn {
   const [themeData, setThemeData] = useState<ThemeData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastFetch, setLastFetch] = useState<{ settings: number, themes: number }>({ settings: 0, themes: 0 })
   const { toast } = useToast()
 
-  // Fetch settings from API
+  // Fetch settings from API with rate limiting
   const fetchSettings = useCallback(async (category?: string) => {
+    const now = Date.now()
+    const timeSinceLastFetch = now - lastFetch.settings
+    
+    // Rate limit: Don't fetch more than once every 2 seconds
+    if (timeSinceLastFetch < 2000) {
+      console.log('Settings fetch rate limited, skipping...')
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
+      setLastFetch(prev => ({ ...prev, settings: now }))
 
       const url = new URL('/api/settings', window.location.origin)
       if (category) {
         url.searchParams.set('category', category)
       }
 
-      const response = await fetch(url.toString())
+      const response = await fetch(url.toString(), {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
       const data = await response.json()
 
       if (!response.ok) {
+        // Handle rate limiting gracefully
+        if (response.status === 429) {
+          console.warn('Settings API rate limited, will retry later')
+          return
+        }
         throw new Error(data.error || 'Failed to fetch settings')
       }
 
@@ -74,8 +95,8 @@ export function useSettings(): UseSettingsReturn {
       setError(errorMessage)
       console.error('Error fetching settings:', err)
       
-      // Don't show toast for permission errors (403)
-      if (!errorMessage.includes('Access denied')) {
+      // Don't show toast for permission/rate limit errors
+      if (!errorMessage.includes('Access denied') && !errorMessage.includes('rate limit')) {
         toast({
           title: "Error",
           description: errorMessage,
@@ -85,17 +106,37 @@ export function useSettings(): UseSettingsReturn {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [toast, lastFetch.settings])
 
-  // Fetch theme data
+  // Fetch theme data with rate limiting
   const fetchThemeData = useCallback(async () => {
+    const now = Date.now()
+    const timeSinceLastFetch = now - lastFetch.themes
+    
+    // Rate limit: Don't fetch more than once every 2 seconds
+    if (timeSinceLastFetch < 2000) {
+      console.log('Theme data fetch rate limited, skipping...')
+      return
+    }
+
     try {
       setError(null)
+      setLastFetch(prev => ({ ...prev, themes: now }))
 
-      const response = await fetch('/api/settings/themes')
+      const response = await fetch('/api/settings/themes', {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
       const data = await response.json()
 
       if (!response.ok) {
+        // Handle rate limiting gracefully
+        if (response.status === 429) {
+          console.warn('Theme API rate limited, will retry later')
+          return
+        }
         throw new Error(data.error || 'Failed to fetch theme data')
       }
 
@@ -105,7 +146,8 @@ export function useSettings(): UseSettingsReturn {
       setError(errorMessage)
       console.error('Error fetching theme data:', err)
       
-      if (!errorMessage.includes('Access denied')) {
+      // Don't show toast for permission/rate limit errors
+      if (!errorMessage.includes('Access denied') && !errorMessage.includes('rate limit')) {
         toast({
           title: "Error",
           description: errorMessage,
@@ -113,7 +155,7 @@ export function useSettings(): UseSettingsReturn {
         })
       }
     }
-  }, [toast])
+  }, [toast, lastFetch.themes])
 
   // Update a setting
   const updateSetting = useCallback(async (

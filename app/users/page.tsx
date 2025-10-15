@@ -632,7 +632,6 @@ export default function UsersPage() {
           onDelete={handleDeleteUser}
 
           enablePermissionChecking={true}
-          className="bg-card border-border"
         />
       )}
 

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import connectDB from "@/lib/mongodb"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 import SystemPermission from "@/models/SystemPermission"
 import { z } from "zod"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
@@ -32,9 +32,6 @@ export async function GET(request: NextRequest) {
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'system-permissions', 'read')
 
-    await connectDB()
-    console.log('System permissions API: Database connected')
-
     const { searchParams } = new URL(request.url)
     const queryParams = Object.fromEntries(searchParams.entries())
     console.log('System permissions API: Query params:', queryParams)
@@ -50,8 +47,9 @@ export async function GET(request: NextRequest) {
     const { category, resource, includeInactive } = validation.data
     console.log('System permissions API: Validated params:', { category, resource, includeInactive })
 
-    // Generate cache key
-    const cacheKey = `system_permissions:${category}:${resource}:${includeInactive}`
+    // Generate user-specific cache key to prevent cross-user contamination
+    const userCacheIdentifier = `user_${user._id || user.id}_${user.role?.name || 'no_role'}`
+    const cacheKey = `system_permissions:${userCacheIdentifier}:${category}:${resource}:${includeInactive}`
 
     // Check cache
     const cached = cache.get(cacheKey)
@@ -64,25 +62,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Build query
-    const query: any = {}
+    const filter: any = {}
     if (!includeInactive) {
-      query.status = 'active'
+      filter.status = 'active'
     }
     if (category) {
-      query.category = category.toLowerCase()
+      filter.category = category.toLowerCase()
     }
     if (resource) {
-      query.resource = resource.toLowerCase()
+      filter.resource = resource.toLowerCase()
     }
 
-    // Get permissions grouped by category
-    const permissions = await SystemPermission.find(query)
-      .sort({ category: 1, displayName: 1 })
-      .lean()
-      .exec()
+    // Get permissions with automatic connection management
+    const permissions = await executeGenericDbQuery(async () => {
+      return await SystemPermission.find(filter)
+        .sort({ category: 1, displayName: 1 })
+        .lean()
+        .exec()
+    }, `system-permissions-${cacheKey}`, 300000) // 5-minute cache
 
     console.log('System permissions API: Found permissions:', permissions.length)
-    console.log('System permissions API: Permission categories:', [...new Set(permissions.map(p => p.category))])
+    console.log('System permissions API: Permission categories:', [...new Set(permissions.map((p: any) => p.category))])
 
     // Group permissions by category
     const groupedPermissions = permissions.reduce((acc: any, permission: any) => {
@@ -95,26 +95,28 @@ export async function GET(request: NextRequest) {
 
     console.log('System permissions API: Grouped permissions keys:', Object.keys(groupedPermissions))
 
-    // Get statistics
-    const stats = await SystemPermission.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$category',
-          count: { $sum: 1 },
-          coreCount: { $sum: { $cond: ['$isCore', 1, 0] } }
+    // Get statistics with automatic connection management
+    const stats = await executeGenericDbQuery(async () => {
+      return await SystemPermission.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: '$category',
+            count: { $sum: 1 },
+            coreCount: { $sum: { $cond: ['$isCore', 1, 0] } }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalCategories: { $sum: 1 },
+            totalPermissions: { $sum: '$count' },
+            totalCorePermissions: { $sum: '$coreCount' },
+            categoriesStats: { $push: { category: '$_id', count: '$count', coreCount: '$coreCount' } }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalCategories: { $sum: 1 },
-          totalPermissions: { $sum: '$count' },
-          totalCorePermissions: { $sum: '$coreCount' },
-          categoriesStats: { $push: { category: '$_id', count: '$count', coreCount: '$coreCount' } }
-        }
-      }
-    ])
+      ])
+    }, `system-permissions-stats-${cacheKey}`, 300000) // 5-minute cache
 
     const responseData = {
       permissions: groupedPermissions,

@@ -23,7 +23,7 @@ async function initializeSettings() {
       },
       {
         key: 'system_name',
-        value: 'DIGI ERO PRO CRM',
+        value: 'DIGI ERA PRO CRM',
         description: 'System name displayed throughout the application',
         category: 'general',
         isPublic: true
@@ -32,7 +32,7 @@ async function initializeSettings() {
         key: 'maintenance_mode',
         value: false,
         description: 'Enable maintenance mode to prevent user access',
-        category: 'system',
+        category: 'system', 
         isPublic: false
       },
       {

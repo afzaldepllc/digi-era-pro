@@ -41,9 +41,11 @@ export class QueryFilters {
     
     if (!permission) {
       // No permission = no access to any records
-      console.log('QueryFilters: No permission found for resource, blocking access', {
+      console.log('QueryFilters: ❌ No permission found for resource, blocking access', {
         availableResources: userPermissions.map(p => p.resource),
-        requestedResource: resource
+        requestedResource: resource,
+        userId: context.userId,
+        userEmail: context.userEmail
       })
       return { _id: { $exists: false } }
     }
@@ -182,16 +184,18 @@ export class QueryFilters {
         hasRestrictiveConditions: restrictiveConditions.length > 0
       })
       
-      // If there are restrictive conditions, check if ALL are false
+      // If there are restrictive conditions, check if any are true
       if (restrictiveConditions.length > 0) {
-        const allConditionsFalse = restrictiveConditions.every(([, val]) => val === false)
+        const hasActiveTrueConditions = restrictiveConditions.some(([, val]) => val === true)
         
-        if (allConditionsFalse) {
+        if (hasActiveTrueConditions) {
+          console.log('QueryFilters: 🔒 Has active restrictive conditions - will apply filtering:', {
+            activeConditions: restrictiveConditions.filter(([, val]) => val === true)
+          })
+          return false
+        } else {
           console.log('QueryFilters: ✅ All restrictive conditions are false - granting full access')
           return true
-        } else {
-          console.log('QueryFilters: ❌ Has active restrictive conditions - no unrestricted access')
-          return false
         }
       }
       
@@ -254,26 +258,32 @@ export class QueryFilters {
     }
 
     // Only within their department
-    if (conditions.department === true && userDepartment) {
-      console.log('QueryFilters: 🏢 Processing department condition:', {
-        resource,
-        userDepartment,
-        departmentType: typeof userDepartment
-      })
-      
-      const deptFilter = await this.getDepartmentFilter(resource, userDepartment)
-      if (deptFilter) {
-        filters.push(deptFilter)
-        console.log('QueryFilters: ✅ Added department filter:', deptFilter)
+    if (conditions.department === true) {
+      if (userDepartment) {
+        console.log('QueryFilters: 🏢 Processing department condition:', {
+          resource,
+          userDepartment,
+          departmentType: typeof userDepartment
+        })
+        
+        const deptFilter = await this.getDepartmentFilter(resource, userDepartment)
+        if (deptFilter) {
+          filters.push(deptFilter)
+          console.log('QueryFilters: ✅ Added department filter:', deptFilter)
+        } else {
+          console.log('QueryFilters: ❌ Failed to create department filter')
+        }
       } else {
-        console.log('QueryFilters: ❌ Failed to create department filter')
+        console.log('QueryFilters: ⚠️ Department condition is true but userDepartment is missing - denying access:', {
+          'conditions.department': conditions.department,
+          userDepartment,
+          userDepartmentType: typeof userDepartment,
+          userId: userId,
+          result: 'Will add impossible filter'
+        })
+        // Add an impossible filter to deny access when department condition is required but missing
+        filters.push({ _id: { $exists: false } })
       }
-    } else if (conditions.department === true && !userDepartment) {
-      console.log('QueryFilters: ⚠️ Department condition is true but userDepartment is missing:', {
-        'conditions.department': conditions.department,
-        userDepartment,
-        userDepartmentType: typeof userDepartment
-      })
     }
 
     // Only for assigned records

@@ -125,7 +125,7 @@ export const TableLoader: React.FC<{
     {/* Header controls */}
     {(showViewToggle || showRowsPerPage) && (
       <div className="flex items-center justify-between">
-        {/* Left side - Rows per page */}
+        {/* Left side - Records per page */}
         <div className="flex items-center space-x-2">
           {showRowsPerPage && (
             <>

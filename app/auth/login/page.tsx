@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { signIn, getSession } from "next-auth/react"
+import { getSession, signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -67,60 +67,34 @@ export default function LoginPage() {
       setIsLoading(true)
       setError("")
 
-      // First, try our custom rate-limited endpoint
-      const loginResponse = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-        }),
+      // Use Next-Auth signIn directly
+      const result = await signIn("credentials", {
+        email: data.email,
+        password: data.password,
+        redirect: false,
       })
 
-      const loginData = await loginResponse.json()
-
-      // Handle rate limiting
-      if (loginResponse.status === 429) {
-        setIsRateLimited(true)
-        setRetryAfter(loginData.retryAfter || 300)
-        setError(`Too many login attempts. Please wait ${formatTime(loginData.retryAfter || 300)} before trying again.`)
-        startCountdown(loginData.retryAfter || 300)
-        return
-      }
-
-      // Handle other login errors
-      if (!loginResponse.ok) {
-        if (loginData.error === 'Invalid credentials') {
+      if (result?.error) {
+        // Handle different error types
+        if (result.error === 'CredentialsSignin') {
           setError("Invalid email or password. Please check your credentials and try again.")
-        } else if (loginData.error === 'Account is deactivated') {
+        } else if (result.error.includes('deactivated')) {
           setError("Your account has been deactivated. Please contact support.")
+        } else if (result.error.includes('rate limit')) {
+          setIsRateLimited(true)
+          setError("Too many login attempts. Please wait before trying again.")
+          startCountdown(300) // 5 minutes countdown
         } else {
-          setError(loginData.error || "Login failed. Please try again.")
+          setError(result.error || "Login failed. Please try again.")
         }
         return
       }
 
-      // If login successful, use NextAuth for session management
-      if (loginData.success) {
-        const result = await signIn("credentials", {
-          email: data.email,
-          password: data.password,
-          redirect: false,
-        })
-
-        if (result?.error) {
-          setError("Session creation failed. Please try again.")
-          return
-        }
-
-        // Get session to verify login
-        const session = await getSession()
-        if (session) {
-          router.push("/dashboard")
-          router.refresh()
-        }
+      // Get session to verify login
+      const session = await getSession()
+      if (session) {
+        router.push("/dashboard")
+        router.refresh()
       }
     } catch (error: any) {
       console.error("Login error:", error)

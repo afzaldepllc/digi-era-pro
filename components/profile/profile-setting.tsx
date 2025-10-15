@@ -20,13 +20,13 @@ import {
   Loader2,
   Edit,
   Globe,
-  Github,
-  Linkedin,
-  Twitter,
   Bell,
   Monitor,
   Sun,
-  Moon
+  Moon,
+  Linkedin,
+  Twitter,
+  Github
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -52,6 +52,8 @@ import {
   LANGUAGE_OPTIONS,
   TIMEZONE_OPTIONS
 } from "@/lib/validations/profile"
+import { ImageUploader } from "../upload/image-uploader"
+import { useSession } from "next-auth/react"
 
 export function ProfileSettings() {
   const [activeTab, setActiveTab] = useState<'overview' | 'edit' | 'security' | 'preferences'>('overview')
@@ -69,6 +71,9 @@ export function ProfileSettings() {
   const sessionStartTimeRef = useRef<Date | null>(null)
 
   // Use the profile hook
+  const { data: session, update } = useSession()
+
+
   const {
     profileData,
     isLoading,
@@ -77,6 +82,17 @@ export function ProfileSettings() {
     changePassword,
     formatDuration
   } = useProfile()
+
+
+  async function change_state(url: string) {
+    await refetch()
+    console.log('Refetched profile data after image upload:', url)
+
+    // Update the session with the new avatar
+    await update({ avatar: url })
+
+    console.log('Session updated with new avatar:', url)
+  }
 
   // Profile form
   const profileForm = useForm<ProfileFormData>({
@@ -285,16 +301,18 @@ export function ProfileSettings() {
         {activeTab === 'overview' && profileData && (
           <div className="space-y-6">
             {/* Profile Header */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-6">
               <Avatar className="h-20 w-20">
                 {profileData.avatar ? (
-                  <AvatarImage src={profileData.avatar} alt={profileData.name} />
+                  <AvatarImage src={profileData.avatar} alt={profileData.name} className="object-cover" />
                 ) : (
                   <AvatarFallback className="text-lg">
                     {profileData.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                   </AvatarFallback>
                 )}
               </Avatar>
+
+
               <div className="space-y-1">
                 <h3 className="text-2xl font-semibold">{profileData.name}</h3>
                 <p className="text-muted-foreground">{profileData.email}</p>
@@ -480,6 +498,23 @@ export function ProfileSettings() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2 col-span-2 flex flex-col">
+                    <Label htmlFor="avatar">Avatar</Label>
+                    <ImageUploader
+                      value={profileForm.watch('avatar')}
+                      onChange={(url) => {
+                        profileForm.setValue('avatar', url || '')
+                      }}
+                      onUploadSuccess={(url) => {
+                        // This is where the session should be updated
+                        change_state(url)
+                      }}
+                      db_model="users"  // Make sure this matches your User model name
+                      documentId={profileData.id}
+                      size="lg"
+                      className="mx-auto"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="name">Name *</Label>
                     <Input
