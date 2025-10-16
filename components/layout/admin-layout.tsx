@@ -19,7 +19,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const { isLoading: isThemeLoading, error: themeError } = useThemeVariant()
 
   // use this pathname to determine if routes starts with "communications"
-  const isCommunicationsRoute = pathname.startsWith("/communications") || pathname.startsWith("/client-portal");
+  const isCommunicationsRoute = pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal");
 
   if (isThemeLoading) {
     return (
@@ -58,7 +58,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     return { resource, action }
   }
 
-  const { resource, action } = getResourceAndAction(pathname)
+  const { resource, action } = getResourceAndAction(pathname as string)
 
 
   return (

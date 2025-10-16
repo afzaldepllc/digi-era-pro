@@ -7,9 +7,10 @@ import {
   CreateProjectFormData,
   UpdateProjectData,
   FetchProjectsParams,
-  ProjectStats,
-  CategorizeDepartmentsData
+  ProjectStats
 } from '@/types'
+
+
 
 // Async Thunks
 export const fetchProjects = createAsyncThunk(
@@ -269,8 +270,8 @@ const projectSlice = createSlice({
       })
       .addCase(fetchProjects.fulfilled, (state, action) => {
         state.loading = false
-        const responseData = action.payload.data || action.payload
-        state.projects = action.payload.data || []
+        const responseData = action.payload
+        state.projects = responseData.data || []
 
         if (responseData.pagination) {
           state.pagination = { ...state.pagination, ...responseData.pagination }
@@ -280,7 +281,6 @@ const projectSlice = createSlice({
           state.stats = responseData.stats
         }
 
-        // console.log('Fetched projects:', state.projects, 'Stats:', state.stats)
       })
       .addCase(fetchProjects.rejected, (state, action) => {
         state.loading = false

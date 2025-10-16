@@ -4,10 +4,10 @@ import { useState, useRef, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { 
-  Check, 
-  CheckCheck, 
-  Download, 
+import {
+  Check,
+  CheckCheck,
+  Download,
   ExternalLink,
   Reply,
   MoreVertical,
@@ -59,7 +59,7 @@ export function MessageList({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
-  console.log("visibleMessages62",visibleMessages);
+  console.log("visibleMessages62", visibleMessages);
   // Intersection Observer for read receipts
   useEffect(() => {
     if (observerRef.current) {
@@ -73,7 +73,7 @@ export function MessageList({
             const messageId = entry.target.getAttribute('data-message-id')
             if (messageId && !visibleMessages.has(messageId)) {
               setVisibleMessages(prev => new Set([...prev, messageId]))
-              
+
               // Mark as read if not from current user
               const message = messages.find(m => m._id === messageId)
               if (message && message.senderId !== currentUserId && !message.isRead && onMessageRead) {
@@ -85,7 +85,7 @@ export function MessageList({
       },
       { threshold: 0.5 }
     )
-    console.log("visibleMessages88",visibleMessages);
+    console.log("visibleMessages88", visibleMessages);
     // Observe all message elements
     const messageElements = document.querySelectorAll('[data-message-id]')
     messageElements.forEach(el => observerRef.current?.observe(el))
@@ -153,7 +153,7 @@ export function MessageList({
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
     const sender = message.senderId as unknown as IParticipant
-    
+
     return (
       <div
         data-message-id={message._id}
@@ -165,9 +165,9 @@ export function MessageList({
         {/* Avatar */}
         <div className="shrink-0">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={sender.avatar} alt={sender.name} />
+            <AvatarImage src={sender?.avatar} alt={sender?.name} />
             <AvatarFallback className="text-xs">
-              {sender.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+              {sender?.name.split(' ').map(n => n[0]).join('').toUpperCase()}
             </AvatarFallback>
           </Avatar>
         </div>
@@ -176,20 +176,20 @@ export function MessageList({
         <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}>
           {/* Header */}
           <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}>
-            <span className="font-medium text-sm">{sender.name}</span>
-            
-            {sender.role && (
+            <span className="font-medium text-sm">{sender?.name}</span>
+
+            {sender?.role && (
               <Badge variant="outline" className="text-xs">
-                {sender.role}
+                {sender?.role}
               </Badge>
             )}
-            
+
             {message.priority !== 'medium' && (
               <Badge variant={getPriorityColor(message.priority) as any} className="text-xs">
                 {message.priority}
               </Badge>
             )}
-            
+
             <span className="text-xs text-muted-foreground">
               {formatMessageTime(new Date(message.createdAt))}
             </span>
@@ -216,7 +216,7 @@ export function MessageList({
                     </DropdownMenuItem>
                   )}
                   {isOwn && onDelete && (
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => onDelete(message._id)}
                       className="text-destructive"
                     >
@@ -239,7 +239,7 @@ export function MessageList({
             </p>
 
             {/* Attachments */}
-            {message.attachments && message.attachments.map((attachment, index) => 
+            {message.attachments && message.attachments.map((attachment, index) =>
               renderAttachment(attachment, index)
             )}
           </div>
@@ -265,7 +265,7 @@ export function MessageList({
                 </Tooltip>
               </TooltipProvider>
             )}
-            
+
             {message.updatedAt && message.updatedAt !== message.createdAt && (
               <span className="italic">(edited)</span>
             )}
@@ -293,7 +293,7 @@ export function MessageList({
                 <MessageItem
                   key={message._id}
                   message={message}
-                  isOwn={(message.senderId as any)._id === currentUserId}
+                  isOwn={(message.senderId as any)?._id === currentUserId}
                 />
               ))}
 
@@ -313,14 +313,14 @@ export function MessageList({
                       )
                     })}
                   </div>
-                  
+
                   <div className="text-sm text-muted-foreground italic">
-                    {typingUsers.length === 1 
+                    {typingUsers.length === 1
                       ? `${typingUsers[0].userName} is typing...`
                       : `${typingUsers.length} people are typing...`
                     }
                   </div>
-                  
+
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                     <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]"></div>
@@ -330,7 +330,7 @@ export function MessageList({
               )}
             </>
           )}
-          
+
           {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>

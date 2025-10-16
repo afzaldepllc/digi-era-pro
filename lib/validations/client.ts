@@ -136,6 +136,7 @@ export const createClientSchema = baseClientObjectSchema.omit({
   
   // Department can be inherited from lead creator or set to a default client department
   department: objectIdSchema.optional(),
+  departmentId: objectIdSchema.optional(), // Alias for department
 }).strict()
 
 // Update client schema
@@ -336,12 +337,118 @@ export type ClientMutationResponse = {
   message: string
 }
 
-// Client with populated references
-export type ClientWithDetails = Client & {
-  leadDetails?: any // Lead data if populated
-  roleDetails?: any // Role data if populated
-  departmentDetails?: any // Department data if populated
-}
+// Create form schema (string inputs for form handling)
+export const createClientFormSchema = z.object({
+  // Basic Information
+  name: z.string().min(CLIENT_CONSTANTS.NAME.MIN_LENGTH).max(CLIENT_CONSTANTS.NAME.MAX_LENGTH),
+  email: z.string().email().max(CLIENT_CONSTANTS.EMAIL.MAX_LENGTH),
+  phone: z.string().optional(),
+  position: z.string().optional(),
+
+  // Company Information
+  company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
+  industry: z.string().optional(),
+  companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
+  annualRevenue: z.string().optional(), // Keep as string for form
+  employeeCount: z.string().optional(), // Keep as string for form
+
+  // Client Status
+  clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
+  status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
+
+  // Project Interests
+  projectInterests: z.string().optional(), // Comma-separated string for form input
+
+  // Address Information
+  address: z.object({
+    street: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
+    country: z.string().optional(),
+  }).optional(),
+
+  // Social Links
+  socialLinks: z.object({
+    linkedin: z.string().url().optional().or(z.literal("")),
+    twitter: z.string().url().optional().or(z.literal("")),
+    github: z.string().url().optional().or(z.literal("")),
+  }).optional(),
+
+  // Preferences
+  preferences: z.object({
+    theme: z.enum(['light', 'dark', 'system']).default('system'),
+    language: z.string().default('en'),
+    timezone: z.string().default('UTC'),
+    notifications: z.object({
+      email: z.boolean().default(true),
+      push: z.boolean().default(false),
+      sms: z.boolean().default(false),
+    }).default({ email: true, push: false, sms: false }),
+  }).optional(),
+
+  // Notes
+  notes: z.string().max(2000).optional(),
+}).strict()
+
+// Export types
+export type CreateClientFormData = z.infer<typeof createClientFormSchema>
+
+// Update form schema (string inputs for form handling, all fields optional)
+export const updateClientFormSchema = z.object({
+  // Basic Information
+  name: z.string().min(CLIENT_CONSTANTS.NAME.MIN_LENGTH).max(CLIENT_CONSTANTS.NAME.MAX_LENGTH).optional(),
+  phone: z.string().optional(),
+  position: z.string().optional(),
+
+  // Company Information
+  company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH).optional(),
+  industry: z.string().optional(),
+  companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
+  annualRevenue: z.string().optional(), // Keep as string for form
+  employeeCount: z.string().optional(), // Keep as string for form
+
+  // Client Status
+  clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT).optional(),
+  status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT).optional(),
+
+  // Project Interests
+  projectInterests: z.string().optional(), // Comma-separated string for form input
+
+  // Address Information
+  address: z.object({
+    street: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
+    country: z.string().optional(),
+  }).optional(),
+
+  // Social Links
+  socialLinks: z.object({
+    linkedin: z.string().url().optional().or(z.literal("")),
+    twitter: z.string().url().optional().or(z.literal("")),
+    github: z.string().url().optional().or(z.literal("")),
+  }).optional(),
+
+  // Preferences
+  preferences: z.object({
+    theme: z.enum(['light', 'dark', 'system']).default('system').optional(),
+    language: z.string().default('en').optional(),
+    timezone: z.string().default('UTC').optional(),
+    notifications: z.object({
+      email: z.boolean().default(true),
+      push: z.boolean().default(true),
+      sms: z.boolean().default(false),
+    }).default({ email: true, push: true, sms: false }).optional(),
+  }).optional(),
+
+  // Notes
+  notes: z.string().max(2000).optional(),
+}).strict()
+
+// Export types
+export type UpdateClientFormData = z.infer<typeof updateClientFormSchema>
 
 // Lead synchronization types
 export type LeadClientSync = {

@@ -64,17 +64,17 @@ export const authOptions = {
           // Find user with password field and populate role WITH PERMISSIONS
           const user = await executeGenericDbQuery(async () => {
             return await User.findOne({ email: credentials.email.toLowerCase() })
-            .select("+password")
-            .populate({
-              path: 'role',
-              select: 'name displayName hierarchyLevel permissions',
-              populate: {
-                path: 'permissions',
-                model: 'SystemPermission',
-                select: 'resource actions conditions displayName category'
-              }
-            })
-            .populate('department', 'name')
+              .select("+password")
+              .populate({
+                path: 'role',
+                select: 'name displayName hierarchyLevel permissions',
+                populate: {
+                  path: 'permissions',
+                  model: 'SystemPermission',
+                  select: 'resource actions conditions displayName category'
+                }
+              })
+              .populate('department', 'name')
           })
 
           if (!user) {
@@ -158,7 +158,8 @@ export const authOptions = {
   ],
   session: {
     strategy: "jwt" as const,
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60, // refresh token every 24h
   },
   jwt: {
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -171,11 +172,11 @@ export const authOptions = {
         localStorage.removeItem('user_permissions')
         localStorage.removeItem('user_role')
         localStorage.removeItem('user_department')
-        
+
         // Clear any other cached user data
-        const keysToRemove = Object.keys(localStorage).filter(key => 
-          key.startsWith('user_') || 
-          key.startsWith('auth_') || 
+        const keysToRemove = Object.keys(localStorage).filter(key =>
+          key.startsWith('user_') ||
+          key.startsWith('auth_') ||
           key.startsWith('session_')
         )
         keysToRemove.forEach(key => localStorage.removeItem(key))
@@ -203,6 +204,7 @@ export const authOptions = {
       }
 
       if (user) {
+        token.user = user
         token.role = user.role
         token.roleDisplayName = user.roleDisplayName
         token.department = user.department
@@ -215,15 +217,17 @@ export const authOptions = {
 
     async session({ session, token }: { session: any; token: any }) {
       if (token) {
-        session.user.id = token.sub!
-        session.user.role = token.role as string
-        session.user.roleDisplayName = token.roleDisplayName as string
-        session.user.department = token.department as string
-        session.user.avatar = token.avatar as string  // This will now be updated properly
-        session.user.permissions = token.permissions || []
-        session.user.sessionStartTime = token.sessionStartTime
-        session.user.iat = token.iat
-
+        session.user = {
+          ...(session.user || {}),
+          id: token.sub,
+          role: token.role,
+          roleDisplayName: token.roleDisplayName,
+          department: token.department,
+          avatar: token.avatar,
+          permissions: token.permissions || [],
+          sessionStartTime: token.sessionStartTime,
+          iat: token.iat,
+        };
         // Store permissions in localStorage for faster access
         if (typeof window !== 'undefined' && token.permissions) {
           try {

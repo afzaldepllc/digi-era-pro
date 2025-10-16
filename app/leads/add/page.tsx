@@ -13,7 +13,6 @@ import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { CreateLeadFormData, createLeadFormSchema } from '@/lib/validations/lead';
-
 export default function AddLeadPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -23,20 +22,36 @@ export default function AddLeadPage() {
   const form = useForm<CreateLeadFormData>({
     resolver: zodResolver(createLeadFormSchema),
     defaultValues: {
+      // Client Information
       name: "",
       email: "",
       phone: "",
+      position: "",
       company: "",
-      projectName: "",
-      projectDescription: "",
-      projectBudget: "",
-      projectTimeline: "",
-      projectRequirements: [],
+      website: "",
+      industry: "",
+      companySize: undefined,
+      annualRevenue: "",
+      employeeCount: "",
       status: "active",
       source: "website",
       priority: "medium",
-      notes: "",
       nextFollowUpDate: "",
+      notes: "",
+
+      // Project Information
+      projectName: "",
+      projectType: undefined,
+      complexity: undefined,
+      projectBudget: "",
+      estimatedHours: "",
+      projectTimeline: "",
+      projectDescription: "",
+      technologies: "",
+      projectRequirements: "",
+      deliverables: "",
+
+      // Arrays
       tags: [],
     },
   });
@@ -47,16 +62,43 @@ export default function AddLeadPage() {
       // Transform form data to API format
       const cleanedData = {
         ...data,
+        // Client Information
         phone: data.phone?.trim() || undefined,
+        position: data.position?.trim() || undefined,
         company: data.company?.trim() || undefined,
-        projectDescription: data.projectDescription?.trim() || undefined,
-        projectTimeline: data.projectTimeline?.trim() || undefined,
+        website: data.website?.trim() || undefined,
+        industry: data.industry?.trim() || undefined,
+        companySize: data.companySize || undefined,
+        annualRevenue: data.annualRevenue ? Number(data.annualRevenue) : undefined,
+        employeeCount: data.employeeCount ? Number(data.employeeCount) : undefined,
         notes: data.notes?.trim() || undefined,
-        projectBudget: data.projectBudget ? Number(data.projectBudget) : undefined,
-        projectRequirements: data.projectRequirements?.filter(req => req.trim().length > 0),
-        tags: data.tags?.filter(tag => tag.trim().length > 0),
         nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
         status: data.status || "active", // Ensure status is always set
+
+        // Project Information
+        projectName: data.projectName?.trim() || '',
+        projectType: data.projectType || undefined,
+        complexity: data.complexity || undefined,
+        projectBudget: data.projectBudget ? Number(data.projectBudget) : undefined,
+        estimatedHours: data.estimatedHours ? Number(data.estimatedHours) : undefined,
+        projectTimeline: data.projectTimeline?.trim() || undefined,
+        projectDescription: data.projectDescription?.trim() || undefined,
+        technologies: data.technologies?.split(',').map(tech => tech.trim()).filter(tech => tech.length > 0) || [],
+        projectRequirements: data.projectRequirements?.split(',').map(req => req.trim()).filter(req => req.length > 0) || [],
+        deliverables: data.deliverables?.split(',').map(del => del.trim()).filter(del => del.length > 0) || [],
+
+        // Arrays and other fields
+        tags: data.tags?.filter(tag => tag.trim().length > 0) || [],
+        milestones: data.milestones?.map(milestone => ({
+          ...milestone,
+          title: milestone.title?.trim() || '',
+          description: milestone.description?.trim() || undefined,
+          dueDate: milestone.dueDate ? new Date(milestone.dueDate) : undefined,
+          completed: milestone.completed || false,
+        })) || [],
+
+        // Default values for required fields
+        hotLead: false,
       };
 
       await dispatch(createLead(cleanedData)).unwrap();
@@ -86,6 +128,7 @@ export default function AddLeadPage() {
 
   const formFields = [
     {
+      subform_title: "Client Information",
       fields: [
         {
           name: "name",
@@ -117,6 +160,15 @@ export default function AddLeadPage() {
           mdCols: 6,
         },
         {
+          name: "position",
+          label: "Job Title",
+          type: "text" as const,
+          placeholder: "CEO, CTO, Manager, etc.",
+          description: "Contact's job title or position",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
           name: "company",
           label: "Company Name",
           type: "text" as const,
@@ -126,41 +178,55 @@ export default function AddLeadPage() {
           mdCols: 6,
         },
         {
-          name: "projectName",
-          label: "Project Name",
+          name: "website",
+          label: "Company Website",
           type: "text" as const,
-          required: true,
-          placeholder: "Enter project name",
-          description: "Name or title of the proposed project",
+          placeholder: "https://www.company.com",
+          description: "Company website URL",
           cols: 12,
-          mdCols: 8,
+          mdCols: 6,
         },
         {
-          name: "projectBudget",
-          label: "Budget (USD)",
-          type: "number" as const,
-          placeholder: "50000",
-          description: "Estimated project budget in USD",
+          name: "industry",
+          label: "Industry",
+          type: "text" as const,
+          placeholder: "Technology, Healthcare, Finance, etc.",
+          description: "Industry or sector the company operates in",
           cols: 12,
           mdCols: 4,
         },
         {
-          name: "projectDescription",
-          label: "Project Description",
-          type: "textarea" as const,
-          placeholder: "Describe the project requirements and goals...",
-          description: "Detailed description of the project",
+          name: "companySize",
+          label: "Company Size",
+          type: "select" as const,
+          options: [
+            { value: "startup", label: "Startup (1-10 employees)" },
+            { value: "small", label: "Small (11-50 employees)" },
+            { value: "medium", label: "Medium (51-200 employees)" },
+            { value: "large", label: "Large (201-1000 employees)" },
+            { value: "enterprise", label: "Enterprise (1000+ employees)" },
+          ],
+          description: "Approximate company size",
           cols: 12,
-          rows: 4,
+          mdCols: 4,
         },
         {
-          name: "projectTimeline",
-          label: "Timeline",
+          name: "annualRevenue",
+          label: "Annual Revenue",
           type: "text" as const,
-          placeholder: "3-6 months",
-          description: "Expected project duration or timeline",
+          placeholder: "5000000",
+          description: "Annual revenue in USD (optional)",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
+        },
+        {
+          name: "employeeCount",
+          label: "Employee Count",
+          type: "text" as const,
+          placeholder: "50",
+          description: "Number of employees in the company",
+          cols: 12,
+          mdCols: 4,
         },
         {
           name: "status",
@@ -186,6 +252,8 @@ export default function AddLeadPage() {
             { value: "email", label: "Email Marketing" },
             { value: "social_media", label: "Social Media" },
             { value: "event", label: "Event/Conference" },
+            { value: "partner", label: "Partner" },
+            { value: "advertising", label: "Advertising" },
             { value: "other", label: "Other" },
           ],
           cols: 12,
@@ -219,6 +287,112 @@ export default function AddLeadPage() {
           type: "textarea" as const,
           placeholder: "Add any additional notes about this lead...",
           description: "Internal notes about the lead",
+          cols: 12,
+          rows: 3,
+        },
+      ]
+    },
+    {
+      subform_title: "Project Information",
+      fields: [
+        {
+          name: "projectName",
+          label: "Project Name",
+          type: "text" as const,
+          required: true,
+          placeholder: "Enter project name",
+          description: "Name or title of the proposed project",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "projectType",
+          label: "Project Type",
+          type: "select" as const,
+          options: [
+            { value: "web", label: "Web Development" },
+            { value: "mobile", label: "Mobile App" },
+            { value: "desktop", label: "Desktop Software" },
+            { value: "api", label: "API Development" },
+            { value: "consulting", label: "Consulting" },
+            { value: "other", label: "Other" },
+          ],
+          description: "Type of project",
+          cols: 12,
+          mdCols: 3,
+        },
+        {
+          name: "complexity",
+          label: "Complexity",
+          type: "select" as const,
+          options: [
+            { value: "simple", label: "Simple" },
+            { value: "medium", label: "Medium" },
+            { value: "complex", label: "Complex" },
+          ],
+          description: "Project complexity level",
+          cols: 12,
+          mdCols: 3,
+        },
+        {
+          name: "projectBudget",
+          label: "Budget (USD)",
+          type: "text" as const,
+          placeholder: "50000",
+          description: "Estimated project budget in USD",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "estimatedHours",
+          label: "Estimated Hours",
+          type: "text" as const,
+          placeholder: "160",
+          description: "Estimated total hours for the project",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "projectTimeline",
+          label: "Timeline",
+          type: "text" as const,
+          placeholder: "3-6 months",
+          description: "Expected project duration or timeline",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "projectDescription",
+          label: "Project Description",
+          type: "textarea" as const,
+          placeholder: "Describe the project requirements and goals...",
+          description: "Detailed description of the project",
+          cols: 12,
+          rows: 4,
+        },
+        {
+          name: "technologies",
+          label: "Technologies",
+          type: "text" as const,
+          placeholder: "React, Node.js, MongoDB, etc.",
+          description: "Comma-separated list of required technologies",
+          cols: 12,
+        },
+        {
+          name: "projectRequirements",
+          label: "Key Requirements",
+          type: "textarea" as const,
+          placeholder: "List the main project requirements...",
+          description: "Key requirements and features needed",
+          cols: 12,
+          rows: 3,
+        },
+        {
+          name: "deliverables",
+          label: "Expected Deliverables",
+          type: "textarea" as const,
+          placeholder: "Website, mobile app, documentation, etc.",
+          description: "Expected deliverables from the project",
           cols: 12,
           rows: 3,
         },

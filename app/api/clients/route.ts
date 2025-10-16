@@ -2,8 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import User from "@/models/User"
 import Lead from "@/models/Lead"
+import Role from "@/models/Role"
 import { clientQuerySchema } from "@/lib/validations/client"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { registerModels } from '@/lib/models'
 
 // Cache TTL for client queries
 const CACHE_TTL = 60000 // 1 minute for client data
@@ -11,6 +13,9 @@ const CACHE_TTL = 60000 // 1 minute for client data
 // GET /api/clients - List clients with pagination, search, and filters
 export async function GET(request: NextRequest) {
   try {
+    // Ensure models are registered
+    await registerModels()
+
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail, isSuperAdmin, applyFilters } = await genericApiRoutesMiddleware(request, 'clients', 'read')
 
@@ -101,7 +106,7 @@ export async function GET(request: NextRequest) {
 
     // Execute parallel queries with caching
     const cacheKey = `clients-${JSON.stringify({ filter, sort, skip, limit: validatedParams.limit })}`
-    
+
     const [clients, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
         // return await User.find(filter)
@@ -113,13 +118,13 @@ export async function GET(request: NextRequest) {
         //   .populate('leadId', 'name projectName status createdAt')
         //   .select('-password -resetPasswordToken -resetPasswordExpire')
         //   .lean()
-        return await User.find({isClient: true})
-        .populate('role', 'name')
+        return await User.find({ isClient: true })
+          .populate('role', 'name')
           .populate('department', 'name')
           .populate('leadId', 'name projectName status createdAt')
-        .lean();
+          .lean();
       }, cacheKey, CACHE_TTL),
-      
+
       executeGenericDbQuery(async () => {
         return await User.countDocuments(filter)
       }, `clients-count-${JSON.stringify(filter)}`, CACHE_TTL),
@@ -128,7 +133,7 @@ export async function GET(request: NextRequest) {
         return await User.getClientStats(filter)
       }, `clients-stats-${JSON.stringify(filter)}`, 300000) // 5-minute cache for stats
     ]);
-    
+
     console.log("clients127", clients);
 
     // Calculate pagination info
@@ -152,7 +157,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching clients:', error)
-    
+
     if (error.name === 'ZodError') {
       return NextResponse.json({
         success: false,
@@ -171,6 +176,9 @@ export async function GET(request: NextRequest) {
 // POST /api/clients - Create client (typically done automatically from lead qualification)
 export async function POST(request: NextRequest) {
   try {
+    // Ensure models are registered
+    await registerModels()
+
     // Security & Authentication - only support/sales can create clients directly (unless super admin)
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'create')
 
@@ -192,7 +200,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    
+
     // Check if creating from lead qualification
     if (body.leadId) {
       return await createClientFromLead(body, user)
@@ -258,7 +266,7 @@ async function createClientFromLead(data: any, user: any) {
     const populatedClient = await executeGenericDbQuery(async () => {
       return await User.findById(client._id)
         .populate('role', 'name')
-        .populate('department', 'name')  
+        .populate('department', 'name')
         .populate('leadId', 'name projectName status createdAt')
         .select('-password -resetPasswordToken -resetPasswordExpire')
         .lean()
@@ -278,7 +286,7 @@ async function createClientFromLead(data: any, user: any) {
 // Helper function for direct client creation
 async function createClientDirectly(data: any, user: any) {
   const { createClientSchema } = await import('@/lib/validations/client')
-  
+
   try {
     // Validate the input data
     const validatedData = createClientSchema.parse(data)
@@ -305,7 +313,7 @@ async function createClientDirectly(data: any, user: any) {
         ...validatedData,
         isClient: true,
         role: clientRole._id,
-        department: validatedData.department || defaultDepartment,
+        department: validatedData.departmentId || validatedData.department || defaultDepartment,
         emailVerified: false,
         status: validatedData.status || 'qualified',
         createdBy: user._id,

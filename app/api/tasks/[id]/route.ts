@@ -7,15 +7,16 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import mongoose from 'mongoose'
 
 interface RouteParams {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 // GET /api/tasks/[id] - Get task by ID
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'tasks', 'read')
     
-    const validatedParams = taskIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = taskIdSchema.parse({ id: resolvedParams.id })
 
     // Fetch task with automatic connection management and caching
     const task = await executeGenericDbQuery(async () => {
@@ -91,7 +92,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'update')
     
-    const validatedParams = taskIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = taskIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
     
     // Handle special operations
@@ -247,8 +249,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'delete')
-    
-    const validatedParams = taskIdSchema.parse({ id: params.id })
+
+    const validatedParams = taskIdSchema.parse({ id: (params as any).id })
 
     // Cancel task with automatic connection management
     const cancelledTask = await executeGenericDbQuery(async () => {

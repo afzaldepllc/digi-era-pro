@@ -6,7 +6,7 @@ import { updateClientSchema, clientIdSchema, clientStatusUpdateSchema } from "@/
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
 interface RouteParams {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 // GET /api/clients/[id] - Get client by ID
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'read')
     
-    const validatedParams = clientIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = clientIdSchema.parse({ id: resolvedParams.id })
     console.log("clientId18", validatedParams.id);
     // Fetch client with caching
     const client = await executeGenericDbQuery(async () => {
@@ -90,7 +91,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'update')
     
-    const validatedParams = clientIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = clientIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
 
     // Check if this is a status update (which has special logic)
@@ -193,8 +195,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'delete')
-    
-    const validatedParams = clientIdSchema.parse({ id: params.id })
+
+    const validatedParams = clientIdSchema.parse({ id: (params as any).id })
 
     // Soft delete the client (set status to inactive)
     const deletedClient = await executeGenericDbQuery(async () => {

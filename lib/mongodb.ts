@@ -1,12 +1,13 @@
 import mongoose from 'mongoose'
 
 // Import all models to ensure they're registered
-import '@/models/User'
-import '@/models/Role'
-import '@/models/Department'
-import '@/models/SystemPermission'
-import '@/models/Communication'
-import '@/models/Channel'
+// Note: Models are now auto-registered via modelRegistry
+// import '@/models/User'
+// import '@/models/Role'
+// import '@/models/Department'
+// import '@/models/SystemPermission'
+// import '@/models/Communication'
+// import '@/models/Channel'
 
 // Connection caching for Next.js environment
 let cached = global.mongoose
@@ -112,7 +113,7 @@ function clearCache(pattern?: string): void {
     return
   }
 
-  for (const key of queryCache.keys()) {
+  for (const key of Array.from(queryCache.keys())) {
     if (key.includes(pattern)) {
       queryCache.delete(key)
     }

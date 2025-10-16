@@ -285,12 +285,12 @@ async function seedUsers() {
 
     for (const user of createdUsers) {
       const userRole = allRoles.find(r => r._id.toString() === user.role.toString())
-      const userDept = allDepartments.find(d => d._id.toString() === user.department.toString())
+      const userDept = user.department ? allDepartments.find(d => d._id.toString() === user.department?.toString()) : null
 
       if (userRole) {
         roleStats.set(userRole.displayName, (roleStats.get(userRole.displayName) || 0) + 1)
       }
-      if (userDept) {
+      if (userDept && userDept.name) {
         departmentStats.set(userDept.name, (departmentStats.get(userDept.name) || 0) + 1)
       }
     }

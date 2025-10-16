@@ -6,45 +6,93 @@ export interface ILead extends Document {
   email: string
   phone?: string
   company?: string
-  
+  position?: string // Job title/position
+  website?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+  }
+
+  // Company Details
+  industry?: string
+  companySize?: 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
+  annualRevenue?: number
+  employeeCount?: number
+
   // Project Basic Info Section
   projectName: string
   projectDescription?: string
   projectBudget?: number
   projectTimeline?: string
   projectRequirements?: string[]
-  
+  technologies?: string[] // Required technologies/frameworks
+  projectType?: 'web' | 'mobile' | 'desktop' | 'api' | 'consulting' | 'other'
+  complexity?: 'simple' | 'medium' | 'complex'
+
+  // Project Scope & Details
+  deliverables?: string[]
+  milestones?: Array<{
+    title: string
+    description?: string
+    dueDate?: Date
+    completed?: boolean
+  }>
+  estimatedHours?: number
+
   // Lead Management
   status: 'active' | 'inactive' | 'qualified' | 'unqualified'
   createdBy: mongoose.Types.ObjectId // Reference to User (sales agent)
+  assignedTo?: mongoose.Types.ObjectId // Current assignee
   clientId?: mongoose.Types.ObjectId // Reference to User (populated after qualification)
-  
+
   // Lead Source & Tracking
-  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'other'
+  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'partner' | 'advertising' | 'other'
+  sourceDetails?: string // Additional source information
+  campaign?: string // Marketing campaign name
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  
+
   // Communication & Notes
   notes?: string
   lastContactDate?: Date
   nextFollowUpDate?: Date
-  
+  contactHistory?: Array<{
+    date: Date
+    type: 'call' | 'email' | 'meeting' | 'note'
+    description: string
+    outcome?: string
+    contactPerson?: string
+  }>
+
   // Qualification Details
   qualifiedAt?: Date
   qualifiedBy?: mongoose.Types.ObjectId // Reference to User
   unqualifiedReason?: string
   unqualifiedAt?: Date
-  
+
+  // Scoring & Analytics
+  score?: number // Lead scoring (0-100)
+  hotLead?: boolean
+  conversionProbability?: number // Percentage
+
+  // Preferences & Communication
+  preferredContactMethod?: 'email' | 'phone' | 'meeting' | 'chat'
+  timezone?: string
+  language?: string
+
   // Metadata
   tags?: string[]
   customFields?: Record<string, any>
-  
+
   // Timestamps
   createdAt: Date
   updatedAt: Date
-  
+
   // Internal tracking for status changes
   _original?: any
-  
+
   // Business logic methods
   canTransitionTo(newStatus: string): { allowed: boolean; reason?: string }
   qualify(qualifiedBy: mongoose.Types.ObjectId): Promise<void>
@@ -66,6 +114,7 @@ const LeadSchema = new Schema<ILead>(
       required: [true, "Email is required"],
       lowercase: true,
       trim: true,
+      unique: true,
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
       index: true,
     },
@@ -84,7 +133,43 @@ const LeadSchema = new Schema<ILead>(
       trim: true,
       maxlength: [200, "Company name cannot exceed 200 characters"],
     },
-    
+    position: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Position cannot exceed 100 characters"],
+    },
+    website: {
+      type: String,
+      trim: true,
+      match: [/^https?:\/\/.*/, "Website must be a valid URL"],
+    },
+    address: {
+      street: { type: String, trim: true, maxlength: [200, "Street cannot exceed 200 characters"] },
+      city: { type: String, trim: true, maxlength: [100, "City cannot exceed 100 characters"] },
+      state: { type: String, trim: true, maxlength: [100, "State cannot exceed 100 characters"] },
+      zipCode: { type: String, trim: true, maxlength: [20, "Zip code cannot exceed 20 characters"] },
+      country: { type: String, trim: true, maxlength: [100, "Country cannot exceed 100 characters"] },
+    },
+
+    // Company Details
+    industry: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Industry cannot exceed 100 characters"],
+    },
+    companySize: {
+      type: String,
+      enum: ['startup', 'small', 'medium', 'large', 'enterprise'],
+    },
+    annualRevenue: {
+      type: Number,
+      min: [0, "Annual revenue cannot be negative"],
+    },
+    employeeCount: {
+      type: Number,
+      min: [1, "Employee count must be at least 1"],
+    },
+
     // Project Basic Info Section
     projectName: {
       type: String,
@@ -113,7 +198,37 @@ const LeadSchema = new Schema<ILead>(
       trim: true,
       maxlength: [500, "Each requirement cannot exceed 500 characters"],
     }],
-    
+    technologies: [{
+      type: String,
+      trim: true,
+      maxlength: [100, "Each technology cannot exceed 100 characters"],
+    }],
+    projectType: {
+      type: String,
+      enum: ['web', 'mobile', 'desktop', 'api', 'consulting', 'other'],
+    },
+    complexity: {
+      type: String,
+      enum: ['simple', 'medium', 'complex'],
+    },
+
+    // Project Scope & Details
+    deliverables: [{
+      type: String,
+      trim: true,
+      maxlength: [500, "Each deliverable cannot exceed 500 characters"],
+    }],
+    milestones: [{
+      title: { type: String, required: true, trim: true, maxlength: [200, "Milestone title cannot exceed 200 characters"] },
+      description: { type: String, trim: true, maxlength: [500, "Milestone description cannot exceed 500 characters"] },
+      dueDate: { type: Date },
+      completed: { type: Boolean, default: false },
+    }],
+    estimatedHours: {
+      type: Number,
+      min: [0, "Estimated hours cannot be negative"],
+    },
+
     // Lead Management
     status: {
       type: String,
@@ -130,19 +245,34 @@ const LeadSchema = new Schema<ILead>(
       required: [true, "Created by is required"],
       index: true,
     },
+    assignedTo: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
     clientId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       index: true,
       default: null,
     },
-    
+
     // Lead Source & Tracking
     source: {
       type: String,
-      enum: ['website', 'referral', 'cold_call', 'email', 'social_media', 'event', 'other'],
+      enum: ['website', 'referral', 'cold_call', 'email', 'social_media', 'event', 'partner', 'advertising', 'other'],
       default: 'website',
       index: true,
+    },
+    sourceDetails: {
+      type: String,
+      trim: true,
+      maxlength: [500, "Source details cannot exceed 500 characters"],
+    },
+    campaign: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Campaign name cannot exceed 200 characters"],
     },
     priority: {
       type: String,
@@ -150,7 +280,7 @@ const LeadSchema = new Schema<ILead>(
       default: 'medium',
       index: true,
     },
-    
+
     // Communication & Notes
     notes: {
       type: String,
@@ -165,7 +295,14 @@ const LeadSchema = new Schema<ILead>(
       type: Date,
       index: true,
     },
-    
+    contactHistory: [{
+      date: { type: Date, required: true },
+      type: { type: String, enum: ['call', 'email', 'meeting', 'note'], required: true },
+      description: { type: String, required: true, trim: true, maxlength: [1000, "Description cannot exceed 1000 characters"] },
+      outcome: { type: String, trim: true, maxlength: [500, "Outcome cannot exceed 500 characters"] },
+      contactPerson: { type: String, trim: true, maxlength: [100, "Contact person cannot exceed 100 characters"] },
+    }],
+
     // Qualification Details
     qualifiedAt: {
       type: Date,
@@ -183,7 +320,39 @@ const LeadSchema = new Schema<ILead>(
     unqualifiedAt: {
       type: Date,
     },
-    
+
+    // Scoring & Analytics
+    score: {
+      type: Number,
+      min: [0, "Score cannot be less than 0"],
+      max: [100, "Score cannot exceed 100"],
+    },
+    hotLead: {
+      type: Boolean,
+      default: false,
+    },
+    conversionProbability: {
+      type: Number,
+      min: [0, "Conversion probability cannot be less than 0"],
+      max: [100, "Conversion probability cannot exceed 100"],
+    },
+
+    // Preferences & Communication
+    preferredContactMethod: {
+      type: String,
+      enum: ['email', 'phone', 'meeting', 'chat'],
+    },
+    timezone: {
+      type: String,
+      trim: true,
+      maxlength: [50, "Timezone cannot exceed 50 characters"],
+    },
+    language: {
+      type: String,
+      trim: true,
+      maxlength: [50, "Language cannot exceed 50 characters"],
+    },
+
     // Metadata
     tags: [{
       type: String,
@@ -257,19 +426,6 @@ LeadSchema.virtual('qualifiedByDetails', {
 // Pre-save validation and business logic
 LeadSchema.pre('save', async function(next) {
   try {
-    // Validate email uniqueness (case-insensitive)
-    if (this.isModified('email')) {
-      const existingLead = await mongoose.model('Lead').findOne({
-        email: { $regex: new RegExp(`^${this.email}$`, 'i') },
-        _id: { $ne: this._id }
-      })
-      
-      if (existingLead) {
-        const error = new Error('Lead with this email already exists')
-        return next(error)
-      }
-    }
-
     // Note: User validation and department permissions are handled by API middleware
     // No need to validate user existence here as it can cause issues with authentication systems
 
@@ -458,4 +614,10 @@ interface ILeadModel extends mongoose.Model<ILead> {
   getConversionRate(dateRange?: { start: Date; end: Date }): Promise<any>;
 }
 
-export default mongoose.models.Lead as ILeadModel || mongoose.model<ILead, ILeadModel>("Lead", LeadSchema)
+const Lead = mongoose.models.Lead as ILeadModel || mongoose.model<ILead, ILeadModel>("Lead", LeadSchema)
+
+// Register the model with the generic registry
+import { registerModel } from '../lib/modelRegistry'
+registerModel('Lead', Lead, LeadSchema, '1.0.0')
+
+export default Lead

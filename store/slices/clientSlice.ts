@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { Client, ClientFilters, ClientSort, FetchClientsParams } from '@/types'
+import { Client, ClientFilters, ClientSort, FetchClientsParams, ClientResponse } from '@/types'
 import { CreateClientData, UpdateClientData } from '@/lib/validations/client'
 
 // Async Thunks
@@ -46,7 +46,7 @@ export const fetchClients = createAsyncThunk(
   }
 )
 
-export const fetchClientById = createAsyncThunk(
+export const fetchClientById = createAsyncThunk<ClientResponse, string>(
   'clients/fetchClientById',
   async (id: string, { rejectWithValue }) => {
     try {
@@ -57,7 +57,7 @@ export const fetchClientById = createAsyncThunk(
         throw new Error(errorData.error || 'Failed to fetch client')
       }
       
-      return await response.json()
+      return await response.json() as ClientResponse
     } catch (error: any) {
       return rejectWithValue(error.message)
     }

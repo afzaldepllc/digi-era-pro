@@ -2,12 +2,12 @@
 The Leads module follows the generic CRUD pattern from the Department blueprint, with customizations for statuses (active, inactive, Qualified, Unqualified), dual-section creation form (client basic info + project basic info), and status change logic that triggers client creation. Leads are stored in a separate leads collection. Use executeGenericDbQuery for all DB operations with appropriate caching (short TTL for volatile data like leads). Optimize by reusing Zod constants, middleware for sales-only access, and Redux for state with optimistic updates on status changes.
 ## Step 1: Database Layer (models/Lead.ts)
 
-Define Mongoose schema for Lead with fields: name, email, other client basics; projectName, other project basics; status (enum: ['active', 'inactive', 'Qualified', 'Unqualified'], default 'active'); createdBy (ref to User, sales agent); clientId (ref to User, populated later); timestamps.
-Add unique constraints on email (case-insensitive).
+Define Mongoose schema for Lead with fields: name, email, other client basics; projectName, other project basics; status (enum: ['active', 'inactive', 'qualified', 'unqualified'], default 'active'); createdBy (ref to User, sales agent); clientId (ref to User, populated later); timestamps.
+Add unique constraints on email (case-insensitive) using schema-level unique: true.
 Implement indexes: compound on status + createdAt; text index on name, email, projectName.
-Use pre-save hook for custom validation (e.g., ensure sales agent is from sales department via user ref).
 Enable soft delete via status (inactive instead of hard delete).
 Optimize: No virtuals unless needed for population; use lean() in queries.
+Note: Removed custom pre-save hook for email uniqueness - MongoDB handles this via unique index.
 
 ## Step 2: Validation Layer (lib/validations/lead.ts)
 
@@ -15,7 +15,7 @@ Define constants for lengths, statuses, pagination (similar to DEPARTMENT_CONSTA
 Create baseLeadSchema with sections: clientInfo (name, email required), projectInfo (projectName required).
 Operation schemas: createLeadSchema (full required fields), updateLeadSchema (partial, with refinement to require at least one change).
 Add query schema for filtering (page, limit, search, status, sortBy: ['name', 'status', 'createdAt']).
-Custom refinement: When updating status to 'Qualified', ensure it's from 'active'; block if already 'Qualified'.
+Custom refinement: When updating status to 'qualified', ensure it's from 'active'; block if already 'qualified'.
 Export types: Lead, CreateLeadData, etc.
 Optimize: Use transforms for trimming; coerce for pagination.
 
@@ -25,7 +25,7 @@ Use genericApiRoutesMiddleware for authentication (restrict to sales department 
 GET (list): Parse query params with departmentQuerySchema analog; build filter ($or for search on name/email/projectName); sort; paginate; parallel executeGenericDbQuery for list, count, stats (e.g., count by status); cache with key like leads-${JSON.stringify(params)} (TTL: 30000 ms for volatility).
 POST (create): Validate with createLeadSchema; check duplicates on email; create with active status default; clear cache leads; restrict statuses to active/inactive.
 GET/[id]: Fetch single with cache lead-${id} (TTL: 60000 ms); filter active status only unless admin.
-PUT/[id]: Validate update; if status to 'Qualified', confirm via middleware or logic, then create User (client role) with lead data, link IDs, set qualified status, return redirect info; for other statuses, limit options based on current (e.g., if not Qualified, enable active/inactive/Qualified); clear caches.
+PUT/[id]: Validate update; if status to 'qualified', confirm via middleware or logic, then create User (client role) with lead data, link IDs, set qualified status, return redirect info; for other statuses, limit options based on current (e.g., if not qualified, enable active/inactive/qualified); clear caches.
 DELETE/[id]: Soft delete to inactive; clear caches.
 Optimize: Use throw for errors inside executeGenericDbQuery; parallel queries for stats; no manual connectDB.
 
@@ -42,7 +42,7 @@ Optimize: Debounce filters in hook; no client-side cache, rely on API caching.
 
 List page: Use DataTable with columns (name, email, projectName, status with badges, createdAt); integrate GenericFilter for search/status; permission check for create/delete (sales only).
 Add page: GenericForm with two sections (client info, project info); statuses limited to active/inactive; on submit, create and redirect to list.
-Edit page: Similar form; status dropdown dynamic (if not Qualified: active/inactive/Qualified; if Qualified: Unqualified only); on qualified change, Swal confirmation, then API triggers client creation and navigates to client edit.
+Edit page: Similar form; status dropdown dynamic (if not qualified: active/inactive/qualified; if qualified: unqualified only); on qualified change, Swal confirmation, then API triggers client creation and navigates to client edit.
 Optimize: Use useDebounceSearch for filters; handle navigation loading; error toasts.
 
 ## Step 6: Security & Middleware
@@ -76,8 +76,8 @@ Types: Client extends User.
 ## Step 3: API Layer (app/api/clients/route.ts and [id]/route.ts - Separate from /users)
 
 Middleware: Restrict to support/sales with 'clients' permissions.
-GET (list): Filter users where role='client' and isClient=true; apply search/status; cache clients-${params} (TTL: 60000 ms).
-POST: Not direct; created via lead qualification (in leads API).
+GET (list): Filter users where role='client' and isClient=true; apply search/status; cache clients-${params} (TTL: 60000 ms). Import Role model to ensure schema registration for populate operations.
+POST: Direct client creation supported; validate with createClientSchema (includes departmentId as alias for department); handle both department and departmentId fields.
 GET/[id]: Fetch user with client filter; cache client-${id}.
 PUT/[id]: Validate; if unqualified, update linked lead status, send notification (e.g., via email queue or DB insert); optional password update with hashing; clear caches clients and leads.
 DELETE/[id]: Soft to inactive; sync lead if needed.
@@ -89,11 +89,11 @@ Similar to leads: Thunks for fetchClients (filter isClient), updateClient (handl
 State: Separate from users slice; add notification trigger on unqualified.
 Hook: Extend useUsers but force client filters.
 
-## Step 5: Frontend Components (app/clients/page.tsx, edit/[id]/page.tsx)
+## Step 5: Frontend Components (app/clients/page.tsx, add/page.tsx, edit/[id]/page.tsx)
 
 List: DataTable filtering clients; columns include lead-linked fields, status badges.
+Add: GenericForm for direct client creation with department selection.
 Edit: GenericForm with password optional; status dropdown (active/inactive/qualified/unqualified); on unqualified, Swal with reason input, then API updates lead and notifies.
-No add page (created via leads).
 Optimize: Reuse user components with props for client mode.
 
 ## Step 6: Security & Middleware
@@ -307,7 +307,7 @@ Lead created by the sales department in the leads collection.
 There should be two main section in the lead create page:
 For client basic info like name email and some other fields 
 For project basic info like name,some other important fields for project related info 
-In the leads page there should be some statuses like active ,inactive, Qualified,Unqualified or some other important and in the create case two active and inactive should be enable
+In the leads page there should be some statuses like active ,inactive, qualified,unqualified or some other important and in the create case two active and inactive should be enable
 When the lead is created with the active status then in the edit page we can change the status to the qualified and there should be only the  active, inactive and qualified statuses enabled when the current lead is not already qualified, if already qualified just the unqualified status should be enabled.
 When lead status changed to the Qualified with the confirmation than a user create with client role alongwith the basic lead data from the current lead and with the qualified status and navigate to the new created client edit page
 In the client page edit page, there are active, inactive ,qualified and unqualified status.With some other important fields along the password field(optional).if update with the password than new created clients also login the crm for his portal using his own credentials

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { Lead, LeadFilters, LeadSort, FetchLeadsParams } from '@/types'
+import { Lead, LeadFilters, LeadSort, FetchLeadsParams, LeadResponse } from '@/types'
 import { CreateLeadData, UpdateLeadData } from '@/lib/validations/lead'
 
 // Async Thunks
@@ -50,7 +50,7 @@ export const fetchLeads = createAsyncThunk(
   }
 )
 
-export const fetchLeadById = createAsyncThunk(
+export const fetchLeadById = createAsyncThunk<LeadResponse, string>(
   'leads/fetchLeadById',
   async (id: string, { rejectWithValue }) => {
     try {
@@ -61,7 +61,7 @@ export const fetchLeadById = createAsyncThunk(
         throw new Error(errorData.error || 'Failed to fetch lead')
       }
       
-      return await response.json()
+      return await response.json() as LeadResponse
     } catch (error: any) {
       return rejectWithValue(error.message)
     }

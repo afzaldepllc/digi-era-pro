@@ -1,4 +1,4 @@
-    "use client";
+"use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -19,7 +19,7 @@ export default function ClientsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { canCreate, canDelete } = usePermissions();
-  
+
   // Hooks
   const {
     clients,
@@ -41,7 +41,7 @@ export default function ClientsPage() {
   // Local state
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  
+
   // Keep reference to current filters for search debouncing
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -190,7 +190,7 @@ export default function ClientsPage() {
         if (!value || value.length === 0) {
           return <span className="text-sm text-muted-foreground italic">None specified</span>;
         }
-        
+
         return (
           <div className="flex flex-wrap gap-1">
             {value.slice(0, 2).map((interest: string, index: number) => (
@@ -229,7 +229,7 @@ export default function ClientsPage() {
     },
   ];
 
- 
+
   // Handle creating project from client
   const handleCreateProjectFromClient = useCallback(async (client: Client) => {
     try {
@@ -241,9 +241,9 @@ export default function ClientsPage() {
       const params = new URLSearchParams();
       params.set('clientId', client._id);
       params.set('prefill', 'true');
-      
+
       router.push(`/projects/add?${params.toString()}`);
-      
+
     } catch (error: any) {
       console.error('Error navigating to create project:', error);
       toast({
@@ -255,7 +255,7 @@ export default function ClientsPage() {
   }, [router, toast]);
 
 
-   // Custom actions for DataTable
+  // Custom actions for DataTable
   const customActions: ActionMenuItem<Client>[] = [
     {
       label: "Create Project",
@@ -373,6 +373,7 @@ export default function ClientsPage() {
 
   // Stats display
   const statsCards = useMemo(() => {
+    console.log('Rendering stats cards with stats:', stats);
     if (!stats) return null;
 
     return (
@@ -419,7 +420,7 @@ export default function ClientsPage() {
         </div>
       </div>
     );
-  }, [stats]);
+  }, [stats, fetchClients]);
 
   return (
     <div className="space-y-6">

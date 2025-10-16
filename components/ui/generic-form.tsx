@@ -215,10 +215,10 @@ const GenericForm: React.FC<GenericFormProps> = ({
         {/* Check if any field has custom column configuration */}
         {fields.flatMap((subform) => subform.fields).some(field => field.cols || field.smCols || field.mdCols || field.lgCols || field.xlCols) ? (
           // Use 12-column grid when fields have custom column configuration
-          <div className="grid grid-cols-12 gap-6">
+          <div className="w-full">
             {
               fields.map((field, index) => (
-                <div key={index} className="col-span-12">
+                <div key={index} className="grid grid-cols-12 gap-6">
                   {field.subform_title && (
                     <div className="col-span-12">
                       <Label className="col-span-12 font-bold text-lg">{field.subform_title}</Label>
@@ -226,7 +226,7 @@ const GenericForm: React.FC<GenericFormProps> = ({
                   )}
                   {field.fields.map(renderField)}
                   {field.subform_title && (
-                    <div className="col-span-12 border-b" />
+                    <div className="col-span-12 border-b my-4" />
                   )}
                 </div>
               ))

@@ -15,6 +15,59 @@ export const PROJECT_CONSTANTS = {
     VALUES: ['low', 'medium', 'high', 'urgent'] as const, 
     DEFAULT: 'medium' as const 
   },
+  BUDGET_BREAKDOWN: {
+    DEVELOPMENT: { MIN: 0 },
+    DESIGN: { MIN: 0 },
+    TESTING: { MIN: 0 },
+    DEPLOYMENT: { MIN: 0 },
+    MAINTENANCE: { MIN: 0 },
+    CONTINGENCY: { MIN: 0 },
+  },
+  STAKEHOLDERS: {
+    ROLE: { MAX_LENGTH: 100 },
+    RESPONSIBILITY: { MAX_LENGTH: 200 },
+  },
+  MILESTONES: {
+    TITLE: { MAX_LENGTH: 200 },
+    DESCRIPTION: { MAX_LENGTH: 500 },
+    DELIVERABLE: { MAX_LENGTH: 200 },
+  },
+  PHASES: {
+    NAME: { MAX_LENGTH: 100 },
+    DESCRIPTION: { MAX_LENGTH: 500 },
+    STATUS: { VALUES: ['pending', 'in_progress', 'completed'] as const },
+    DELIVERABLE: { MAX_LENGTH: 200 },
+  },
+  DELIVERABLES: {
+    NAME: { MAX_LENGTH: 200 },
+    DESCRIPTION: { MAX_LENGTH: 500 },
+    ACCEPTANCE_CRITERIA: { MAX_LENGTH: 300 },
+    STATUS: { VALUES: ['pending', 'in_progress', 'completed', 'delivered'] as const },
+  },
+  RISKS: {
+    DESCRIPTION: { MAX_LENGTH: 500 },
+    MITIGATION: { MAX_LENGTH: 500 },
+    IMPACT: { VALUES: ['low', 'medium', 'high', 'critical'] as const },
+    PROBABILITY: { VALUES: ['low', 'medium', 'high'] as const },
+    STATUS: { VALUES: ['identified', 'mitigated', 'occurred'] as const },
+  },
+  PROGRESS: {
+    OVERALL: { MIN: 0, MAX: 100 },
+    PHASE_PROGRESS: { MIN: 0, MAX: 100 },
+    NOTES: { MAX_LENGTH: 1000 },
+  },
+  RESOURCES: {
+    ESTIMATED_HOURS: { MIN: 0 },
+    ACTUAL_HOURS: { MIN: 0 },
+    TEAM_SIZE: { MIN: 1 },
+    TOOL: { MAX_LENGTH: 100 },
+    EXTERNAL_RESOURCE: { MAX_LENGTH: 200 },
+  },
+  QUALITY_METRICS: {
+    REQUIREMENTS_COVERAGE: { MIN: 0, MAX: 100 },
+    DEFECT_DENSITY: { MIN: 0 },
+    CUSTOMER_SATISFACTION: { MIN: 0, MAX: 5 },
+  },
   PAGINATION: { DEFAULT_PAGE: 1, DEFAULT_LIMIT: 10, MAX_LIMIT: 100, MIN_PAGE: 1 },
   SORT: { ALLOWED_FIELDS: ['name', 'status', 'priority', 'createdAt', 'updatedAt', 'startDate', 'endDate'] as const }
 } as const
@@ -86,6 +139,88 @@ export const baseProjectSchema = z.object({
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
+  // Enhanced professional CRM fields
+  budgetBreakdown: z.object({
+    development: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.DEVELOPMENT.MIN).optional(),
+    design: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.DESIGN.MIN).optional(),
+    testing: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.TESTING.MIN).optional(),
+    deployment: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.DEPLOYMENT.MIN).optional(),
+    maintenance: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.MAINTENANCE.MIN).optional(),
+    contingency: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.CONTINGENCY.MIN).optional(),
+  }).optional(),
+
+  stakeholders: z.object({
+    projectManager: objectIdSchema.optional(),
+    teamMembers: z.array(objectIdSchema).optional().default([]),
+    clientContacts: z.array(objectIdSchema).optional().default([]),
+    roles: z.array(z.object({
+      userId: objectIdSchema,
+      role: z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.ROLE.MAX_LENGTH).transform(val => val.trim()),
+      responsibilities: z.array(z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.RESPONSIBILITY.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+    })).optional().default([]),
+  }).optional(),
+
+  milestones: z.array(z.object({
+    title: z.string().min(1).max(PROJECT_CONSTANTS.MILESTONES.TITLE.MAX_LENGTH).transform(val => val.trim()),
+    description: z.string().max(PROJECT_CONSTANTS.MILESTONES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
+    dueDate: z.date().optional(),
+    completed: z.boolean().default(false),
+    completedAt: z.date().optional(),
+    deliverables: z.array(z.string().max(PROJECT_CONSTANTS.MILESTONES.DELIVERABLE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+  })).optional().default([]),
+
+  phases: z.array(z.object({
+    name: z.string().min(1).max(PROJECT_CONSTANTS.PHASES.NAME.MAX_LENGTH).transform(val => val.trim()),
+    description: z.string().max(PROJECT_CONSTANTS.PHASES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
+    startDate: z.date().optional(),
+    endDate: z.date().optional(),
+    status: z.enum(PROJECT_CONSTANTS.PHASES.STATUS.VALUES).default('pending'),
+    deliverables: z.array(z.string().max(PROJECT_CONSTANTS.PHASES.DELIVERABLE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+  })).optional().default([]),
+
+  deliverables: z.array(z.object({
+    name: z.string().min(1).max(PROJECT_CONSTANTS.DELIVERABLES.NAME.MAX_LENGTH).transform(val => val.trim()),
+    description: z.string().max(PROJECT_CONSTANTS.DELIVERABLES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
+    dueDate: z.date().optional(),
+    status: z.enum(PROJECT_CONSTANTS.DELIVERABLES.STATUS.VALUES).default('pending'),
+    assignedTo: objectIdSchema.optional(),
+    acceptanceCriteria: z.array(z.string().max(PROJECT_CONSTANTS.DELIVERABLES.ACCEPTANCE_CRITERIA.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+  })).optional().default([]),
+
+  risks: z.array(z.object({
+    description: z.string().min(1).max(PROJECT_CONSTANTS.RISKS.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()),
+    impact: z.enum(PROJECT_CONSTANTS.RISKS.IMPACT.VALUES).default('medium'),
+    probability: z.enum(PROJECT_CONSTANTS.RISKS.PROBABILITY.VALUES).default('medium'),
+    mitigation: z.string().max(PROJECT_CONSTANTS.RISKS.MITIGATION.MAX_LENGTH).transform(val => val.trim()).optional(),
+    status: z.enum(PROJECT_CONSTANTS.RISKS.STATUS.VALUES).default('identified'),
+  })).optional().default([]),
+
+  progress: z.object({
+    overall: z.number().min(PROJECT_CONSTANTS.PROGRESS.OVERALL.MIN).max(PROJECT_CONSTANTS.PROGRESS.OVERALL.MAX),
+    phases: z.array(z.object({
+      phaseId: z.string().min(1),
+      progress: z.number().min(PROJECT_CONSTANTS.PROGRESS.PHASE_PROGRESS.MIN).max(PROJECT_CONSTANTS.PROGRESS.PHASE_PROGRESS.MAX),
+    })).optional().default([]),
+    lastUpdated: z.date().optional(),
+    notes: z.string().max(PROJECT_CONSTANTS.PROGRESS.NOTES.MAX_LENGTH).transform(val => val.trim()).optional(),
+  }).optional(),
+
+  resources: z.object({
+    estimatedHours: z.number().min(PROJECT_CONSTANTS.RESOURCES.ESTIMATED_HOURS.MIN).optional(),
+    actualHours: z.number().min(PROJECT_CONSTANTS.RESOURCES.ACTUAL_HOURS.MIN).optional(),
+    teamSize: z.number().min(PROJECT_CONSTANTS.RESOURCES.TEAM_SIZE.MIN).optional(),
+    tools: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.TOOL.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+    externalResources: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.EXTERNAL_RESOURCE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
+  }).optional(),
+
+  qualityMetrics: z.object({
+    requirementsCoverage: z.number().min(PROJECT_CONSTANTS.QUALITY_METRICS.REQUIREMENTS_COVERAGE.MIN).max(PROJECT_CONSTANTS.QUALITY_METRICS.REQUIREMENTS_COVERAGE.MAX).optional(),
+    defectDensity: z.number().min(PROJECT_CONSTANTS.QUALITY_METRICS.DEFECT_DENSITY.MIN).optional(),
+    customerSatisfaction: z.number().min(PROJECT_CONSTANTS.QUALITY_METRICS.CUSTOMER_SATISFACTION.MIN).max(PROJECT_CONSTANTS.QUALITY_METRICS.CUSTOMER_SATISFACTION.MAX).optional(),
+    onTimeDelivery: z.boolean().default(false),
+    withinBudget: z.boolean().default(false),
+  }).optional(),
+
   // Approval fields
   approvedBy: objectIdSchema.nullable().optional(),
   approvedAt: z.date().nullable().optional(),
@@ -146,6 +281,73 @@ export const baseProjectFormSchema = z.object({
     .max(PROJECT_CONSTANTS.TIMELINE.MAX_LENGTH, 'Timeline too long')
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+
+  // Enhanced professional CRM fields (form versions with string inputs)
+  budgetBreakdown: z.object({
+    labor: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    materials: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    equipment: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    contingency: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    profitMargin: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+  }).optional(),
+
+  stakeholders: z.object({
+    clientContact: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    projectManager: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    teamLead: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    keyStakeholders: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+  }).optional(),
+
+  milestones: z.array(z.object({
+    title: z.string().min(1).max(PROJECT_CONSTANTS.MILESTONES.TITLE.MAX_LENGTH),
+    description: z.string().max(PROJECT_CONSTANTS.MILESTONES.DESCRIPTION.MAX_LENGTH).optional(),
+    dueDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    status: z.enum(['pending', 'in-progress', 'completed', 'delayed'] as const).default('pending'),
+  })).optional().default([]),
+
+  phases: z.array(z.object({
+    name: z.string().min(1).max(PROJECT_CONSTANTS.PHASES.NAME.MAX_LENGTH),
+    description: z.string().max(PROJECT_CONSTANTS.PHASES.DESCRIPTION.MAX_LENGTH).optional(),
+    startDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    endDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    status: z.enum(['not-started', 'in-progress', 'completed', 'on-hold'] as const).default('not-started'),
+  })).optional().default([]),
+
+  deliverables: z.string()
+    .optional()
+    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+
+  risks: z.array(z.object({
+    description: z.string().min(1).max(PROJECT_CONSTANTS.RISKS.DESCRIPTION.MAX_LENGTH),
+    impact: z.enum(PROJECT_CONSTANTS.RISKS.IMPACT.VALUES).default('medium'),
+    probability: z.enum(PROJECT_CONSTANTS.RISKS.PROBABILITY.VALUES).default('medium'),
+    mitigation: z.string().max(PROJECT_CONSTANTS.RISKS.MITIGATION.MAX_LENGTH).optional(),
+  })).optional().default([]),
+
+  progress: z.object({
+    overallProgress: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    completedTasks: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    totalTasks: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    lastUpdated: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    nextMilestone: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    blockers: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+  }).optional(),
+
+  resources: z.object({
+    estimatedHours: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    actualHours: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    teamSize: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    tools: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.TOOL.MAX_LENGTH)).optional().default([]),
+    externalResources: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.EXTERNAL_RESOURCE.MAX_LENGTH)).optional().default([]),
+  }).optional(),
+
+  qualityMetrics: z.object({
+    requirementsCoverage: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    defectDensity: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    customerSatisfaction: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    onTimeDelivery: z.boolean().default(false),
+    withinBudget: z.boolean().default(false),
+  }).optional(),
 })
 
 // Operation-specific schemas

@@ -7,7 +7,7 @@ import { updateLeadSchema, leadIdSchema, leadStatusUpdateSchema } from "@/lib/va
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
 interface RouteParams {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 // GET /api/leads/[id] - Get lead by ID
@@ -15,7 +15,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'read')
     
-    const validatedParams = leadIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
 
     // Fetch lead with caching
     const lead = await executeGenericDbQuery(async () => {
@@ -89,7 +90,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'update')
     
-    const validatedParams = leadIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
 
     // Check if this is a status update (which has special logic)
@@ -202,8 +204,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'delete')
-    
-    const validatedParams = leadIdSchema.parse({ id: params.id })
+
+    const validatedParams = leadIdSchema.parse({ id: (params as any).id })
 
     // Soft delete the lead (set status to inactive)
     const deletedLead = await executeGenericDbQuery(async () => {

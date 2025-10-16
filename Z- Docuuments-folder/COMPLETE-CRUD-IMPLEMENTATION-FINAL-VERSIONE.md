@@ -12,8 +12,10 @@ This comprehensive guide documents the complete CRUD implementation pattern used
 6. [State Management](#state-management)
 7. [Frontend Components](#frontend-components)
 8. [Security & Middleware](#security--middleware)
-9. [Best Practices](#best-practices)
-10. [Implementation Checklist](#implementation-checklist)
+9. [Database Connection System](#database-connection-system)
+10. [Best Practices](#best-practices)
+11. [Recent Updates & Fixes](#recent-updates--fixes)
+12. [Implementation Checklist](#implementation-checklist)
 
 ---
 
@@ -1577,7 +1579,24 @@ When creating a new CRUD module, follow this checklist:
 
 ---
 
-## Conclusion
+## Recent Updates & Fixes
+
+### Lead Model Enhancements
+- **Email Uniqueness**: Changed from custom pre-save hook to schema-level `unique: true` constraint for better MongoDB performance
+- **Status Standardization**: Updated status enums to use lowercase ('qualified', 'unqualified') for consistency
+- **Seeder Updates**: Added more diverse client data and real-world project examples for better testing
+
+### API Route Fixes
+- **Role Model Registration**: Added explicit Role model imports in client routes to prevent "Schema not registered" errors
+- **Validation Schema Updates**: Added `departmentId` as alias for `department` field in client creation schemas
+- **Error Handling**: Improved validation error messages and field mapping
+
+### Database Connection System
+- **Model Registration**: Enhanced automatic model registration through centralized imports
+- **Cache Optimization**: Improved cache key generation and invalidation patterns
+- **Connection Reliability**: Better error handling for MongoDB connection states
+
+---
 
 This guide provides a comprehensive blueprint for implementing secure, scalable CRUD operations in the DepLLC CRM system. By following these patterns and practices, you ensure consistency, security, and maintainability across all modules.
 

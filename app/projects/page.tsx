@@ -328,6 +328,8 @@ export default function ProjectsPage() {
     }
   }, [error, toast, clearError]);
 
+
+
   // Stats display
   const statsCards = useMemo(() => {
     console.log('projects', projects);
@@ -372,6 +374,8 @@ export default function ProjectsPage() {
       </div>
     );
   }, [fetchProjects, stats]);
+
+
 
   return (
     <div className="space-y-6">
@@ -419,7 +423,6 @@ export default function ProjectsPage() {
         )}
       </PageHeader>
 
-      {/* Error Display */}
       {error && (
         <Alert variant="destructive" className="border-destructive bg-destructive/10">
           <AlertTriangle className="h-4 w-4" />
@@ -427,7 +430,6 @@ export default function ProjectsPage() {
         </Alert>
       )}
 
-      {/* Stats Cards */}
       {statsCards}
 
       <div className="space-y-4">

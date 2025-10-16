@@ -33,9 +33,6 @@ export default function AddProjectPage() {
       name: "",
       description: "",
       clientId: clientId || "",
-      requirements: "",
-      projectType: "",
-      timeline: "",
       budget: "",
       startDate: "",
       endDate: "",
@@ -100,7 +97,6 @@ export default function AddProjectPage() {
   const handleSubmit = async (data: CreateProjectFormData) => {
     setLoading(true);
     try {
-      // Send form data directly - API will handle conversion
       const result = await dispatch(createProject(data)).unwrap();
 
       toast({
@@ -148,7 +144,6 @@ export default function AddProjectPage() {
           description: "A clear, descriptive name for the project",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "clientId",
@@ -162,58 +157,23 @@ export default function AddProjectPage() {
           description: "The client for whom this project is being created",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "projectType",
-          label: "Project Type",
-          type: "text" as const,
-          placeholder: "e.g., Web Development, Mobile App, etc.",
-          description: "The type or category of project",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "description",
           label: "Description",
           type: "textarea" as const,
-          placeholder: "Describe the project objectives and scope",
-          description: "Detailed project description",
+          placeholder: "Brief project description",
+          description: "A short description of the project",
           cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-
-        {
-          name: "requirements",
-          label: "Requirements",
-          type: "textarea" as const,
-          placeholder: "List project requirements and specifications",
-          description: "Detailed project requirements",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-        {
-          name: "timeline",
-          label: "Timeline",
-          type: "text" as const,
-          placeholder: "Expected project duration (e.g., 3-6 months)",
-          description: "Estimated project timeline",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "budget",
           label: "Budget",
           type: "text" as const,
-          placeholder: "Enter budget amount",
-          description: "Project budget (numbers only)",
+          placeholder: "50000",
+          description: "Total project budget (optional)",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "startDate",
@@ -222,7 +182,6 @@ export default function AddProjectPage() {
           description: "Planned project start date",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "endDate",
@@ -231,7 +190,6 @@ export default function AddProjectPage() {
           description: "Planned project end date",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "priority",
@@ -246,7 +204,6 @@ export default function AddProjectPage() {
           description: "Project priority level",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
         {
           name: "status",
@@ -259,7 +216,6 @@ export default function AddProjectPage() {
           description: "Initial project status",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
         },
       ]
     }

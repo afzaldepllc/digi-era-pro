@@ -7,15 +7,16 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import mongoose from 'mongoose'
 
 interface RouteParams {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 // GET /api/projects/[id] - Get project by ID
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'projects', 'read')
     
-    const validatedParams = projectIdSchema.parse({ id: params.id })
+    const resolvedParams = await params
+    const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
 
     // Fetch project with automatic connection management and caching
     const project = await executeGenericDbQuery(async () => {
@@ -73,8 +74,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'update')
-    
-    const validatedParams = projectIdSchema.parse({ id: params.id })
+
+    const validatedParams = projectIdSchema.parse({ id: (params as any).id })
     const body = await request.json()
     
     // Handle special operations
@@ -190,8 +191,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'delete')
-    
-    const validatedParams = projectIdSchema.parse({ id: params.id })
+
+    const validatedParams = projectIdSchema.parse({ id: (params as any).id })
 
     // Soft delete project with automatic connection management
     const deletedProject = await executeGenericDbQuery(async () => {

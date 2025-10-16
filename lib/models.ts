@@ -1,20 +1,52 @@
-// Model registration file to ensure all models are loaded
-import User from '@/models/User'
-import Role from '@/models/Role'
-import Department from '@/models/Department'
-import SystemPermission from '@/models/SystemPermission'
+// Generic Model Registry - Import and register all models
+import { registerAllModels, modelRegistry } from './modelRegistry'
 
-// This file ensures all models are registered with mongoose
-// Import this in mongodb.ts to prevent "Schema hasn't been registered" errors
+// Import all models (this registers them automatically)
+import '../models/User'
+import '../models/Role'
+import '../models/Department'
+import '../models/Project'
+import '../models/Task'
+import '../models/Communication'
+import '../models/SystemPermission'
+import '../models/Channel'
+import '../models/Media'
+import '../models/Settings'
+import '../models/Lead'
 
-export const registerModels = () => {
-  // Models are registered by importing them
-  // No additional code needed - the import statements handle registration
+// Initialize model registration
+let modelsRegistered = false
+
+export const registerModels = async () => {
+  if (modelsRegistered) {
+    console.log('📋 Models already registered')
+    return
+  }
+
+  try {
+    await registerAllModels()
+    modelsRegistered = true
+    console.log('✅ All models registered successfully')
+  } catch (error) {
+    console.error('❌ Error registering models:', error)
+    throw error
+  }
 }
 
-export {
-  User,
-  Role,
-  Department,
-  SystemPermission
+// Export individual models for backward compatibility
+export const getModel = (name: string) => {
+  const modelDef = modelRegistry.getModel(name)
+  return modelDef ? modelDef.model : null
 }
+
+// Export all models as an object
+export const getAllModels = () => {
+  const models: Record<string, any> = {}
+  for (const [name, modelDef] of Array.from(modelRegistry.getAllModels())) {
+    models[name] = modelDef.model
+  }
+  return models
+}
+
+// Legacy exports for backward compatibility
+export { modelRegistry }

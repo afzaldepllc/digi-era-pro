@@ -2,6 +2,9 @@ import seedSystemPermissions from './systemPermissionsSeeder'
 import seedDepartments from './departmentSeeder'
 import seedSystemRoles from './systemRolesSeeder'
 import seedUsers from './userSeeder'
+import seedLeads from './leadSeeder'
+import seedProjects from './projectSeeder'
+import seedTasks from './taskSeeder'
 
 
 async function runSeeders() {
@@ -29,6 +32,21 @@ async function runSeeders() {
     console.log('-' .repeat(40))
     await seedUsers()
 
+    // Step 5: Seed Leads (Business flow starts here)
+    console.log('\n📋 STEP 5: Seeding Leads')
+    console.log('-' .repeat(40))
+    await seedLeads()
+
+    // Step 6: Seed Projects (Based on qualified leads/clients)
+    console.log('\n📁 STEP 6: Seeding Projects')
+    console.log('-' .repeat(40))
+    await seedProjects()
+
+    // Step 7: Seed Tasks (Based on projects and departments)
+    console.log('\n✅ STEP 7: Seeding Tasks')
+    console.log('-' .repeat(40))
+    await seedTasks()
+
     console.log('\n' + '=' .repeat(60))
     console.log('🎉 COMPREHENSIVE DATABASE SEEDING COMPLETE!')
     console.log('=' .repeat(60))
@@ -38,6 +56,9 @@ async function runSeeders() {
     console.log('   ✅ System Roles: 10 hierarchical roles created')
     console.log('   ✅ Departments: 10 business departments created')
     console.log('   ✅ Users: 32+ users across all roles and departments')
+    console.log('   ✅ Leads: 50+ leads with qualification flow')
+    console.log('   ✅ Projects: Projects created from qualified clients')
+    console.log('   ✅ Tasks: Tasks and sub-tasks assigned to departments')
 
     console.log('\n🎭 ROLE HIERARCHY (High to Low):')
     console.log('   1. Super Administrator (Level 10)')
@@ -79,5 +100,7 @@ async function runSeeders() {
     process.exit(1)
   }
 }
+
+export { runSeeders }
 
 runSeeders()

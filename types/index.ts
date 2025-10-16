@@ -229,34 +229,81 @@ export interface Lead {
   email: string
   phone?: string
   company?: string
+  position?: string // Job title/position
+  website?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+  }
+
+  // Company Details
+  industry?: string
+  companySize?: 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
+  annualRevenue?: number
+  employeeCount?: number
 
   // Project Basic Info Section
   projectName: string
   projectDescription?: string
   projectBudget?: number
   projectTimeline?: string
-  projectType?: string
   projectRequirements?: string[]
+  technologies?: string[] // Required technologies/frameworks
+  projectType?: 'web' | 'mobile' | 'desktop' | 'api' | 'consulting' | 'other'
+  complexity?: 'simple' | 'medium' | 'complex'
+
+  // Project Scope & Details
+  deliverables?: string[]
+  milestones?: Array<{
+    title: string
+    description?: string
+    dueDate?: Date
+    completed?: boolean
+  }>
+  estimatedHours?: number
 
   // Lead Management
   status: 'active' | 'inactive' | 'qualified' | 'unqualified'
   createdBy: string | User // Reference to User (sales agent)
+  assignedTo?: string | User // Current assignee
   clientId?: string | User // Reference to User (populated after qualification)
 
   // Lead Source & Tracking
-  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'other'
+  source?: 'website' | 'referral' | 'cold_call' | 'email' | 'social_media' | 'event' | 'partner' | 'advertising' | 'other'
+  sourceDetails?: string // Additional source information
+  campaign?: string // Marketing campaign name
   priority: 'low' | 'medium' | 'high' | 'urgent'
 
   // Communication & Notes
   notes?: string
   lastContactDate?: Date
   nextFollowUpDate?: Date
+  contactHistory?: Array<{
+    date: Date
+    type: 'call' | 'email' | 'meeting' | 'note'
+    description: string
+    outcome?: string
+    contactPerson?: string
+  }>
 
   // Qualification Details
   qualifiedAt?: Date
   qualifiedBy?: string | User // Reference to User
   unqualifiedReason?: string
   unqualifiedAt?: Date
+
+  // Scoring & Analytics
+  score?: number // Lead scoring (0-100)
+  hotLead?: boolean
+  conversionProbability?: number // Percentage
+
+  // Preferences & Communication
+  preferredContactMethod?: 'email' | 'phone' | 'meeting' | 'chat'
+  timezone?: string
+  language?: string
 
   // Metadata
   tags?: string[]
@@ -268,6 +315,7 @@ export interface Lead {
 
   // Virtual fields (populated)
   createdByDetails?: User
+  assignedToDetails?: User
   clientDetails?: User
   qualifiedByDetails?: User
 }
@@ -501,6 +549,71 @@ export interface Project {
   createdAt?: string
   updatedAt?: string
 
+  // Professional CRM fields
+  budgetBreakdown?: {
+    labor?: number
+    materials?: number
+    equipment?: number
+    contingency?: number
+    profitMargin?: number
+  }
+
+  stakeholders?: {
+    clientContact?: string
+    projectManager?: string
+    teamLead?: string
+    keyStakeholders?: string
+  }
+
+  milestones?: {
+    title: string
+    description?: string
+    dueDate?: Date
+    status: 'pending' | 'in-progress' | 'completed' | 'delayed'
+  }[]
+
+  phases?: {
+    name: string
+    description?: string
+    startDate?: Date
+    endDate?: Date
+    status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+  }[]
+
+  deliverables?: string
+
+  risks?: {
+    description: string
+    impact: 'low' | 'medium' | 'high' | 'critical'
+    probability: 'low' | 'medium' | 'high'
+    mitigation?: string
+  }[]
+
+  progress?: {
+    overallProgress?: number
+    completedTasks?: number
+    totalTasks?: number
+    lastUpdated?: Date
+    nextMilestone?: string
+    blockers?: string
+  }
+
+  resources?: {
+    estimatedHours?: number
+    actualHours?: number
+    teamSize?: number
+    tools?: string[]
+    externalResources?: string[]
+  }
+
+  qualityMetrics?: {
+    requirementsCoverage?: number
+    defectDensity?: number
+    customerSatisfaction?: number
+    onTimeDelivery: boolean
+    withinBudget: boolean
+  }
+
   // Virtual fields
   client?: {
     _id: string
@@ -565,7 +678,85 @@ export interface CreateProjectFormData {
 
 export interface UpdateProjectData extends Partial<CreateProjectData> { }
 
-export interface UpdateProjectFormData extends Partial<CreateProjectFormData> { }
+export interface UpdateProjectFormData {
+  name?: string
+  description?: string
+  clientId?: string
+  departmentIds?: string[]
+  status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  budget?: string
+  startDate?: string
+  endDate?: string
+  projectType?: string
+  requirements?: string
+  timeline?: string
+
+  // Professional CRM fields
+  budgetBreakdown?: {
+    labor?: string
+    materials?: string
+    equipment?: string
+    contingency?: string
+    profitMargin?: string
+  }
+
+  stakeholders?: {
+    clientContact?: string
+    projectManager?: string
+    teamLead?: string
+    keyStakeholders?: string
+  }
+
+  milestones?: {
+    title: string
+    description?: string
+    dueDate?: string
+    status: 'pending' | 'in-progress' | 'completed' | 'delayed'
+  }[]
+
+  phases?: {
+    name: string
+    description?: string
+    startDate?: string
+    endDate?: string
+    status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+  }[]
+
+  deliverables?: string
+
+  risks?: {
+    description: string
+    impact: 'low' | 'medium' | 'high' | 'critical'
+    probability: 'low' | 'medium' | 'high'
+    mitigation?: string
+  }[]
+
+  progress?: {
+    overallProgress?: string
+    completedTasks?: string
+    totalTasks?: string
+    lastUpdated?: string
+    nextMilestone?: string
+    blockers?: string
+  }
+
+  resources?: {
+    estimatedHours?: string
+    actualHours?: string
+    teamSize?: string
+    tools?: string[]
+    externalResources?: string[]
+  }
+
+  qualityMetrics?: {
+    requirementsCoverage?: string
+    defectDensity?: string
+    customerSatisfaction?: string
+    onTimeDelivery: boolean
+    withinBudget: boolean
+  }
+}
 
 export interface DepartmentSort {
   field: keyof Department;

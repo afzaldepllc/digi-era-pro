@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Document } from "mongoose"
-import bcrypt from "bcryptjs"
+import * as bcrypt from "bcryptjs"
 
 export interface IUser extends Document {
   name: string
@@ -9,7 +9,7 @@ export interface IUser extends Document {
   legacyRole?: "admin" | "user" | "manager" | "hr" | "finance" | "sales" // Keep for backward compatibility
   avatar?: string
   phone?: string
-  department: mongoose.Types.ObjectId // Reference to Department model (required)
+  department?: mongoose.Types.ObjectId // Reference to Department model (optional for clients)
   position?: string
   reportsTo?: mongoose.Types.ObjectId // For subordinate relationships
   assignedTo?: mongoose.Types.ObjectId[] // For assignment tracking
@@ -120,7 +120,9 @@ const UserSchema = new Schema<IUser>(
     department: {
       type: Schema.Types.ObjectId,
       ref: 'Department',
-      required: [true, "Department is required"],
+      required: function(this: IUser) {
+        return !this.isClient; // Department not required for clients
+      },
       index: true,
     },
     position: {
@@ -422,7 +424,7 @@ UserSchema.methods.getAllPermissions = async function(): Promise<string[]> {
   }
   
   // Combine role permissions with additional permissions
-  return [...new Set([...rolePermissions, ...this.permissions])]
+  return Array.from(new Set([...rolePermissions, ...this.permissions]))
 }
 
 UserSchema.methods.canAccessDepartment = async function(departmentId: string): Promise<boolean> {
@@ -604,4 +606,10 @@ interface IUserModel extends mongoose.Model<IUser> {
   getClientStats(filter?: any): Promise<any>;
 }
 
-export default mongoose.models.User as IUserModel || mongoose.model<IUser, IUserModel>("User", UserSchema)
+const User = mongoose.models.User as IUserModel || mongoose.model<IUser, IUserModel>("User", UserSchema)
+
+// Register the model with the generic registry
+import { registerModel } from '../lib/modelRegistry'
+registerModel('User', User, UserSchema, '1.0.0', ['Role', 'Department'])
+
+export default User
