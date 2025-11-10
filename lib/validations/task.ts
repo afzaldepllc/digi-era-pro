@@ -26,6 +26,22 @@ export const objectIdSchema = z.string().regex(
   'Invalid ID format'
 )
 
+// Optional ObjectId schema that allows undefined/empty values
+export const optionalObjectIdSchema = z.string()
+  .optional()
+  .refine(val => !val || val === '' || /^[0-9a-fA-F]{24}$/.test(val), {
+    message: 'Invalid ID format'
+  })
+  .transform(val => !val || val.trim() === '' ? undefined : val.trim())
+
+// Query ObjectId schema that allows empty strings
+export const queryObjectIdSchema = z.string()
+  .optional()
+  .refine(val => !val || val === '' || /^[0-9a-fA-F]{24}$/.test(val), {
+    message: 'Invalid ID format'
+  })
+  .transform(val => !val || val.trim() === '' ? undefined : val.trim())
+
 // Base task schema
 export const baseTaskSchema = z.object({
   title: z.string()
@@ -44,15 +60,9 @@ export const baseTaskSchema = z.object({
   
   departmentId: objectIdSchema,
 
-  parentTaskId: objectIdSchema
-    .nullable()
-    .optional()
-    .transform(val => val === null || val === '' ? undefined : val),
+  parentTaskId: optionalObjectIdSchema,
 
-  assigneeId: objectIdSchema
-    .nullable()
-    .optional()
-    .transform(val => val === null || val === '' ? undefined : val),
+  assigneeId: optionalObjectIdSchema,
 
   status: z.enum(TASK_CONSTANTS.STATUS.VALUES)
     .default(TASK_CONSTANTS.STATUS.DEFAULT),
@@ -110,16 +120,34 @@ export const baseTaskFormSchema = z.object({
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
-  projectId: z.string().min(1, 'Project is required'),
+  projectId: z.string()
+    .min(1, 'Project is required')
+    .refine(val => /^[0-9a-fA-F]{24}$/.test(val), {
+      message: 'Invalid project ID format'
+    })
+    .transform(val => val.trim()),
   
-  departmentId: z.string().min(1, 'Department is required'),
+  departmentId: z.string()
+    .min(1, 'Department is required')
+    .refine(val => /^[0-9a-fA-F]{24}$/.test(val), {
+      message: 'Invalid department ID format'
+    })
+    .transform(val => val.trim()),
 
   parentTaskId: z.string()
     .optional()
+    .nullable()
+    .refine(val => !val || val === '' || /^[0-9a-fA-F]{24}$/.test(val), {
+      message: 'Invalid parent task ID format'
+    })
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
   assigneeId: z.string()
     .optional()
+    .nullable()
+    .refine(val => !val || val === '' || /^[0-9a-fA-F]{24}$/.test(val), {
+      message: 'Invalid assignee ID format'
+    })
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
   status: z.enum(TASK_CONSTANTS.STATUS.VALUES)
@@ -245,10 +273,10 @@ export const taskQuerySchema = z.object({
   status: z.enum(['pending', 'in-progress', 'completed', 'on-hold', 'cancelled', '']).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent', '']).optional(),
   type: z.enum(['task', 'sub-task', '']).optional(),
-  projectId: objectIdSchema.optional(),
-  departmentId: objectIdSchema.optional(),
-  assigneeId: objectIdSchema.optional(),
-  parentTaskId: objectIdSchema.optional(),
+  projectId: queryObjectIdSchema,
+  departmentId: queryObjectIdSchema,
+  assigneeId: queryObjectIdSchema,
+  parentTaskId: queryObjectIdSchema,
   sortBy: z.enum(['title', 'status', 'priority', 'type', 'createdAt', 'updatedAt', 'dueDate']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 })

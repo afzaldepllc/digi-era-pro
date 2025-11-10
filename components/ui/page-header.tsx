@@ -22,7 +22,7 @@ interface PageHeaderProps {
   actions?: ReactNode;
   className?: string;
   children?: ReactNode;
-  
+
   // Filter functionality
   showFilterButton?: boolean;
   hasActiveFilters?: boolean;
@@ -31,7 +31,7 @@ interface PageHeaderProps {
   activeFiltersCount?: number;
   filterText?: string;
   clearFiltersText?: string;
-  
+
   // Refresh functionality
   showRefreshButton?: boolean;
   onRefresh?: () => void;
@@ -47,7 +47,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   actions,
   className,
   children,
-  
+
   // Filter props
   showFilterButton = false,
   hasActiveFilters = false,
@@ -56,18 +56,18 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   activeFiltersCount = 0,
   filterText = "Filter",
   clearFiltersText = "Clear Filters",
-  
+
   // Refresh props
   showRefreshButton = false,
   onRefresh,
   isRefreshing = false,
 }) => {
-    const pathname = usePathname()
-    const allowedResources = pathname?.split("/")[1] || "/"
-    const { canCreate } = usePermissions();
+  const pathname = usePathname()
+  const allowedResources = pathname?.split("/")[1] || "/"
+  const { canCreate } = usePermissions();
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="flex-col flex justify-between items-start md:items-center mb-5 gap-3 md:gap-0 md:flex-row">
+      <div className="flex-col flex justify-between items-start md:items-center mb-5 gap-3 md:gap-2 md:flex-row">
         {/* Title Section */}
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-foreground">{title}</h1>
@@ -88,7 +88,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
               clearText={clearFiltersText}
             />
           )}
-          
+
           {/* Refresh Button */}
           {showRefreshButton && onRefresh && (
             <Button
@@ -102,10 +102,10 @@ const PageHeader: React.FC<PageHeaderProps> = ({
               Refresh
             </Button>
           )}
-          
+
           {/* Custom Actions */}
           {actions}
-          
+
           {/* Add Button */}
           {(showAddButton && canCreate(allowedResources)) && (
             <Button
@@ -115,6 +115,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             >
               <Plus className="h-4 w-4 mr-2" />
               {addButtonText}
+              {/* {hasActiveFilters && (
+                <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
+                  {activeFiltersCount}
+                </span>
+              )} */}
             </Button>
           )}
         </div>

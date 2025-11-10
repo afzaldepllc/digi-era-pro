@@ -6,6 +6,7 @@ import { SecurityUtils } from '@/lib/security/validation'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 
 // Helper to create consistent error responses
@@ -21,7 +22,7 @@ function createErrorResponse(message: string, status: number, details?: any) {
 export async function GET(request: NextRequest) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
 
     // Parse and validate query parameters
     const searchParams = request.nextUrl.searchParams
@@ -48,8 +49,12 @@ export async function GET(request: NextRequest) {
 
     const validatedParams = departmentQuerySchema.parse(parsedParams)
 
-    // Build query
-    const filter: any = {}
+    // Build query with soft delete filter
+    let filter: any = {}
+
+    // Apply soft delete filter - exclude deleted records unless super admin
+    filter = addSoftDeleteFilter(filter, isSuperAdmin)
+    console.log('Soft delete filter applied:', JSON.stringify(filter, null, 2))
 
     // Search implementation - use regex for more reliable results
     if (validatedParams.search) {
@@ -81,8 +86,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Status filter - if user is not super admin, ensure we don't override soft delete filter
     if (validatedParams.status) {
-      filter.status = validatedParams.status
+      if (isSuperAdmin) {
+        filter.status = validatedParams.status
+      } else {
+        console.log('93 params are', validatedParams)
+        // For non-super admins, combine status filter with soft delete exclusion
+        filter.status = { $and: [{ $ne: 'deleted' }, { $eq: validatedParams.status }] }
+        console.log('status is 95', filter)
+      }
     }
 
     console.log('Final query before execution:', JSON.stringify(filter, null, 2))
@@ -90,20 +103,29 @@ export async function GET(request: NextRequest) {
     // Execute queries with automatic connection management and caching
     const [departments, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
-        // Debug: Check all departments first
-        const allDepts = await Department.find({ status: 'active' }).select('name description').lean()
-        console.log('All active departments:', allDepts)
+        // Debug: Check visible departments (based on user's permissions)
+        // console.log('Base filter for visible active departments: 108')
+        // const baseFilter = addSoftDeleteFilter({ status: 'active' }, isSuperAdmin)
+        // console.log('Base filter for visible active departments: 109', JSON.stringify(baseFilter, null, 2))
+        // const allDepts = await Department.find(baseFilter).select('name description').lean()
+        // console.log('All visible active departments:', allDepts)
 
         // Build sort
         const sort: any = {}
         sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
 
-        return await Department.find(filter)
+
+        console.log('filters are 118', filter)
+        const departments = await Department.find(filter)
           .sort(sort)
           .skip((validatedParams.page - 1) * validatedParams.limit)
           .limit(validatedParams.limit)
           .lean()
+
+        console.log('Fetched departments: 125', departments)
+        return departments
       }, `departments-${JSON.stringify(validatedParams)}`, 60000), // 1-minute cache
+
 
       executeGenericDbQuery(async () => {
         return await Department.countDocuments(filter)
@@ -111,16 +133,18 @@ export async function GET(request: NextRequest) {
 
       executeGenericDbQuery(async () => {
         return await Department.aggregate([
+          { $match: addSoftDeleteFilter({}, isSuperAdmin) }, // Apply soft delete filter to stats
           {
             $group: {
               _id: null,
               totalDepartments: { $sum: 1 },
               activeDepartments: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
-              inactiveDepartments: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } }
+              inactiveDepartments: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } },
+              ...(isSuperAdmin && { deletedDepartments: { $sum: { $cond: [{ $eq: ['$status', 'deleted'] }, 1, 0] } } })
             }
           }
         ])
-      }, 'departments-stats', 300000) // 5-minute cache for stats
+      }, `departments-stats-${isSuperAdmin ? 'admin' : 'user'}`, 300000) // 5-minute cache for stats
     ])
 
     const pages = Math.ceil(total / validatedParams.limit)
@@ -143,15 +167,15 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching departments:', error)
-    
+
     // Handle middleware errors (like permission denied)
     if (error instanceof Response) {
       return error
     }
-    
+
     return createAPIErrorResponse(
-      error.message || 'Failed to fetch departments', 
-      500, 
+      error.message || 'Failed to fetch departments',
+      500,
       "INTERNAL_ERROR"
     )
   }
@@ -168,10 +192,15 @@ export async function POST(request: NextRequest) {
 
     // Create department with automatic connection management
     const department = await executeGenericDbQuery(async () => {
-      // Check if department name already exists (case insensitive)
+      // Prevent creating departments with deleted status
+      if (validatedData.status === 'deleted') {
+        throw new Error("Cannot create departments with deleted status")
+      }
+
+      // Check if department name already exists (case insensitive, exclude deleted)
       const existingDepartment = await Department.findOne({
         name: { $regex: new RegExp(`^${validatedData.name}$`, 'i') },
-        status: 'active'
+        status: { $ne: 'deleted' }
       })
 
       if (existingDepartment) {

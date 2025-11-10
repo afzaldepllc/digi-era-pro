@@ -50,7 +50,6 @@ const SystemPermissionSchema = new Schema<ISystemPermission>({
     unique: true,
     trim: true,
     lowercase: true,
-    index: true,
     match: [/^[a-z][a-z0-9_]*$/, "Resource must start with letter and contain only lowercase letters, numbers, and underscores"]
   },
   displayName: {
@@ -68,7 +67,7 @@ const SystemPermissionSchema = new Schema<ISystemPermission>({
     type: String,
     required: [true, "Category is required"],
     trim: true,
-    index: true,
+    // index: true, // Removed - covered by compound indexes
     enum: [
       'user_management',
       'department_management',
@@ -90,7 +89,7 @@ const SystemPermissionSchema = new Schema<ISystemPermission>({
     type: [ResourceActionSchema],
     required: true,
     validate: {
-      validator: function(actions: IResourceAction[]) {
+      validator: function (actions: IResourceAction[]) {
         return actions && actions.length > 0;
       },
       message: "Resource must have at least one available action"
@@ -99,13 +98,13 @@ const SystemPermissionSchema = new Schema<ISystemPermission>({
   isCore: {
     type: Boolean,
     default: false,
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   status: {
     type: String,
     enum: ['active', 'inactive', 'archived'],
     default: 'active',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   metadata: {
     createdBy: String,
@@ -127,67 +126,67 @@ SystemPermissionSchema.index({ category: 1, status: 1 })
 SystemPermissionSchema.index({ isCore: 1, status: 1 })
 
 // Text search
-SystemPermissionSchema.index({ 
-  resource: 'text', 
+SystemPermissionSchema.index({
+  resource: 'text',
   displayName: 'text',
   description: 'text'
 }, {
-  weights: { 
-    resource: 10, 
-    displayName: 8, 
-    description: 5 
+  weights: {
+    resource: 10,
+    displayName: 8,
+    description: 5
   },
   name: 'permission_search_index'
 })
 
 // Instance methods
-SystemPermissionSchema.methods.hasAction = function(action: string): boolean {
+SystemPermissionSchema.methods.hasAction = function (action: string): boolean {
   return this.availableActions.some((a: IResourceAction) => a.action === action.toLowerCase())
 }
 
-SystemPermissionSchema.methods.getActionConditions = function(action: string): string[] {
+SystemPermissionSchema.methods.getActionConditions = function (action: string): string[] {
   const actionObj = this.availableActions.find((a: IResourceAction) => a.action === action.toLowerCase())
   return actionObj?.conditions || []
 }
 
 // Static methods
-SystemPermissionSchema.statics.findByCategory = function(category: string) {
-  return this.find({ 
-    category: category.toLowerCase(), 
-    status: 'active' 
+SystemPermissionSchema.statics.findByCategory = function (category: string) {
+  return this.find({
+    category: category.toLowerCase(),
+    status: 'active'
   }).sort({ displayName: 1 })
 }
 
-SystemPermissionSchema.statics.findCorePermissions = function() {
-  return this.find({ 
-    isCore: true, 
-    status: 'active' 
+SystemPermissionSchema.statics.findCorePermissions = function () {
+  return this.find({
+    isCore: true,
+    status: 'active'
   }).sort({ category: 1, displayName: 1 })
 }
 
-SystemPermissionSchema.statics.getResourceActions = function(resource: string) {
-  return this.findOne({ 
-    resource: resource.toLowerCase(), 
-    status: 'active' 
+SystemPermissionSchema.statics.getResourceActions = function (resource: string) {
+  return this.findOne({
+    resource: resource.toLowerCase(),
+    status: 'active'
   }).then((permission: any) => permission?.availableActions || [])
 }
 
 // Pre-save middleware
-SystemPermissionSchema.pre('save', function(next) {
+SystemPermissionSchema.pre('save', function (next) {
   // Ensure resource is lowercase
   this.resource = this.resource.toLowerCase()
   this.category = this.category.toLowerCase()
-  
+
   // Ensure all actions are lowercase
   this.availableActions.forEach(action => {
     action.action = action.action.toLowerCase()
   })
-  
+
   next()
 })
 
 // Pre-remove middleware
-SystemPermissionSchema.pre('deleteOne', { document: true, query: false }, function(next) {
+SystemPermissionSchema.pre('deleteOne', { document: true, query: false }, function (next) {
   if (this.isCore) {
     return next(new Error('Core permissions cannot be deleted'))
   }

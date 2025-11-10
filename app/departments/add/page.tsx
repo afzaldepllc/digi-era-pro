@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch } from "@/hooks/redux";
-import { createDepartment } from "@/store/slices/departmentSlice";
+import { useDepartments } from "@/hooks/use-departments";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
@@ -13,11 +12,12 @@ import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { CreateDepartmentData, createDepartmentSchema } from '@/lib/validations/department'
+import { handleAPIError } from "@/lib/utils/api-client";
 
 
 export default function AddDepartmentPage() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
+  const { createDepartment } = useDepartments();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -37,8 +37,8 @@ export default function AddDepartmentPage() {
         ...data,
         description: data.description?.trim() || undefined,
       };
-
-      await dispatch(createDepartment(cleanedData)).unwrap();
+      // @ts-ignore
+      await createDepartment(cleanedData);
 
       toast({
         title: "Success",
@@ -47,11 +47,7 @@ export default function AddDepartmentPage() {
 
       router.push("/departments");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error || "Failed to create department",
-        variant: "destructive",
-      });
+      handleAPIError(error, "Failed to create department")
     } finally {
       setLoading(false);
     }
@@ -80,6 +76,7 @@ export default function AddDepartmentPage() {
           name: "status",
           label: "Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "active", label: "Active" },
@@ -91,11 +88,11 @@ export default function AddDepartmentPage() {
         {
           name: "description",
           label: "Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Enter department description (optional)",
           description: "Brief description of the department's purpose and responsibilities",
           cols: 12,
-          rows: 4,
+          rows: 6,
         },
       ]
     }

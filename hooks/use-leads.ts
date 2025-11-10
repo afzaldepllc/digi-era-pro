@@ -1,24 +1,31 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
-  fetchLeads,
-  fetchLeadById,
-  createLead,
-  updateLead,
-  updateLeadStatus,
-  deleteLead,
+  useGenericQuery,
+  useGenericQueryById,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
+import {
+  setLeads,
+  setSelectedLead,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
   setFilters,
   setSort,
   setPagination,
-  setSelectedLead,
-  clearError,
+  setStats,
   resetState,
-  optimisticStatusUpdate,
 } from '@/store/slices/leadSlice'
 import type {
   FetchLeadsParams,
   LeadFilters,
   LeadSort,
+  Lead
 } from '@/types'
 import type { CreateLeadData, UpdateLeadData } from '@/lib/validations/lead'
 
@@ -30,7 +37,6 @@ export function useLeads() {
     selectedLead,
     loading,
     actionLoading,
-    statusLoading,
     error,
     filters,
     sort,
@@ -38,46 +44,87 @@ export function useLeads() {
     stats,
   } = useAppSelector((state) => state.leads)
 
-  // Fetch operations
-  const handleFetchLeads = useCallback((params?: FetchLeadsParams) => {
-    return dispatch(fetchLeads(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
+  // Define options for generic hooks
+  const leadOptions: UseGenericQueryOptions<any> = {
+    entityName: 'leads',
+    baseUrl: '/api/leads',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setLeads(entities)),
+      setEntity: (entity) => dispatch(setSelectedLead(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
 
-  const handleFetchLeadById = useCallback((id: string) => {
-    return dispatch(fetchLeadById(id))
-  }, [dispatch])
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  const allLeadsParams = useMemo(() => ({
+    page: 1,
+    limit: 100,
+    filters: {},
+    sort: {
+      field: 'createdAt' as const,
+      direction: 'desc' as const,
+    },
+  }), [])
+
+  // Use generic hooks
+  const { data: fetchedLeads, isLoading: queryLoading, refetch: refetchLeads } = useGenericQuery(
+    leadOptions,
+    queryParams,
+    true
+  )
+
+  // Separate query for fetching all leads (for filters/dropdowns)
+  const { data: allLeads } = useGenericQuery(
+    leadOptions,
+    allLeadsParams,
+    true
+  )
+
+  const createMutation = useGenericCreate(leadOptions)
+  const updateMutation = useGenericUpdate(leadOptions)
+  const deleteMutation = useGenericDelete(leadOptions)
+
+  // Fetch operations - Stable function that doesn't change on re-renders
+  const handleFetchLeads = useCallback((params?: FetchLeadsParams) => {
+    refetchLeads()
+  }, [refetchLeads])
 
   // CRUD operations
   const handleCreateLead = useCallback((leadData: CreateLeadData) => {
-    return dispatch(createLead(leadData))
-  }, [dispatch])
+    return createMutation.mutateAsync(leadData)
+  }, [createMutation])
 
   const handleUpdateLead = useCallback((id: string, data: UpdateLeadData) => {
-    return dispatch(updateLead({ id, data }))
-  }, [dispatch])
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
   const handleDeleteLead = useCallback((leadId: string) => {
-    return dispatch(deleteLead(leadId))
-  }, [dispatch])
+    return deleteMutation.mutateAsync(leadId)
+  }, [deleteMutation])
 
   // Status operations with business logic
   const handleUpdateLeadStatus = useCallback(async (id: string, status: string, reason?: string) => {
-    // Optimistic update for better UX
-    dispatch(optimisticStatusUpdate({ id, status }))
-    
-    try {
-      const result = await dispatch(updateLeadStatus({ id, status, reason }))
-      return result
-    } catch (error) {
-      // The slice will handle reverting the optimistic update on failure
-      throw error
-    }
-  }, [dispatch])
+    const result = await updateMutation.mutateAsync({
+      id,
+      data: { status, ...(reason && { unqualifiedReason: reason }) }
+    })
+    return result
+  }, [updateMutation])
 
   const handleQualifyLead = useCallback((id: string) => {
     return handleUpdateLeadStatus(id, 'qualified')
@@ -117,7 +164,7 @@ export function useLeads() {
     dispatch(clearError())
   }, [dispatch])
 
-  const handleResetState = useCallback(() => {
+  const handleResetLeads = useCallback(() => {
     dispatch(resetState())
   }, [dispatch])
 
@@ -126,11 +173,20 @@ export function useLeads() {
   }, [handleFetchLeads])
 
   // Computed values
-  const hasLeads = leads.length > 0
+  const hasLeads = (fetchedLeads || leads).length > 0
   const isFirstPage = pagination.page === 1
   const isLastPage = pagination.page >= pagination.pages
   const totalPages = pagination.pages
   const totalItems = pagination.total
+
+  // Lead utilities
+  const getLeadById = useCallback((leadId: string) => {
+    return (fetchedLeads || leads).find(lead => lead._id === leadId)
+  }, [fetchedLeads, leads])
+
+  const getActiveLeads = useCallback(() => {
+    return (fetchedLeads || leads).filter(lead => lead.status === 'active')
+  }, [fetchedLeads, leads])
 
   // Business logic helpers
   const canQualifyLead = useCallback((lead: any) => {
@@ -165,20 +221,20 @@ export function useLeads() {
 
   return {
     // State
-    leads,
+    leads: fetchedLeads || leads,
+    allLeads: allLeads || [],
     selectedLead,
-    loading,
+    loading: queryLoading || loading,
     actionLoading,
-    statusLoading,
+    statusLoading: updateMutation.isPending, // For status updates
     error,
     filters,
     sort,
     pagination,
     stats,
 
-    // CRUD operations
+    // Actions
     fetchLeads: handleFetchLeads,
-    fetchLeadById: handleFetchLeadById,
     createLead: handleCreateLead,
     updateLead: handleUpdateLead,
     deleteLead: handleDeleteLead,
@@ -190,15 +246,15 @@ export function useLeads() {
     activateLead: handleActivateLead,
     deactivateLead: handleDeactivateLead,
 
-    // Filter and sort operations
+    // Filters and pagination
     setFilters: handleSetFilters,
     setSort: handleSetSort,
     setPagination: handleSetPagination,
     setSelectedLead: handleSetSelectedLead,
 
-    // Utility operations
+    // Utilities
     clearError: handleClearError,
-    resetState: handleResetState,
+    resetLeads: handleResetLeads,
     refreshLeads,
 
     // Computed values
@@ -207,6 +263,10 @@ export function useLeads() {
     isLastPage,
     totalPages,
     totalItems,
+
+    // Lead utilities
+    getLeadById,
+    getActiveLeads,
 
     // Business logic helpers
     canQualifyLead,

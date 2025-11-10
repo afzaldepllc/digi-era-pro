@@ -44,7 +44,7 @@ const hierarchyLevelSchema = z
   .default(1)
 
 // Status validation
-const roleStatusSchema = z.enum(["active", "inactive", "archived"])
+const roleStatusSchema = z.enum(["active", "inactive", "archived", "deleted"])
 
 // Actions enum with comprehensive list
 const actionSchema = z.enum([

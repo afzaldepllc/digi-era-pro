@@ -257,7 +257,7 @@ export function ContextPanel({
                         </AvatarFallback>
                       </Avatar>
                       {participant.isOnline && (
-                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
+                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
                       )}
                     </div>
                     

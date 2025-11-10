@@ -80,18 +80,18 @@ export function PermissionError({
     <div className={`flex items-center justify-center min-h-[400px] p-4 ${className}`}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-            <Lock className="h-6 w-6 text-red-600" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <Lock className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle className="text-xl font-semibold text-gray-900">
+          <CardTitle className="text-xl font-semibold text-foreground">
             {title}
           </CardTitle>
-          <CardDescription className="text-gray-600">
+          <CardDescription className="text-muted-foreground">
             {getContextualMessage()}
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center space-y-4">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             Contact your administrator if you believe this is an error.
           </div>
 
@@ -144,13 +144,13 @@ export function NetworkError({
     <div className={`flex items-center justify-center min-h-[400px] p-4 ${className}`}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100">
-            <AlertCircle className="h-6 w-6 text-yellow-600" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/20">
+            <AlertCircle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
           </div>
-          <CardTitle className="text-xl font-semibold text-gray-900">
+          <CardTitle className="text-xl font-semibold text-foreground">
             {title}
           </CardTitle>
-          <CardDescription className="text-gray-600">
+          <CardDescription className="text-muted-foreground">
             {message}
           </CardDescription>
         </CardHeader>
@@ -228,13 +228,13 @@ export function ErrorDisplay({
     <div className={`flex items-center justify-center min-h-[400px] p-4 ${className}`}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-            <AlertCircle className="h-6 w-6 text-red-600" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <AlertCircle className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle className="text-xl font-semibold text-gray-900">
+          <CardTitle className="text-xl font-semibold text-foreground">
             Something went wrong
           </CardTitle>
-          <CardDescription className="text-gray-600">
+          <CardDescription className="text-muted-foreground">
             {error?.error || error?.message || "An unexpected error occurred."}
           </CardDescription>
         </CardHeader>
@@ -292,10 +292,10 @@ export function BaseErrorDisplay({
   const errorMessage = typeof error === 'string' ? error : error.message || 'An unexpected error occurred';
 
   const variants = {
-    default: 'bg-gray-50 border-gray-200 text-gray-900',
-    destructive: 'bg-red-50 border-red-200 text-red-900',
-    warning: 'bg-yellow-50 border-yellow-200 text-yellow-900',
-    minimal: 'bg-transparent border-transparent text-red-600',
+    default: 'bg-muted border-border text-foreground',
+    destructive: 'bg-destructive/10 border-destructive/20 text-destructive',
+    warning: 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400',
+    minimal: 'bg-transparent border-transparent text-destructive',
   };
 
   const sizes = {
@@ -305,9 +305,9 @@ export function BaseErrorDisplay({
   };
 
   const iconVariants = {
-    default: 'text-gray-400',
-    destructive: 'text-red-400',
-    warning: 'text-yellow-400',
+    default: 'text-muted-foreground',
+    destructive: 'text-destructive',
+    warning: 'text-amber-500 dark:text-amber-400',
     minimal: 'text-red-500',
   };
 

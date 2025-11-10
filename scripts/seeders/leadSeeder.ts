@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { connectToDatabase } from '../migrations/migrationUtils'
 import Lead from '../../models/Lead'
 import User from '../../models/User'
 import Role from '../../models/Role'
@@ -288,6 +289,14 @@ export const leadSeeds: ILeadSeed[] = [
 
 export default async function seedLeads(): Promise<void> {
   try {
+    // Ensure database connection (reuse existing or create new)
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔌 Connecting to database...')
+      await connectToDatabase()
+    } else {
+      console.log('✅ Using existing database connection')
+    }
+
     console.log('🌱 Starting lead seeding...')
 
     // Clear existing leads - be very aggressive
@@ -303,6 +312,14 @@ export default async function seedLeads(): Promise<void> {
     await Lead.createCollection()
     console.log(`✅ Leads collection recreated`)
 
+    // Verify users exist in database
+    const totalUsers = await User.countDocuments()
+    console.log(`🔍 Total users in database: ${totalUsers}`)
+    
+    if (totalUsers === 0) {
+      throw new Error('No users found in database. Please seed users first.')
+    }
+
     // Get users to assign as creators (prefer sales/managers, fallback to any active user)
     let salesUsers = await User.find({
       $or: [
@@ -311,14 +328,26 @@ export default async function seedLeads(): Promise<void> {
       ]
     }).populate('department').limit(5)
 
+    console.log(`📊 Found ${salesUsers.length} sales/manager users`)
+
     if (salesUsers.length === 0) {
       console.warn('⚠️  No sales/manager users found, using any active users as creators')
       salesUsers = await User.find({ status: 'active' }).populate('department').limit(5)
+      console.log(`📊 Found ${salesUsers.length} active users`)
     }
 
     if (salesUsers.length === 0) {
-      throw new Error('No active users found to assign as lead creators. Please seed users first.')
+      // Final attempt - get ANY users
+      console.warn('⚠️  No active users found, getting any users...')
+      salesUsers = await User.find({}).populate('department').limit(5)
+      console.log(`📊 Found ${salesUsers.length} total users`)
     }
+
+    if (salesUsers.length === 0) {
+      throw new Error(`No users found to assign as lead creators. Total users in DB: ${totalUsers}. Please seed users first.`)
+    }
+
+    console.log(`✅ Using ${salesUsers.length} users as lead creators`)
 
     let createdCount = 0
     const qualifiedLeads: any[] = []

@@ -38,14 +38,14 @@ export const LEAD_CONSTANTS = {
   NOTES: { MAX_LENGTH: 2000 },
   TAGS: { MAX_LENGTH: 50, MAX_COUNT: 10 },
   STATUS: {
-    VALUES: ['active', 'inactive', 'qualified', 'unqualified'] as const,
+    VALUES: ['active', 'inactive', 'qualified', 'unqualified', 'deleted'] as const,
     DEFAULT: 'active' as const,
     CREATE_ALLOWED: ['active', 'inactive'] as const,
     TRANSITIONS: {
-      'active': ['inactive', 'qualified', 'unqualified'],
-      'inactive': ['active', 'qualified', 'unqualified'],
+      'active': ['inactive', 'qualified', 'unqualified', 'deleted'],
+      'inactive': ['active', 'qualified', 'unqualified', 'deleted'],
       'qualified': ['unqualified'],
-      'unqualified': [] // Terminal status
+      'unqualified': ['deleted'] // Terminal status
     }
   },
   SOURCE: {
@@ -152,17 +152,17 @@ const projectBudgetSchema = z
   .transform((val) => {
     // Handle empty/null/undefined cases
     if (val === undefined || val === null || val === '') return undefined;
-    
+
     // Handle string inputs
     if (typeof val === 'string') {
       // Remove any non-numeric characters except decimal point
       const cleaned = val.replace(/[^\d.-]/g, '');
       if (cleaned === '' || cleaned === '.') return undefined;
-      
+
       const parsed = parseFloat(cleaned);
       return isNaN(parsed) ? undefined : parsed;
     }
-    
+
     // Handle number inputs
     return typeof val === 'number' ? val : undefined;
   })
@@ -170,13 +170,13 @@ const projectBudgetSchema = z
     (val) => {
       // Allow undefined values (optional field)
       if (val === undefined) return true;
-      
+
       // Validate number range
-      return typeof val === 'number' && 
-             val >= LEAD_CONSTANTS.PROJECT.BUDGET.MIN && 
-             val <= LEAD_CONSTANTS.PROJECT.BUDGET.MAX;
+      return typeof val === 'number' &&
+        val >= LEAD_CONSTANTS.PROJECT.BUDGET.MIN &&
+        val <= LEAD_CONSTANTS.PROJECT.BUDGET.MAX;
     },
-    { 
+    {
       message: `Budget must be between ${LEAD_CONSTANTS.PROJECT.BUDGET.MIN} and ${LEAD_CONSTANTS.PROJECT.BUDGET.MAX}`,
     }
   )
@@ -597,7 +597,7 @@ export const updateLeadFormSchema = z.object({
   notes: z.string().optional(),
 
   // Project Information Section
-  projectName: z.string().min(LEAD_CONSTANTS.PROJECT.NAME.MIN_LENGTH).max(LEAD_CONSTANTS.PROJECT.NAME.MAX_LENGTH).optional(), 
+  projectName: z.string().min(LEAD_CONSTANTS.PROJECT.NAME.MIN_LENGTH).max(LEAD_CONSTANTS.PROJECT.NAME.MAX_LENGTH).optional(),
   projectType: z.enum(LEAD_CONSTANTS.PROJECT.TYPE.VALUES).optional(),
   complexity: z.enum(LEAD_CONSTANTS.PROJECT.COMPLEXITY.VALUES).optional(),
   projectBudget: z.string().optional(),
@@ -618,7 +618,7 @@ export const updateLeadFormSchema = z.object({
 export const updateLeadSchema = baseLeadSchema.partial().strict()
   .refine(data => {
     // At least one field must be provided for update
-    const values = Object.values(data).filter(value => 
+    const values = Object.values(data).filter(value =>
       value !== undefined && value !== null && value !== ''
     )
     return values.length > 0
@@ -662,15 +662,15 @@ export const leadQuerySchema = z.object({
   createdBy: z.union([objectIdSchema, z.literal(''), z.undefined()]).optional().transform(val => val === '' ? undefined : val),
   sortBy: z.enum(LEAD_CONSTANTS.SORT.ALLOWED_FIELDS).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  
+
   // Date filters
   createdAfter: z.coerce.date().optional(),
   createdBefore: z.coerce.date().optional(),
-  
+
   // Budget filters
   minBudget: z.coerce.number().min(0).optional(),
   maxBudget: z.coerce.number().min(0).optional(),
-  
+
   // Follow-up filters
   hasFollowUp: z.coerce.boolean().optional(),
   followUpOverdue: z.coerce.boolean().optional(),

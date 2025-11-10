@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { ProfessionalLoader } from "./professional-loader";
 
 export function RouteLoader() {
   const [isLoading, setIsLoading] = useState(false);
@@ -23,7 +24,9 @@ export function RouteLoader() {
 
   return (
     <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-      <div className="loader" />
+      <ProfessionalLoader
+        size="md"
+      />
     </div>
   );
 }

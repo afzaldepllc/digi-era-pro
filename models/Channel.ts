@@ -28,7 +28,6 @@ const ChannelSchema = new Schema<IChannel>({
     type: String,
     required: true,
     unique: true,
-    index: true
   },
   name: {
     type: String,
@@ -113,7 +112,7 @@ ChannelSchema.virtual('participantDetails', {
 })
 
 // Pre-save validation
-ChannelSchema.pre('save', async function(next) {
+ChannelSchema.pre('save', async function (next) {
   if (this.isModified('name')) {
     this.name = this.name.trim()
   }
@@ -139,7 +138,7 @@ ChannelSchema.pre('save', async function(next) {
 })
 
 // Static method to find or create DM channel
-ChannelSchema.statics.findOrCreateDM = async function(userId1: string, userId2: string) {
+ChannelSchema.statics.findOrCreateDM = async function (userId1: string, userId2: string) {
   const participants = [userId1, userId2].sort() // Sort for consistent channelId
   const channelId = `dm-${participants.join('-')}`
 
@@ -161,7 +160,7 @@ ChannelSchema.statics.findOrCreateDM = async function(userId1: string, userId2: 
 }
 
 // Static method to create department channel
-ChannelSchema.statics.createDepartmentChannel = async function(departmentId: string, departmentName: string, participants: string[]) {
+ChannelSchema.statics.createDepartmentChannel = async function (departmentId: string, departmentName: string, participants: string[]) {
   const channelId = `dept-${departmentId}`
 
   const channel = new this({
@@ -178,7 +177,7 @@ ChannelSchema.statics.createDepartmentChannel = async function(departmentId: str
 }
 
 // Static method to create project channel
-ChannelSchema.statics.createProjectChannel = async function(projectId: string, projectName: string, participants: string[], createdBy: string) {
+ChannelSchema.statics.createProjectChannel = async function (projectId: string, projectName: string, participants: string[], createdBy: string) {
   const channelId = `project-${projectId}`
 
   const channel = new this({
@@ -195,7 +194,7 @@ ChannelSchema.statics.createProjectChannel = async function(projectId: string, p
 }
 
 // Static method to get or create general channel
-ChannelSchema.statics.getOrCreateGeneralChannel = async function() {
+ChannelSchema.statics.getOrCreateGeneralChannel = async function () {
   const channelId = 'general-company'
 
   let channel = await this.findOne({ channelId, type: 'general', isActive: true })

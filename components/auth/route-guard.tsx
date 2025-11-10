@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/use-permissions'
 import { useToast } from '@/hooks/use-toast'
 import { PermissionError } from '@/components/ui/error-display'
+import { ProfessionalLoader } from '../ui/professional-loader'
 
 interface RouteGuardProps {
   children: React.ReactNode
@@ -43,7 +44,7 @@ export function RouteGuard({
     const timeoutId = setTimeout(() => {
       const hasRequiredPermission = hasPermission(resource, action)
       setHasCheckedPermissions(true)
-      
+
       if (!hasRequiredPermission) {
         if (showToast && !shouldRedirect) {
           toast({
@@ -52,7 +53,7 @@ export function RouteGuard({
             variant: 'destructive'
           })
         }
-        
+
         if (!showErrorPage && !shouldRedirect) {
           setShouldRedirect(true)
           // Add a delay to prevent immediate navigation conflicts
@@ -72,9 +73,11 @@ export function RouteGuard({
   // Show loading while checking permissions
   if (loading || !hasCheckedPermissions) {
     return (
-     <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-      <div className="loader" />
-    </div>
+      <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
+        <ProfessionalLoader
+          size="md"
+        />
+      </div>
     )
   }
 

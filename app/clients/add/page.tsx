@@ -4,21 +4,19 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch } from "@/hooks/redux";
-import { createClient } from "@/store/slices/clientSlice";
+import { useClients } from "@/hooks/use-clients";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
-import { CreateClientFormData, createClientFormSchema } from '@/lib/validations/client';
+import { CreateClientFormData, createClientFormSchema, CreateClientData } from '@/lib/validations/client';
 
 export default function AddClientPage() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const { createClient, actionLoading } = useClients();
 
   const form = useForm<CreateClientFormData>({
     resolver: zodResolver(createClientFormSchema),
@@ -77,54 +75,50 @@ export default function AddClientPage() {
   });
 
   const handleSubmit = async (data: CreateClientFormData) => {
-    setLoading(true);
     try {
       // Transform form data to API format
-      const cleanedData = {
-        ...data,
-        // Basic transformations
+      const cleanedData: CreateClientData = {
+        // Required fields from form
+        name: data.name,
+        email: data.email,
         phone: data.phone?.trim() || undefined,
         position: data.position?.trim() || undefined,
         company: data.company?.trim() || '',
-        industry: data.industry?.trim() || undefined,
-        companySize: data.companySize || undefined,
-        annualRevenue: data.annualRevenue ? Number(data.annualRevenue) : undefined,
-        employeeCount: data.employeeCount ? Number(data.employeeCount) : undefined,
+
+        // Status fields
+        status: data.status || 'qualified',
+        clientStatus: data.clientStatus,
 
         // Project interests - split comma-separated string
         projectInterests: data.projectInterests?.split(',').map(interest => interest.trim()).filter(interest => interest.length > 0) || [],
 
-        // Address transformations
-        address: {
-          street: data.address?.street?.trim() || undefined,
-          city: data.address?.city?.trim() || undefined,
-          state: data.address?.state?.trim() || undefined,
-          zipCode: data.address?.zipCode?.trim() || undefined,
-          country: data.address?.country?.trim() || undefined,
-        },
+        // Address
+        address: data.address ? {
+          street: data.address.street?.trim() || undefined,
+          city: data.address.city?.trim() || undefined,
+          state: data.address.state?.trim() || undefined,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          country: data.address.country?.trim() || undefined,
+        } : undefined,
 
-        // Social links transformations
-        socialLinks: {
-          linkedin: data.socialLinks?.linkedin?.trim() || undefined,
-          twitter: data.socialLinks?.twitter?.trim() || undefined,
-          github: data.socialLinks?.github?.trim() || undefined,
-        },
+        // Social links
+        socialLinks: data.socialLinks ? {
+          linkedin: data.socialLinks.linkedin?.trim() || undefined,
+          twitter: data.socialLinks.twitter?.trim() || undefined,
+          github: data.socialLinks.github?.trim() || undefined,
+        } : undefined,
 
         // Preferences
         preferences: data.preferences,
 
-        // Notes
-        notes: data.notes?.trim() || undefined,
-
-        // Client-specific fields
-        isClient: true,
+        // Required API fields with defaults
         emailVerified: false,
         phoneVerified: false,
         twoFactorEnabled: false,
         permissions: [],
       };
 
-      await dispatch(createClient(cleanedData)).unwrap();
+      await createClient(cleanedData);
 
       toast({
         title: "Success",
@@ -133,13 +127,28 @@ export default function AddClientPage() {
 
       router.push("/clients");
     } catch (error: any) {
+      console.error('Create client error:', error)
+
+      // Handle structured API errors
+      let errorMessage = "Failed to create client"
+      let errorDetails = ""
+
+      if (error?.error) {
+        errorMessage = error.error
+        if (error.details && Array.isArray(error.details)) {
+          errorDetails = error.details.join(', ')
+        } else if (error.details) {
+          errorDetails = typeof error.details === 'string' ? error.details : JSON.stringify(error.details)
+        }
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+
       toast({
         title: "Error",
-        description: error || "Failed to create client",
+        description: errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -195,6 +204,8 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Company Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "company",
@@ -219,6 +230,7 @@ export default function AddClientPage() {
           name: "companySize",
           label: "Company Size",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "startup", label: "Startup (1-10 employees)" },
             { value: "small", label: "Small (11-50 employees)" },
@@ -252,11 +264,14 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Client Status",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "clientStatus",
           label: "Client Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "qualified", label: "Qualified" },
@@ -270,6 +285,7 @@ export default function AddClientPage() {
           name: "status",
           label: "Account Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "active", label: "Active" },
@@ -285,6 +301,8 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Project Interests",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "projectInterests",
@@ -299,6 +317,8 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Address Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "address.street",
@@ -349,6 +369,8 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Social Links",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "socialLinks.linkedin",
@@ -381,11 +403,14 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Preferences",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "preferences.theme",
           label: "Theme",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "light", label: "Light" },
             { value: "dark", label: "Dark" },
@@ -417,6 +442,8 @@ export default function AddClientPage() {
     },
     {
       subform_title: "Additional Notes",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "notes",
@@ -455,7 +482,7 @@ export default function AddClientPage() {
           fields={formFields}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          loading={loading}
+          loading={actionLoading}
           submitText="Create Client"
           cancelText="Cancel"
         />

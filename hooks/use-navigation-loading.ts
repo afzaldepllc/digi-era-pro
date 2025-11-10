@@ -1,27 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export function useNavigationLoading() {
-  const router = useRouter();
-  const [isNavigating, setIsNavigating] = useState(false);
-
-  const handleNavigation = useCallback(
-    (path: string) => {
-      setIsNavigating(true);
-      // Add a small delay to ensure the loading state is visible
-      setTimeout(() => {
-        router.push(path);
-        // Reset the loading state after navigation
-        setTimeout(() => setIsNavigating(false), 250);
-      }, 100);
-    },
-    [router]
-  );
+  const { navigateTo, isNavigating } = useNavigation()
 
   return {
     isNavigating,
-    handleNavigation,
+    handleNavigation: navigateTo,
   };
 }

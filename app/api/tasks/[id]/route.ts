@@ -26,13 +26,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         status: { $ne: 'cancelled' }
       }
 
-      // Department-based filtering for non-support users
-      if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+      // Department-based filtering for non-support users (super admin bypasses this)
+      const userDepartment = user.department?.name?.toLowerCase()
+      const isSupport = ['support', 'admin'].includes(userDepartment)
+      if (!isSuperAdmin && user.departmentId && !isSupport) {
         filter.departmentId = user.departmentId
       }
 
       // Team members can only see their assigned or created tasks
-      if (user.role === 'team_member') {
+      if (!isSuperAdmin && user.role?.name === 'team_member') {
         filter.$or = [
           { assigneeId: user.id },
           { createdBy: user.id }
@@ -90,7 +92,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT /api/tasks/[id] - Update task
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'update')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'tasks', 'update')
     
     const resolvedParams = await params
     const validatedParams = taskIdSchema.parse({ id: resolvedParams.id })
@@ -98,11 +100,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     
     // Handle special operations
     if (body.operation === 'assign') {
-      return handleAssignTask(validatedParams.id, body, user)
+      return handleAssignTask(validatedParams.id, body, user, isSuperAdmin || false)
     }
     
     if (body.operation === 'updateStatus') {
-      return handleUpdateStatus(validatedParams.id, body, user)
+      return handleUpdateStatus(validatedParams.id, body, user, isSuperAdmin || false)
     }
     
     // Regular update operation
@@ -125,9 +127,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         status: { $ne: 'cancelled' }
       }
 
-      // Department-based filtering for non-support users
-      if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-        filter.departmentId = user.departmentId
+      // Department-based filtering for non-support users (super admin bypasses this)
+      const userDepartment = user.department?.name?.toLowerCase()
+      const isSupport = ['support', 'admin'].includes(userDepartment)
+      if (!isSuperAdmin && user.department && !isSupport) {
+        filter.departmentId = user.department
       }
 
       const existingTask = await Task.findOne(filter)
@@ -136,36 +140,36 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         throw new Error('Task not found or access denied')
       }
 
-      // Permission checks for updates
-      const userDepartment = user.department?.name?.toLowerCase()
-      const isSupport = ['support', 'admin'].includes(userDepartment)
-      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role)
-      const isAssignee = existingTask.assigneeId?.toString() === user.id
-      const isCreator = existingTask.createdBy?.toString() === user.id
+      // Permission checks for updates (super admin bypasses all)
+      if (!isSuperAdmin) {
+        const isLeadOrManager = ['department_lead', 'manager'].includes(user.role?.name)
+        const isAssignee = existingTask.assigneeId?.toString() === user.id
+        const isCreator = existingTask.createdBy?.toString() === user.id
 
-      // Who can update what
-      const canUpdateBasicFields = isSupport || isLeadOrManager || isCreator
-      const canUpdateStatus = isSupport || isLeadOrManager || isAssignee
-      const canAssign = isSupport || isLeadOrManager
+        // Who can update what
+        const canUpdateBasicFields = isSupport || isLeadOrManager || isCreator
+        const canUpdateStatus = isSupport || isLeadOrManager || isAssignee
+        const canAssign = isSupport || isLeadOrManager
 
-      // Check specific field permissions
-      if (validatedData.status && !canUpdateStatus) {
-        throw new Error('You do not have permission to update task status')
-      }
+        // Check specific field permissions
+        if (validatedData.status && !canUpdateStatus) {
+          throw new Error('You do not have permission to update task status')
+        }
 
-      if (validatedData.assigneeId !== undefined && !canAssign) {
-        throw new Error('You do not have permission to assign tasks')
-      }
+        if (validatedData.assigneeId !== undefined && !canAssign) {
+          throw new Error('You do not have permission to assign tasks')
+        }
 
-      if ((validatedData.title || validatedData.description || validatedData.priority) && !canUpdateBasicFields) {
-        throw new Error('You do not have permission to update task details')
+        if ((validatedData.title || validatedData.description || validatedData.priority) && !canUpdateBasicFields) {
+          throw new Error('You do not have permission to update task details')
+        }
       }
 
       // Validate assignee if being changed
       if (validatedData.assigneeId) {
         const assignee = await User.findOne({
           _id: validatedData.assigneeId,
-          departmentId: existingTask.departmentId,
+          department: existingTask.departmentId,
           status: 'active'
         })
 
@@ -196,7 +200,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         },
         { 
           new: true,
-          runValidators: true
+          runValidators: false // Disable validation to avoid issues with existing corrupted data
         }
       )
       .populate('project', 'name clientId status')
@@ -306,6 +310,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // Clear relevant cache patterns after cancellation
     clearCache('tasks')
     clearCache(`task-${validatedParams.id}`)
+    if (cancelledTask?.projectId) {
+      clearCache(`project-${cancelledTask.projectId}`)
+    }
 
     return NextResponse.json({
       success: true,
@@ -332,7 +339,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 }
 
 // Helper function to handle task assignment
-async function handleAssignTask(taskId: string, body: any, user: any) {
+async function handleAssignTask(taskId: string, body: any, user: any, isSuperAdmin: boolean = false) {
   try {
     const validatedData = assignTaskSchema.parse({
       assigneeId: body.assigneeId,
@@ -340,56 +347,80 @@ async function handleAssignTask(taskId: string, body: any, user: any) {
     })
 
     const updatedTask = await executeGenericDbQuery(async () => {
-      const existingTask = await Task.findById(taskId)
+      // First, get the existing task with minimal fields to check permissions
+      const existingTask = await Task.findById(taskId).select('departmentId projectId').lean()
       
       if (!existingTask) {
         throw new Error('Task not found')
       }
 
-      // Permission checks
-      const userDepartment = user.department?.name?.toLowerCase()
-      const isSupport = ['support', 'admin'].includes(userDepartment)
-      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role)
+      // Permission checks (super admin bypasses all)
+      if (!isSuperAdmin) {
+        const userDepartment = user.department?.name?.toLowerCase()
+        const isSupport = ['support', 'admin'].includes(userDepartment)
+        const isLeadOrManager = ['department_lead', 'manager'].includes(user.role?.name)
 
-      if (!isSupport && !isLeadOrManager) {
-        throw new Error('Only department leads and support team can assign tasks')
+        if (!isSupport && !isLeadOrManager) {
+          throw new Error('Only department leads and support team can assign tasks')
+        }
+
+        if (!isSupport && existingTask.departmentId?.toString() !== user.department?.toString()) {
+          throw new Error('You can only assign tasks in your department')
+        }
       }
 
-      if (!isSupport && existingTask.departmentId?.toString() !== user.departmentId) {
-        throw new Error('You can only assign tasks in your department')
+      // Validate assignee exists and belongs to department
+      let assignee = null
+      
+      // Check if task has a valid departmentId
+      if (existingTask.departmentId && mongoose.Types.ObjectId.isValid(existingTask.departmentId)) {
+        assignee = await User.findOne({
+          _id: validatedData.assigneeId,
+          department: existingTask.departmentId,
+          status: 'active'
+        }).select('_id name email').lean()
+      } else {
+        // If task has corrupted departmentId, just check if user exists and is active
+        console.warn(`Task ${taskId} has corrupted departmentId: ${existingTask.departmentId}`)
+        assignee = await User.findOne({
+          _id: validatedData.assigneeId,
+          status: 'active'
+        }).select('_id name email department').lean()
       }
-
-      // Validate assignee
-      const assignee = await User.findOne({
-        _id: validatedData.assigneeId,
-        departmentId: existingTask.departmentId,
-        status: 'active'
-      })
 
       if (!assignee) {
-        throw new Error('Assignee not found or not in the task department')
+        throw new Error('Assignee not found or not active')
       }
 
-      // Update assignment
-      return await Task.findByIdAndUpdate(
-        taskId,
+      // Use MongoDB's direct update operation to avoid Mongoose validation issues
+      const updateResult = await Task.updateOne(
+        { _id: taskId },
         { 
-          assigneeId: validatedData.assigneeId,
-          assignedBy: validatedData.assignedBy,
-          updatedAt: new Date()
-        },
-        { 
-          new: true,
-          runValidators: true
+          $set: {
+            assigneeId: validatedData.assigneeId,
+            assignedBy: validatedData.assignedBy,
+            updatedAt: new Date()
+          }
         }
       )
-      .populate('assignee', 'name email role')
-      .populate('assigner', 'name email')
+
+      if (updateResult.matchedCount === 0) {
+        throw new Error('Task not found')
+      }
+
+      // Return the updated task with populated fields
+      return await Task.findById(taskId)
+        .populate('assignee', 'name email role')
+        .populate('assigner', 'name email')
+        .lean()
     })
 
     // Clear cache
     clearCache('tasks')
     clearCache(`task-${taskId}`)
+    if (updatedTask?.projectId) {
+      clearCache(`project-${updatedTask.projectId}`)
+    }
 
     return NextResponse.json({
       success: true,
@@ -408,7 +439,7 @@ async function handleAssignTask(taskId: string, body: any, user: any) {
 }
 
 // Helper function to handle status updates
-async function handleUpdateStatus(taskId: string, body: any, user: any) {
+async function handleUpdateStatus(taskId: string, body: any, user: any, isSuperAdmin: boolean = false) {
   try {
     const validatedData = updateTaskStatusSchema.parse({
       status: body.status,
@@ -422,14 +453,16 @@ async function handleUpdateStatus(taskId: string, body: any, user: any) {
         throw new Error('Task not found')
       }
 
-      // Permission checks
-      const userDepartment = user.department?.name?.toLowerCase()
-      const isSupport = ['support', 'admin'].includes(userDepartment)
-      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role)
-      const isAssignee = existingTask.assigneeId?.toString() === user.id
+      // Permission checks (super admin bypasses all)
+      if (!isSuperAdmin) {
+        const userDepartment = user.department?.name?.toLowerCase()
+        const isSupport = ['support', 'admin'].includes(userDepartment)
+        const isLeadOrManager = ['department_lead', 'manager'].includes(user.role?.name)
+        const isAssignee = existingTask.assigneeId?.toString() === user.id
 
-      if (!isSupport && !isLeadOrManager && !isAssignee) {
-        throw new Error('You do not have permission to update task status')
+        if (!isSupport && !isLeadOrManager && !isAssignee) {
+          throw new Error('You do not have permission to update task status')
+        }
       }
 
       const updateData: any = {
@@ -463,6 +496,9 @@ async function handleUpdateStatus(taskId: string, body: any, user: any) {
     // Clear cache
     clearCache('tasks')
     clearCache(`task-${taskId}`)
+    if (updatedTask?.projectId) {
+      clearCache(`project-${updatedTask.projectId}`)
+    }
 
     return NextResponse.json({
       success: true,

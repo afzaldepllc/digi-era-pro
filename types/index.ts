@@ -1,6 +1,236 @@
 // Communication types - re-export from communication module
 export * from './communication'
 
+// Client types - defined locally to avoid circular imports
+export interface Client {
+  _id?: string
+  name: string
+  email: string
+  phone?: string
+  role: string
+  department: string
+  position?: string
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  permissions: string[]
+  isClient: true
+  leadId?: string
+  clientStatus: 'qualified' | 'unqualified'
+  company: string
+  projectInterests?: string[]
+  industry?: string
+  companySize?: 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
+  annualRevenue?: string
+  employeeCount?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+  }
+  socialLinks?: {
+    linkedin?: string
+    twitter?: string
+    github?: string
+  }
+  preferences?: {
+    theme: 'light' | 'dark' | 'system'
+    language: string
+    timezone: string
+    notifications: {
+      email: boolean
+      push: boolean
+      sms: boolean
+    }
+  }
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+  lastLogin?: Date
+  emailVerified: boolean
+  phoneVerified: boolean
+  twoFactorEnabled: boolean
+}
+
+export interface CreateClientData {
+  name: string
+  email: string
+  phone?: string
+  leadId?: string
+  company: string
+  projectInterests?: string[]
+  password?: string
+  role?: string
+  department?: string
+  position?: string
+  avatar?: string
+  address?: User['address']
+  socialLinks?: User['socialLinks']
+  preferences?: User['preferences']
+  metadata?: User['metadata']
+  clientStatus?: 'qualified' | 'unqualified'
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
+}
+
+export interface UpdateClientData extends Partial<CreateClientData> {
+  password?: string
+}
+
+export type ClientStatus = 'qualified' | 'unqualified'
+
+export type ClientSortField = 'name' | 'email' | 'company' | 'clientStatus' | 'status' | 'createdAt' | 'updatedAt'
+
+export interface ClientFilters {
+  search?: string
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | ''
+  clientStatus?: 'qualified' | 'unqualified' | ''
+  company?: string
+  hasLead?: boolean
+  qualifiedAfter?: Date
+  qualifiedBefore?: Date
+}
+
+export interface ClientSort {
+  field: ClientSortField
+  direction: 'asc' | 'desc'
+}
+
+export interface ClientPagination {
+  page: number
+  limit: number
+  total: number
+  pages: number
+}
+
+export interface ClientStats {
+  totalClients: number
+  qualifiedClients: number
+  unqualifiedClients: number
+  activeClients: number
+  newClientsThisMonth: number
+  clientsWithProjects: number
+}
+
+export interface CreateClientFormData {
+  name: string
+  email: string
+  phone?: string
+  position?: string
+  company: string
+  industry?: string
+  companySize?: '' | 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
+  annualRevenue?: string
+  employeeCount?: string
+  clientStatus: 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  projectInterests?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+  }
+  socialLinks?: {
+    linkedin?: string
+    twitter?: string
+    github?: string
+  }
+  preferences?: {
+    theme: 'light' | 'dark' | 'system'
+    language: string
+    timezone: string
+    notifications: {
+      email: boolean
+      push: boolean
+      sms: boolean
+    }
+  }
+  notes?: string
+}
+
+export interface UpdateClientFormData {
+  name: string
+  email: string
+  phone?: string
+  position?: string
+  company: string
+  industry?: string
+  companySize?: '' | 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
+  annualRevenue?: string
+  employeeCount?: string
+  clientStatus: 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  projectInterests?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+  }
+  socialLinks?: {
+    linkedin?: string
+    twitter?: string
+    github?: string
+  }
+  preferences?: {
+    theme: 'light' | 'dark' | 'system'
+    language: string
+    timezone: string
+    notifications: {
+      email: boolean
+      push: boolean
+      sms: boolean
+    }
+  }
+  notes?: string
+}
+
+export interface ClientStatusUpdate {
+  clientStatus: 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  reason?: string
+}
+
+export interface CreateClientFromLead {
+  leadId: string
+  createdBy?: string
+  password?: string
+  projectInterests?: string[]
+  notes?: string
+}
+
+export interface ClientQueryParams {
+  page: number
+  limit: number
+  search?: string
+  clientStatus?: 'qualified' | 'unqualified' | ''
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | ''
+  hasLead?: boolean
+  company?: string
+  sortBy: ClientSortField
+  sortOrder: 'asc' | 'desc'
+  qualifiedAfter?: Date
+  qualifiedBefore?: Date
+  isClient: true
+}
+
+export interface ClientIdParams {
+  id: string
+}
+
+export interface BulkClientOperation {
+  clientIds: string[]
+  operation: 'updateStatus' | 'assignProject' | 'bulkNote'
+  data?: {
+    clientStatus?: 'qualified' | 'unqualified'
+    status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
+    projectId?: string
+    notes?: string
+  }
+}
+
 // Permission interface
 export interface Permission {
   resource: string
@@ -54,7 +284,7 @@ export interface User {
   legacyRole?: "admin" | "user" | "manager" | "hr" | "finance" | "sales" // For backward compatibility
   avatar?: string
   phone?: string
-  department: string | Department // Reference to Department ID or populated Department object
+  department: Department // Reference to Department ID or populated Department object
   position?: string
   status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" // Extended for clients
   permissions: string[]
@@ -144,14 +374,14 @@ export interface Department {
   _id?: string
   name: string
   description?: string
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'deleted'
   createdAt?: Date | string
   updatedAt?: Date | string
 }
 
 export interface DepartmentFilters {
   search?: string
-  status?: 'active' | 'inactive' | ''
+  status?: 'active' | 'inactive' | 'deleted' | ''
 }
 
 export interface DepartmentSort {
@@ -186,7 +416,7 @@ export interface CreateRoleData {
 export interface CreateDepartmentData {
   name?: string
   description?: string
-  status?: 'active' | 'inactive'
+  status?: 'active' | 'inactive' | 'deleted'
 }
 
 export interface UpdateDepartmentData extends Partial<CreateDepartmentData> {
@@ -266,7 +496,7 @@ export interface Lead {
   estimatedHours?: number
 
   // Lead Management
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   createdBy: string | User // Reference to User (sales agent)
   assignedTo?: string | User // Current assignee
   clientId?: string | User // Reference to User (populated after qualification)
@@ -402,88 +632,8 @@ export interface FetchLeadsParams {
 // CLIENT TYPES (Extended User)
 // =============================================================================
 
-export interface Client extends Omit<User, 'status'> {
-  // Override status to include client statuses
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
-
-  // Client-specific fields
-  isClient: true // Always true for clients
-  leadId?: string | Lead // Reference to Lead model (for clients created from leads)
-  clientStatus: 'qualified' | 'unqualified' // Client-specific status
-  company: string // Required for clients
-  projectInterests?: string[] // Areas of interest for projects
-
-  // Virtual fields (populated)
-  leadDetails?: Lead
-}
-
-export interface CreateClientData {
-  // Basic user fields
-  name: string
-  email: string
-  phone?: string
-
-  // Client-specific fields
-  leadId?: string
-  company: string
-  projectInterests?: string[]
-
-  // Optional fields
-  password?: string
-  role?: string
-  department?: string
-  position?: string
-  avatar?: string
-  address?: User['address']
-  socialLinks?: User['socialLinks']
-  preferences?: User['preferences']
-  metadata?: User['metadata']
-
-  // Client status fields
-  clientStatus?: 'qualified' | 'unqualified'
-  status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
-}
-
-export interface UpdateClientData extends Partial<CreateClientData> {
-  password?: string // Allow password updates
-}
-
-export interface ClientFilters {
-  search?: string
-  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | ''
-  clientStatus?: 'qualified' | 'unqualified' | ''
-  company?: string
-  hasLead?: boolean
-  qualifiedAfter?: Date
-  qualifiedBefore?: Date
-}
-
-export interface ClientSort {
-  field: 'name' | 'email' | 'company' | 'clientStatus' | 'status' | 'createdAt' | 'updatedAt'
-  direction: 'asc' | 'desc'
-}
-
-export interface ClientStats {
-  totalClients: number
-  qualifiedClients: number
-  unqualifiedClients: number
-  activeClients: number
-  newClientsThisMonth: number
-  clientsWithProjects: number
-}
-
-export interface ClientStatusUpdate {
-  clientStatus: 'qualified' | 'unqualified'
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
-  reason?: string
-}
-
-export interface FetchClientsParams {
-  page?: number
-  limit?: number
-  filters?: ClientFilters
-  sort?: ClientSort
-}
+// All client types are now imported from validations/client.ts
+// No local definitions needed
 
 // =============================================================================
 // API RESPONSE TYPES
@@ -624,6 +774,16 @@ export interface Project {
     _id: string
     name: string
     status: string
+  }>
+  departmentTasks?: Array<{
+    departmentId: string
+    departmentName: string
+    taskCount: number
+    tasks: Array<{
+      _id: string
+      title: string
+      status: string
+    }>
   }>
   creator?: {
     _id: string

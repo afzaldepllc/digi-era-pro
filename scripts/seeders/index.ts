@@ -41,15 +41,15 @@ async function runSeeders() {
     console.log('\n📁 STEP 6: Seeding Projects')
     console.log('-' .repeat(40))
     await seedProjects()
+  //  in future taskSeeder will be uncommented to seed tasks as well
+    // // Step 7: Seed Tasks (Based on projects and departments)
+    // console.log('\n✅ STEP 7: Seeding Tasks')
+    // console.log('-' .repeat(40))
+    // await seedTasks()
 
-    // Step 7: Seed Tasks (Based on projects and departments)
-    console.log('\n✅ STEP 7: Seeding Tasks')
-    console.log('-' .repeat(40))
-    await seedTasks()
-
-    console.log('\n' + '=' .repeat(60))
-    console.log('🎉 COMPREHENSIVE DATABASE SEEDING COMPLETE!')
-    console.log('=' .repeat(60))
+    // console.log('\n' + '=' .repeat(60))
+    // console.log('🎉 COMPREHENSIVE DATABASE SEEDING COMPLETE!')
+    // console.log('=' .repeat(60))
     
     console.log('\n📊 SEEDING SUMMARY:')
     console.log('   ✅ System Permissions: Configured')
@@ -58,7 +58,7 @@ async function runSeeders() {
     console.log('   ✅ Users: 32+ users across all roles and departments')
     console.log('   ✅ Leads: 50+ leads with qualification flow')
     console.log('   ✅ Projects: Projects created from qualified clients')
-    console.log('   ✅ Tasks: Tasks and sub-tasks assigned to departments')
+    // console.log('   ✅ Tasks: Tasks and sub-tasks assigned to departments')
 
     console.log('\n🎭 ROLE HIERARCHY (High to Low):')
     console.log('   1. Super Administrator (Level 10)')

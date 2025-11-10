@@ -5,6 +5,7 @@ import Lead from "@/models/Lead"
 import User from "@/models/User"
 import { createLeadSchema, leadQuerySchema } from "@/lib/validations/lead"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 // Cache TTL for lead queries
 const CACHE_TTL = 30000 // 30 seconds for volatile lead data
@@ -37,8 +38,11 @@ export async function GET(request: NextRequest) {
 
     const validatedParams = leadQuerySchema.parse(queryParams)
 
-    // Build MongoDB filter
-    const filter: any = {}
+    // Build MongoDB filter with soft delete filtering
+    let filter: any = {}
+
+    // Apply soft delete filter - exclude deleted records unless super admin
+    filter = addSoftDeleteFilter(filter, isSuperAdmin)
 
     // Apply user filters - sales agents can only see their own leads unless super admin
     if (!isSuperAdmin) {
@@ -129,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     // Execute parallel queries with caching
     const cacheKey = `leads-${JSON.stringify({ filter, sort, skip, limit: validatedParams.limit })}`
-    
+
     const [leads, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
         return await Lead.find(filter)
@@ -171,7 +175,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching leads:', error)
-    
+
     if (error.name === 'ZodError') {
       return NextResponse.json({
         success: false,
@@ -216,10 +220,10 @@ export async function POST(request: NextRequest) {
     // Create lead with automatic connection management
     const lead = await executeGenericDbQuery(async () => {
       // Check for duplicate email
-      const existingLead = await Lead.findOne({ 
+      const existingLead = await Lead.findOne({
         email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') }
       })
-      
+
       if (existingLead) {
         throw new Error('A lead with this email already exists')
       }
@@ -260,6 +264,16 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Invalid lead data',
         details: error.errors
+      }, { status: 400 })
+    }
+
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map((err: any) => err.message)
+      return NextResponse.json({
+        success: false,
+        error: 'Lead validation failed',
+        details: validationErrors
       }, { status: 400 })
     }
 

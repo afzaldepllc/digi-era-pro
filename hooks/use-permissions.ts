@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { 
   ClientPermissionManager, 
@@ -24,48 +24,50 @@ interface UsePermissionsReturn {
 export function usePermissions(): UsePermissionsReturn {
   const { data: session, status } = useSession()
   const [permissions, setPermissions] = useState<Permission[]>([])
-  const [loading, setLoading] = useState(true) // Start with loading true
-  const [permissionManager, setPermissionManager] = useState<ClientPermissionManager | null>(null)
+  const [loading, setLoading] = useState(false) // Start false for instant render
   
-  // Load permissions from session or localStorage immediately when available
+  // Memoize permission manager to prevent recreation on every render
+  const permissionManager = useMemo(() => {
+    if (!session?.user) return null
+    
+    const storedUser = getUserData()
+    const sessionUser = session?.user as any
+    const user = storedUser || sessionUser
+    const userRole = user?.role
+    
+    return new ClientPermissionManager(permissions, userRole)
+  }, [permissions, session?.user])
+  
+  // Load permissions asynchronously without blocking render
   useEffect(() => {
-    if (status === 'loading') {
-      setLoading(true)
-      return
-    }
+    if (status === 'loading') return
 
-    if (session?.user) {
-      // Get user info from localStorage first, then fallback to session
-      const storedUser = getUserData()
-      const sessionUser = session?.user as any
-      const user = storedUser || sessionUser
-      const userRole = user?.role
-      
-      let userPermissions: Permission[] = []
+    // Use queueMicrotask to defer permission loading
+    queueMicrotask(() => {
+      if (session?.user) {
+        // Get user info from localStorage first, then fallback to session
+        const storedUser = getUserData()
+        const sessionUser = session?.user as any
+        const user = storedUser || sessionUser
+        
+        let userPermissions: Permission[] = []
 
-      // Try to get permissions from session first
-      if (user?.permissions && Array.isArray(user.permissions)) {
-        userPermissions = user.permissions
-        storePermissions(userPermissions)
-      } else {
-        // Fallback to localStorage if session doesn't have permissions
-        userPermissions = getStoredPermissions()
+        // Try to get permissions from session first
+        if (user?.permissions && Array.isArray(user.permissions)) {
+          userPermissions = user.permissions
+          storePermissions(userPermissions)
+        } else {
+          // Fallback to localStorage if session doesn't have permissions
+          userPermissions = getStoredPermissions()
+        }
+        
+        setPermissions(userPermissions)
+      } else if (status === 'unauthenticated') {
+        // Clear permissions when no session
+        setPermissions([])
+        clearStoredPermissions()
       }
-      
-      setPermissions(userPermissions)
-      setPermissionManager(new ClientPermissionManager(userPermissions, userRole))
-      
-      // Add a small delay to ensure everything is properly set
-      setTimeout(() => {
-        setLoading(false)
-      }, 100)
-    } else if (status === 'unauthenticated') {
-      // Clear permissions when no session
-      setPermissions([])
-      setPermissionManager(null)
-      clearStoredPermissions()
-      setLoading(false)
-    }
+    })
   }, [session, status])
 
   const hasPermission = useCallback((resource: string, action: string, condition?: string): boolean => {

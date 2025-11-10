@@ -1,17 +1,26 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
-  fetchDepartments,
-  createDepartment,
-  updateDepartment,
-  deleteDepartment,
+  setDepartments,
+  setSelectedDepartment,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
   setFilters,
   setSort,
   setPagination,
-  setSelectedDepartment,
-  clearError,
+  setStats, // ✅ ADD THIS IMPORT
   resetState,
 } from '@/store/slices/departmentSlice'
+import {
+  useGenericQuery,
+  useGenericQueryById,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
 import type {
   FetchDepartmentsParams,
   CreateDepartmentData,
@@ -32,30 +41,81 @@ export function useDepartments() {
     filters,
     sort,
     pagination,
+    stats, // ✅ ADD THIS LINE
   } = useAppSelector((state) => state.departments)
 
-  // Fetch operations - Fixed dependency array to avoid infinite re-renders
+  // Define options for generic hooks
+  const departmentOptions: UseGenericQueryOptions<any> = {
+    entityName: 'departments',
+    baseUrl: '/api/departments',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setDepartments(entities)),
+      setEntity: (entity) => dispatch(setSelectedDepartment(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)), // ✅ ADD THIS LINE
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
+
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  const allDepartmentsParams = useMemo(() => ({
+    page: 1,
+    limit: 100,
+    filters: {},
+    sort: {
+      field: 'name' as const,
+      direction: 'asc' as const,
+    },
+  }), [])
+
+  // Use generic hooks
+  const { data: fetchedDepartments, isLoading: queryLoading, refetch: refetchDepartments } = useGenericQuery(
+    departmentOptions,
+    queryParams,
+    true
+  )
+
+  // Separate query for fetching all departments (for filters/dropdowns)
+  const { data: allDepartments } = useGenericQuery(
+    departmentOptions,
+    allDepartmentsParams,
+    true
+  )
+
+  const createMutation = useGenericCreate(departmentOptions)
+  const updateMutation = useGenericUpdate(departmentOptions)
+  const deleteMutation = useGenericDelete(departmentOptions)
+
+  // Fetch operations - Stable function that doesn't change on re-renders
   const handleFetchDepartments = useCallback((params?: FetchDepartmentsParams) => {
-    return dispatch(fetchDepartments(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
+    refetchDepartments()
+  }, [refetchDepartments])
 
   // CRUD operations
   const handleCreateDepartment = useCallback((departmentData: CreateDepartmentData) => {
-    return dispatch(createDepartment(departmentData))
-  }, [dispatch])
+    return createMutation.mutateAsync(departmentData)
+  }, [createMutation])
 
   const handleUpdateDepartment = useCallback((id: string, data: UpdateDepartmentData) => {
-    return dispatch(updateDepartment({ id, data }))
-  }, [dispatch])
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
   const handleDeleteDepartment = useCallback((departmentId: string) => {
-    return dispatch(deleteDepartment(departmentId))
-  }, [dispatch])
+    return deleteMutation.mutateAsync(departmentId)
+  }, [deleteMutation])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<DepartmentFilters>) => {
@@ -105,14 +165,16 @@ export function useDepartments() {
 
   return {
     // State
-    departments,
+    departments: fetchedDepartments || departments,
+    allDepartments: allDepartments || [],
     selectedDepartment,
-    loading,
+    loading: queryLoading || loading,
     actionLoading,
     error,
     filters,
     sort,
     pagination,
+    stats, // ✅ ADD THIS LINE
 
     // Actions
     fetchDepartments: handleFetchDepartments,

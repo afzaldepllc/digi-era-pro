@@ -10,12 +10,12 @@ export interface IProject extends Document {
   startDate?: Date
   endDate?: Date
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  
+
   // Fields from lead project info
   projectType?: string
   requirements?: string
   timeline?: string
-  
+
   // Enhanced professional CRM fields
   budgetBreakdown?: {
     development?: number
@@ -25,7 +25,7 @@ export interface IProject extends Document {
     maintenance?: number
     contingency?: number
   }
-  
+
   stakeholders?: {
     projectManager?: mongoose.Types.ObjectId
     teamMembers?: mongoose.Types.ObjectId[]
@@ -36,7 +36,7 @@ export interface IProject extends Document {
       responsibilities?: string[]
     }[]
   }
-  
+
   milestones?: {
     title: string
     description?: string
@@ -45,7 +45,7 @@ export interface IProject extends Document {
     completedAt?: Date
     deliverables?: string[]
   }[]
-  
+
   phases?: {
     name: string
     description?: string
@@ -54,7 +54,7 @@ export interface IProject extends Document {
     status: 'pending' | 'in_progress' | 'completed'
     deliverables?: string[]
   }[]
-  
+
   deliverables?: {
     name: string
     description?: string
@@ -63,7 +63,7 @@ export interface IProject extends Document {
     assignedTo?: mongoose.Types.ObjectId
     acceptanceCriteria?: string[]
   }[]
-  
+
   risks?: {
     description: string
     impact: 'low' | 'medium' | 'high' | 'critical'
@@ -71,14 +71,14 @@ export interface IProject extends Document {
     mitigation?: string
     status: 'identified' | 'mitigated' | 'occurred'
   }[]
-  
+
   progress?: {
     overall: number // 0-100
     phases?: { phaseId: string; progress: number }[]
     lastUpdated?: Date
     notes?: string
   }
-  
+
   resources?: {
     estimatedHours?: number
     actualHours?: number
@@ -86,7 +86,7 @@ export interface IProject extends Document {
     tools?: string[]
     externalResources?: string[]
   }
-  
+
   qualityMetrics?: {
     requirementsCoverage?: number
     defectDensity?: number
@@ -94,7 +94,7 @@ export interface IProject extends Document {
     onTimeDelivery?: boolean
     withinBudget?: boolean
   }
-  
+
   // Meta fields
   createdBy: mongoose.Types.ObjectId
   approvedBy?: mongoose.Types.ObjectId
@@ -109,7 +109,7 @@ const ProjectSchema = new Schema<IProject>({
     required: [true, "Project name is required"],
     trim: true,
     maxlength: [200, "Name cannot exceed 200 characters"],
-    index: true,
+    // index: true, // Removed - covered by text search index
   },
   description: {
     type: String,
@@ -120,18 +120,18 @@ const ProjectSchema = new Schema<IProject>({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: [true, "Client is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   departmentIds: [{
     type: Schema.Types.ObjectId,
     ref: 'Department',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   }],
   status: {
     type: String,
     enum: ['pending', 'active', 'completed', 'approved', 'inactive'],
     default: 'pending',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   budget: {
     type: Number,
@@ -147,9 +147,9 @@ const ProjectSchema = new Schema<IProject>({
     type: String,
     enum: ['low', 'medium', 'high', 'urgent'],
     default: 'medium',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
-  
+
   // Fields from lead project info
   projectType: {
     type: String,
@@ -166,7 +166,7 @@ const ProjectSchema = new Schema<IProject>({
     trim: true,
     maxlength: [500, "Timeline cannot exceed 500 characters"],
   },
-  
+
   // Enhanced professional CRM fields
   budgetBreakdown: {
     development: { type: Number, min: [0, "Development budget must be positive"] },
@@ -176,7 +176,7 @@ const ProjectSchema = new Schema<IProject>({
     maintenance: { type: Number, min: [0, "Maintenance budget must be positive"] },
     contingency: { type: Number, min: [0, "Contingency budget must be positive"] },
   },
-  
+
   stakeholders: {
     projectManager: { type: Schema.Types.ObjectId, ref: 'User' },
     teamMembers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
@@ -187,7 +187,7 @@ const ProjectSchema = new Schema<IProject>({
       responsibilities: [{ type: String, trim: true, maxlength: [200, "Responsibility cannot exceed 200 characters"] }],
     }],
   },
-  
+
   milestones: [{
     title: { type: String, required: true, trim: true, maxlength: [200, "Milestone title cannot exceed 200 characters"] },
     description: { type: String, trim: true, maxlength: [500, "Milestone description cannot exceed 500 characters"] },
@@ -196,7 +196,7 @@ const ProjectSchema = new Schema<IProject>({
     completedAt: { type: Date },
     deliverables: [{ type: String, trim: true, maxlength: [200, "Deliverable cannot exceed 200 characters"] }],
   }],
-  
+
   phases: [{
     name: { type: String, required: true, trim: true, maxlength: [100, "Phase name cannot exceed 100 characters"] },
     description: { type: String, trim: true, maxlength: [500, "Phase description cannot exceed 500 characters"] },
@@ -205,7 +205,7 @@ const ProjectSchema = new Schema<IProject>({
     status: { type: String, enum: ['pending', 'in_progress', 'completed'], default: 'pending' },
     deliverables: [{ type: String, trim: true, maxlength: [200, "Deliverable cannot exceed 200 characters"] }],
   }],
-  
+
   deliverables: [{
     name: { type: String, required: true, trim: true, maxlength: [200, "Deliverable name cannot exceed 200 characters"] },
     description: { type: String, trim: true, maxlength: [500, "Deliverable description cannot exceed 500 characters"] },
@@ -214,7 +214,7 @@ const ProjectSchema = new Schema<IProject>({
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
     acceptanceCriteria: [{ type: String, trim: true, maxlength: [300, "Acceptance criterion cannot exceed 300 characters"] }],
   }],
-  
+
   risks: [{
     description: { type: String, required: true, trim: true, maxlength: [500, "Risk description cannot exceed 500 characters"] },
     impact: { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'medium' },
@@ -222,7 +222,7 @@ const ProjectSchema = new Schema<IProject>({
     mitigation: { type: String, trim: true, maxlength: [500, "Mitigation cannot exceed 500 characters"] },
     status: { type: String, enum: ['identified', 'mitigated', 'occurred'], default: 'identified' },
   }],
-  
+
   progress: {
     overall: { type: Number, min: [0, "Progress cannot be negative"], max: [100, "Progress cannot exceed 100"] },
     phases: [{
@@ -232,7 +232,7 @@ const ProjectSchema = new Schema<IProject>({
     lastUpdated: { type: Date },
     notes: { type: String, trim: true, maxlength: [1000, "Progress notes cannot exceed 1000 characters"] },
   },
-  
+
   resources: {
     estimatedHours: { type: Number, min: [0, "Estimated hours cannot be negative"] },
     actualHours: { type: Number, min: [0, "Actual hours cannot be negative"] },
@@ -240,7 +240,7 @@ const ProjectSchema = new Schema<IProject>({
     tools: [{ type: String, trim: true, maxlength: [100, "Tool name cannot exceed 100 characters"] }],
     externalResources: [{ type: String, trim: true, maxlength: [200, "External resource cannot exceed 200 characters"] }],
   },
-  
+
   qualityMetrics: {
     requirementsCoverage: { type: Number, min: [0, "Requirements coverage cannot be negative"], max: [100, "Requirements coverage cannot exceed 100"] },
     defectDensity: { type: Number, min: [0, "Defect density cannot be negative"] },
@@ -248,13 +248,13 @@ const ProjectSchema = new Schema<IProject>({
     onTimeDelivery: { type: Boolean, default: false },
     withinBudget: { type: Boolean, default: false },
   },
-  
+
   // Meta fields
   createdBy: {
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: [true, "Creator is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   approvedBy: {
     type: Schema.Types.ObjectId,
@@ -277,8 +277,8 @@ ProjectSchema.index({ createdBy: 1, status: 1 })
 ProjectSchema.index({ priority: 1, status: 1 })
 
 // Text search index
-ProjectSchema.index({ 
-  name: 'text', 
+ProjectSchema.index({
+  name: 'text',
   description: 'text',
   requirements: 'text'
 }, {
@@ -322,42 +322,72 @@ ProjectSchema.virtual('taskCount', {
   count: true,
 })
 
+// Virtual for all tasks
+ProjectSchema.virtual('tasks', {
+  ref: 'Task',
+  localField: '_id',
+  foreignField: 'projectId',
+})
+
+// Virtual for main tasks only (not sub-tasks)
+ProjectSchema.virtual('mainTasks', {
+  ref: 'Task',
+  localField: '_id',
+  foreignField: 'projectId',
+  match: { type: 'task' }
+})
+
+// Virtual for sub-tasks only
+ProjectSchema.virtual('subTasks', {
+  ref: 'Task',
+  localField: '_id',
+  foreignField: 'projectId',
+  match: { type: 'sub-task' }
+})
+
+// Virtual for project phases (from Phase model)
+ProjectSchema.virtual('projectPhases', {
+  ref: 'Phase',
+  localField: '_id',
+  foreignField: 'projectId',
+})
+
 // Pre-save validation
-ProjectSchema.pre('save', async function(next) {
+ProjectSchema.pre('save', async function (next) {
   // Validate dates
   if (this.startDate && this.endDate && this.startDate > this.endDate) {
     const error = new Error('Start date cannot be after end date')
     return next(error)
   }
-  
+
   // Validate client is qualified
   if (this.isModified('clientId')) {
     const User = mongoose.model('User')
     const client = await User.findById(this.clientId)
-    
+
     // if (!client || client.role !== 'client' || client.status !== 'qualified') {
     //   const error = new Error('Client must be qualified to create project')
     //   return next(error)
     // }
   }
-  
+
   // Auto approve for certain statuses
   if (this.isModified('status') && this.status === 'approved' && !this.approvedAt) {
     this.approvedAt = new Date()
   }
-  
+
   next()
 })
 
 // Static methods
-ProjectSchema.statics.findByClient = function(clientId: string, options = {}) {
+ProjectSchema.statics.findByClient = function (clientId: string, options = {}) {
   return this.find({ clientId, ...options })
     .populate('client', 'name email')
     .populate('departments', 'name status')
     .sort({ createdAt: -1 })
 }
 
-ProjectSchema.statics.findByDepartment = function(departmentId: string, options = {}) {
+ProjectSchema.statics.findByDepartment = function (departmentId: string, options = {}) {
   return this.find({ departmentIds: departmentId, ...options })
     .populate('client', 'name email')
     .populate('creator', 'name email')

@@ -12,6 +12,9 @@ import leadSlice from "./slices/leadSlice"
 import clientSlice from "./slices/clientSlice"
 import projectSlice from "./slices/projectSlice"
 import taskSlice from "./slices/taskSlice"
+import phaseSlice from "./slices/phaseSlice"
+import milestoneSlice from "./slices/milestoneSlice"
+import analyticsSlice from "./slices/analyticsSlice"
 
 const persistConfig = {
   key: "root",
@@ -30,6 +33,9 @@ const rootReducer = combineReducers({
   clients: clientSlice,
   projects: projectSlice,
   tasks: taskSlice,
+  phases: phaseSlice,
+  milestones: milestoneSlice,
+  analytics: analyticsSlice,
 })
 
 const persistedReducer = persistReducer(persistConfig, rootReducer)
@@ -46,5 +52,6 @@ export const store = configureStore({
 
 export const persistor = persistStore(store)
 
-export type RootState = ReturnType<typeof store.getState>
+// export type RootState = ReturnType<typeof store.getState>
+export type RootState = ReturnType<typeof rootReducer>
 export type AppDispatch = typeof store.dispatch

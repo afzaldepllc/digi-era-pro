@@ -5,6 +5,7 @@ import Lead from "@/models/Lead"
 import User from "@/models/User"
 import { updateLeadSchema, leadIdSchema, leadStatusUpdateSchema } from "@/lib/validations/lead"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -14,13 +15,18 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'read')
-    
+
     const resolvedParams = await params
     const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
 
-    // Fetch lead with caching
+    // Fetch lead with caching and soft delete filtering
     const lead = await executeGenericDbQuery(async () => {
-      const foundLead = await Lead.findById(validatedParams.id)
+      // Apply soft delete filter - only super admins can see deleted leads
+      const filter = addSoftDeleteFilter({
+        _id: validatedParams.id
+      }, isSuperAdmin)
+
+      const foundLead = await Lead.findOne(filter)
         .populate('createdBy', 'name email department')
         .populate('clientId', 'name email')
         .populate('qualifiedBy', 'name email')
@@ -33,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // Check permissions - sales agents can only access their own leads
       if (!isSuperAdmin) {
         const salesUser = await User.findById(user._id).populate('department', 'name')
-        
+
         const deptName = (salesUser?.department as any)?.name?.toLowerCase()
         if (deptName !== 'sales') {
           throw new Error('Access denied. Only sales department members can access leads.')
@@ -89,7 +95,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'update')
-    
+
     const resolvedParams = await params
     const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
@@ -103,17 +109,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Update lead with automatic connection management
     const updatedLead = await executeGenericDbQuery(async () => {
-      // Find the existing lead
-      const existingLead = await Lead.findById(validatedParams.id)
-      
+      // Find the existing lead with soft delete filtering
+      const filter = addSoftDeleteFilter({
+        _id: validatedParams.id
+      }, isSuperAdmin)
+
+      const existingLead = await Lead.findOne(filter)
+
       if (!existingLead) {
-        throw new Error('Lead not found')
+        throw new Error('Lead not found or has been deleted')
       }
 
       // Check permissions - sales agents can only update their own leads
       if (!isSuperAdmin) {
         const salesUser = await User.findById(user._id).populate('department', 'name')
-        
+
         const deptName = (salesUser?.department as any)?.name?.toLowerCase()
         if (deptName !== 'sales') {
           throw new Error('Access denied. Only sales department members can update leads.')
@@ -130,7 +140,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') },
           _id: { $ne: validatedParams.id }
         })
-        
+
         if (existingEmailLead) {
           throw new Error('A lead with this email already exists')
         }
@@ -138,7 +148,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
       // Update the lead
       Object.assign(existingLead, validatedData)
-      
+
       return await existingLead.save()
     })
 
@@ -207,10 +217,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const validatedParams = leadIdSchema.parse({ id: (params as any).id })
 
-    // Soft delete the lead (set status to inactive)
-    const deletedLead = await executeGenericDbQuery(async () => {
+    // Check permissions and business rules before deletion
+    await executeGenericDbQuery(async () => {
       const existingLead = await Lead.findById(validatedParams.id)
-      
+
       if (!existingLead) {
         throw new Error('Lead not found')
       }
@@ -218,7 +228,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       // Check permissions - sales agents can only delete their own leads
       if (!isSuperAdmin) {
         const salesUser = await User.findById(user._id).populate('department', 'name')
-        
+
         const deptName = (salesUser?.department as any)?.name?.toLowerCase()
         if (deptName !== 'sales') {
           throw new Error('Access denied. Only sales department members can delete leads.')
@@ -229,25 +239,37 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         }
       }
 
-      // Cannot delete qualified leads
-      if (existingLead.status === 'qualified') {
-        throw new Error('Cannot delete qualified leads. Please unqualify first.')
+      // Cannot delete qualified leads that have active clients
+      if (existingLead.status === 'qualified' && existingLead.clientId) {
+        // Check if client still exists and is active
+        const clientExists = await User.findOne({
+          _id: existingLead.clientId,
+          isClient: true,
+          status: { $ne: 'deleted' }
+        })
+
+        if (clientExists) {
+          throw new Error('Cannot delete qualified lead: an active client is linked to this lead. Delete the client first.')
+        }
       }
 
-      // Soft delete by setting status to inactive
-      existingLead.status = 'inactive'
-      
-      return await existingLead.save()
+      return existingLead
     })
 
-    // Clear relevant cache patterns after deletion
-    clearCache('leads')
-    clearCache(`lead-${validatedParams.id}`)
+    // Use generic soft delete utility
+    const deleteResult = await performSoftDelete('lead', validatedParams.id, userEmail)
+
+    if (!deleteResult.success) {
+      return NextResponse.json({
+        success: false,
+        error: deleteResult.message
+      }, { status: 400 })
+    }
 
     return NextResponse.json({
       success: true,
-      data: deletedLead,
-      message: 'Lead deleted successfully'
+      data: deleteResult.data,
+      message: deleteResult.message
     })
 
   } catch (error: any) {
@@ -288,16 +310,21 @@ async function handleStatusUpdate(leadId: string, statusData: any, user: any, is
     const validatedStatusData = leadStatusUpdateSchema.parse(statusData)
 
     const result = await executeGenericDbQuery(async () => {
-      const existingLead = await Lead.findById(leadId)
-      
+      // Apply soft delete filter - prevent status updates on deleted leads unless super admin
+      const filter = addSoftDeleteFilter({
+        _id: leadId
+      }, isSuperAdmin)
+
+      const existingLead = await Lead.findOne(filter)
+
       if (!existingLead) {
-        throw new Error('Lead not found')
+        throw new Error('Lead not found or has been deleted')
       }
 
       // Check permissions
       if (!isSuperAdmin) {
         const salesUser = await User.findById(user._id).populate('department', 'name')
-        
+
         const deptName = (salesUser?.department as any)?.name?.toLowerCase()
         if (deptName !== 'sales') {
           throw new Error('Access denied. Only sales department members can update lead status.')
@@ -326,7 +353,7 @@ async function handleStatusUpdate(leadId: string, statusData: any, user: any, is
 
         // Create client user from lead data
         const clientUser = await User.createClientFromLead(existingLead, user._id)
-        
+
         // Update lead with client reference
         existingLead.clientId = clientUser._id as mongoose.Types.ObjectId
         existingLead.qualifiedBy = user._id
@@ -349,7 +376,7 @@ async function handleStatusUpdate(leadId: string, statusData: any, user: any, is
 
       // Update status
       existingLead.status = validatedStatusData.status
-      
+
       await existingLead.save()
 
       // Return lead with populated data for qualification
@@ -370,8 +397,8 @@ async function handleStatusUpdate(leadId: string, statusData: any, user: any, is
     return NextResponse.json({
       success: true,
       data: result,
-      message: validatedStatusData.status === 'qualified' 
-        ? 'Lead qualified and client created successfully' 
+      message: validatedStatusData.status === 'qualified'
+        ? 'Lead qualified and client created successfully'
         : `Lead status updated to ${validatedStatusData.status}`,
       ...(validatedStatusData.status === 'qualified' && result && result.clientId && {
         clientId: (result.clientId as any)._id,

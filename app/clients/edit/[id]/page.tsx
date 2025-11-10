@@ -5,13 +5,8 @@ import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch, useAppSelector } from "@/hooks/redux";
-import {
-  fetchClientById,
-  updateClient,
-  clearError,
-  setSelectedClient
-} from "@/store/slices/clientSlice";
+import { useClients } from "@/hooks/use-clients";
+import { useGenericQueryById } from "@/hooks/use-generic-query";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
@@ -19,34 +14,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, FolderPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
-import { updateClientFormSchema, UpdateClientFormData } from '@/lib/validations/client';
+import { updateClientFormSchema, UpdateClientFormData, UpdateClientData } from '@/lib/validations/client';
 
 export default function EditClientPage() {
   const router = useRouter();
   const params = useParams();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-
   const clientId = params?.id as string;
 
-  
-  // Redux state
-  const {
-    selectedClient,
-    actionLoading,
-    error
-  } = useAppSelector((state) => state.clients);
+  const { updateClient, actionLoading } = useClients();
+
+  // Fetch client data using generic query
+  const { data: client, isLoading: clientLoading } = useGenericQueryById({
+    entityName: 'clients',
+    baseUrl: '/api/clients',
+    reduxDispatchers: {
+      setEntity: (client) => {
+        // Client data will be used directly from the query
+      },
+    },
+  }, clientId);
 
   const form = useForm<UpdateClientFormData>({
     resolver: zodResolver(updateClientFormSchema),
     defaultValues: {
       name: "",
+      email: "",
       phone: "",
       position: "",
       company: "",
       industry: "",
-      companySize: undefined,
+      companySize: "",
       annualRevenue: "",
       employeeCount: "",
       clientStatus: "qualified",
@@ -70,7 +68,7 @@ export default function EditClientPage() {
         timezone: "UTC",
         notifications: {
           email: true,
-          push: true,
+          push: false,
           sms: false,
         },
       },
@@ -78,105 +76,91 @@ export default function EditClientPage() {
     },
   });
 
-  // Load client data
-  useEffect(() => {
-    if (clientId) {
-      dispatch(fetchClientById(clientId));
-    }
-  }, [dispatch, clientId]);
+  // Load client data - REMOVED: TanStack Query handles automatic fetching
+  // useEffect(() => {
+  //   if (clientId) {
+  //     dispatch(fetchClientById(clientId));
+  //   }
+  // }, [dispatch, clientId]);
 
   // Populate form when client data is loaded
   useEffect(() => {
-    if (selectedClient) {
+    if (client) {
       form.reset({
-        name: selectedClient.name || "",
-        phone: selectedClient.phone || "",
-        position: selectedClient.position || "",
-        company: selectedClient.company || "",
-        industry: (selectedClient as any).industry || "",
-        companySize: (selectedClient as any).companySize && ['startup', 'small', 'medium', 'large', 'enterprise'].includes((selectedClient as any).companySize) ? (selectedClient as any).companySize : "",
-        annualRevenue: (selectedClient as any).annualRevenue || "",
-        employeeCount: (selectedClient as any).employeeCount || "",
-        clientStatus: selectedClient.clientStatus || "qualified",
-        status: selectedClient.status || "active",
-                projectInterests: selectedClient.projectInterests ? selectedClient.projectInterests.join(", ") : "",
+        name: client.name || "",
+        email: client.email || "",
+        phone: client.phone || "",
+        position: client.position || "",
+        company: client.company || "",
+        industry: (client as any).industry || "",
+        companySize: (client as any).companySize && ['startup', 'small', 'medium', 'large', 'enterprise'].includes((client as any).companySize) ? (client as any).companySize as "startup" | "small" | "medium" | "large" | "enterprise" : "",
+        annualRevenue: (client as any).annualRevenue ? String((client as any).annualRevenue) : "",
+        employeeCount: (client as any).employeeCount ? String((client as any).employeeCount) : "",
+        clientStatus: client.clientStatus || "qualified",
+        status: client.status || "active",
+        projectInterests: client.projectInterests ? client.projectInterests.join(", ") : "",
         address: {
-          street: selectedClient.address?.street || "",
-          city: selectedClient.address?.city || "",
-          state: selectedClient.address?.state || "",
-          zipCode: selectedClient.address?.zipCode || "",
-          country: selectedClient.address?.country || "",
+          street: client.address?.street || "",
+          city: client.address?.city || "",
+          state: client.address?.state || "",
+          zipCode: client.address?.zipCode || "",
+          country: client.address?.country || "",
         },
         socialLinks: {
-          linkedin: selectedClient.socialLinks?.linkedin || "",
-          twitter: selectedClient.socialLinks?.twitter || "",
-          github: selectedClient.socialLinks?.github || "",
+          linkedin: client.socialLinks?.linkedin || "",
+          twitter: client.socialLinks?.twitter || "",
+          github: client.socialLinks?.github || "",
         },
         preferences: {
-          theme: selectedClient.preferences?.theme || "system",
-          language: selectedClient.preferences?.language || "en",
-          timezone: selectedClient.preferences?.timezone || "UTC",
+          theme: client.preferences?.theme || "system",
+          language: client.preferences?.language || "en",
+          timezone: client.preferences?.timezone || "UTC",
           notifications: {
-            email: selectedClient.preferences?.notifications?.email ?? true,
-            push: selectedClient.preferences?.notifications?.push ?? false,
-            sms: selectedClient.preferences?.notifications?.sms ?? false,
+            email: client.preferences?.notifications?.email ?? true,
+            push: client.preferences?.notifications?.push ?? false,
+            sms: client.preferences?.notifications?.sms ?? false,
           },
         },
-        notes: (selectedClient as any).notes || "",
+        notes: (client as any).notes || "",
       });
     }
-  }, [selectedClient, form]);
+  }, [client, form]);
 
-  // Handle errors
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error",
-        description: error,
-        variant: "destructive",
-      });
-      dispatch(clearError());
-    }
-  }, [error, toast, dispatch]);
+  // Handle errors - REMOVED: TanStack Query handles errors automatically
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      dispatch(setSelectedClient(null));
-    };
-  }, [dispatch]);
+  // Cleanup on unmount - REMOVED: Not needed with TanStack Query
 
   const handleSubmit = async (data: UpdateClientFormData) => {
-    if (!selectedClient || !selectedClient._id) return;
+    console.log('Form data being sent: form ready to submit');
+    console.log('Form data being sent:133', data);
+    console.log('clientId:134', clientId);
+    if (!clientId) return;
 
-    setLoading(true);
     try {
       console.log('Form data being sent:', data);
 
       // Clean up data
-            const cleanedData = {
-              ...data,
-              phone: data.phone?.trim() || undefined,
-              projectInterests: data.projectInterests ? data.projectInterests.split(',').map(interest => interest.trim()).filter(interest => interest.length > 0) : [],
-              preferences: data.preferences ? {
-                // ensure required preference fields are present with sensible defaults
-                theme: data.preferences.theme ?? "system",
-                language: data.preferences.language ?? "en",
-                timezone: data.preferences.timezone ?? "UTC",
-                notifications: {
-                  email: data.preferences.notifications?.email ?? true,
-                  push: data.preferences.notifications?.push ?? false,
-                  sms: data.preferences.notifications?.sms ?? false,
-                },
-              } : undefined,
-            };
+      const cleanedData: UpdateClientData = {
+        ...data,
+        phone: data.phone?.trim() || undefined,
+        projectInterests: data.projectInterests ? data.projectInterests.split(',').map(interest => interest.trim()).filter(interest => interest.length > 0) : [],
+        companySize: (data.companySize && data.companySize.length > 0) ? data.companySize as "startup" | "small" | "medium" | "large" | "enterprise" : undefined,
+        annualRevenue: data.annualRevenue || undefined,
+        employeeCount: data.employeeCount || undefined,
+        preferences: data.preferences ? {
+          // ensure required preference fields are present with sensible defaults
+          theme: data.preferences.theme ?? "system",
+          language: data.preferences.language ?? "en",
+          timezone: data.preferences.timezone ?? "UTC",
+          notifications: {
+            email: data.preferences.notifications?.email ?? true,
+            push: data.preferences.notifications?.push ?? false,
+            sms: data.preferences.notifications?.sms ?? false,
+          },
+        } : undefined,
+      };
 
-      const result = await dispatch(
-        updateClient({
-          id: selectedClient._id!,
-          data: cleanedData
-        })
-      ).unwrap();
+      const result = await updateClient(clientId, cleanedData);
 
       toast({
         title: "Success",
@@ -185,13 +169,28 @@ export default function EditClientPage() {
 
       router.push("/clients");
     } catch (error: any) {
+      console.error('Update client error:', error)
+
+      // Handle structured API errors
+      let errorMessage = "Failed to update client"
+      let errorDetails = ""
+
+      if (error?.error) {
+        errorMessage = error.error
+        if (error.details && Array.isArray(error.details)) {
+          errorDetails = error.details.join(', ')
+        } else if (error.details) {
+          errorDetails = typeof error.details === 'string' ? error.details : JSON.stringify(error.details)
+        }
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+
       toast({
         title: "Error",
-        description: error || "Failed to update client",
+        description: errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -247,6 +246,8 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Company Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "company",
@@ -271,6 +272,7 @@ export default function EditClientPage() {
           name: "companySize",
           label: "Company Size",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "startup", label: "Startup (1-10 employees)" },
             { value: "small", label: "Small (11-50 employees)" },
@@ -304,11 +306,14 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Client Status",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "clientStatus",
           label: "Client Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "qualified", label: "Qualified" },
@@ -322,6 +327,7 @@ export default function EditClientPage() {
           name: "status",
           label: "Account Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "active", label: "Active" },
@@ -337,6 +343,8 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Project Interests",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "projectInterests",
@@ -351,6 +359,8 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Address Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "address.street",
@@ -401,6 +411,8 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Social Links",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "socialLinks.linkedin",
@@ -433,11 +445,14 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Preferences",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "preferences.theme",
           label: "Theme",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "light", label: "Light" },
             { value: "dark", label: "Dark" },
@@ -493,6 +508,8 @@ export default function EditClientPage() {
     },
     {
       subform_title: "Additional Notes",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "notes",
@@ -508,7 +525,7 @@ export default function EditClientPage() {
   ];
 
   // Show loading skeleton while fetching client data
-  if (actionLoading && !selectedClient) {
+  if (clientLoading) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -544,7 +561,7 @@ export default function EditClientPage() {
   }
 
   // Show error if client not found
-  if (!actionLoading && !selectedClient) {
+  if (!clientLoading && !client) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -572,14 +589,14 @@ export default function EditClientPage() {
     <div className="space-y-6">
       <PageHeader
         title="Edit Client"
-        subtitle={`Update information for "${selectedClient?.name}"`}
+        subtitle={`Update information for "${client?.name}"`}
         showAddButton={false}
         actions={
           <div className="flex gap-2">
-            {selectedClient?.status === 'qualified' && (
+            {client?.status === 'qualified' && (
               <Button
-                onClick={() => router.push(`/projects/add?clientId=${selectedClient._id}&prefill=true`)}
-                disabled={loading}
+                onClick={() => router.push(`/projects/add?clientId=${client._id}&prefill=true`)}
+                disabled={actionLoading}
               >
                 <FolderPlus className="mr-2 h-4 w-4" />
                 Create Project
@@ -588,7 +605,7 @@ export default function EditClientPage() {
             <Button
               variant="outline"
               onClick={handleCancel}
-              disabled={isNavigating || loading}
+              disabled={isNavigating || actionLoading}
             >
               <ArrowLeft className={`h-4 w-4 mr-2 ${isNavigating ? 'animate-spin' : ''}`} />
               {isNavigating ? 'Going back...' : 'Back to Clients'}
@@ -603,7 +620,7 @@ export default function EditClientPage() {
           fields={formFields}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          loading={loading}
+          loading={actionLoading}
           submitText="Update Client"
           cancelText="Cancel"
         />

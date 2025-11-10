@@ -4,6 +4,7 @@
  */
 
 import { toast } from "@/hooks/use-toast"
+import { handleAPIError as parseAPIError, ParsedError, formatValidationErrors } from './error-handler'
 
 export interface APIError {
   success: false
@@ -78,34 +79,50 @@ export function getErrorMessage(error: any): string {
  * Handle API errors with user-friendly toasts
  */
 export function handleAPIError(error: any, defaultMessage?: string) {
-  const message = defaultMessage || getErrorMessage(error)
+  const parsedError = parseAPIError(error)
+
+  // Use default message if provided and no specific error message
+  const message = defaultMessage || parsedError.message
 
   // Determine toast variant based on error type
   let variant: "default" | "destructive" = "destructive"
 
-  if (isAPIError(error)) {
-    switch (error.code) {
-      case "AUTH_REQUIRED":
-      case "SESSION_EXPIRED":
-        variant = "default"
-        break
-      case "PERMISSION_DENIED":
-      case "INSUFFICIENT_PERMISSIONS":
-        variant = "destructive"
-        break
-      default:
-        variant = "destructive"
+  if (parsedError.isValidationError) {
+    // Show validation errors in a more detailed way
+    const validationMessage = formatValidationErrors(parsedError.validationErrors || [])
+    toast({
+      title: "Validation Error",
+      description: validationMessage || message,
+      variant: "destructive",
+    })
+  } else {
+    // Handle other error types
+    if (parsedError.code) {
+      switch (parsedError.code) {
+        case "AUTH_REQUIRED":
+        case "SESSION_EXPIRED":
+          variant = "default"
+          break
+        case "PERMISSION_DENIED":
+        case "INSUFFICIENT_PERMISSIONS":
+          variant = "destructive"
+          break
+        default:
+          variant = "destructive"
+      }
     }
+
+    toast({
+      title: "Error",
+      description: message,
+      variant,
+    })
   }
 
-  toast({
-    title: "Error",
-    description: message,
-    variant,
-  })
-
   // Log error for debugging
-  console.error('API Error:', error)
+  console.log('API Error:', error)
+
+  return parsedError
 }
 
 /**
@@ -130,7 +147,7 @@ export async function apiRequest<T = any>(
   url: string,
   options: RequestInit = {},
   showErrorToast = true
-): Promise<T> {
+): Promise<T | null> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -140,7 +157,33 @@ export async function apiRequest<T = any>(
       ...options,
     })
 
-    const data = await response.json()
+    let data
+    try {
+      data = await response.json()
+    } catch (e) {
+      // If the response is not valid JSON (e.g., HTML error page), create an error object
+      data = {
+        success: false,
+        error: `Server returned ${response.status} ${response.statusText}`,
+        statusCode: response.status,
+        timestamp: new Date().toISOString()
+      }
+    }
+
+    // Handle empty responses
+    if (data === null || (typeof data === 'object' && Object.keys(data).length === 0)) {
+      if (!response.ok) {
+        data = {
+          success: false,
+          error: `Server returned ${response.status} ${response.statusText}`,
+          statusCode: response.status,
+          timestamp: new Date().toISOString()
+        }
+      } else {
+        // Empty successful response
+        return null
+      }
+    }
 
     // Handle API error responses
     if (!response.ok || isAPIError(data)) {
@@ -199,7 +242,11 @@ export function useAPIRequest() {
     options: RequestInit = {},
     showErrorToast = true
   ): Promise<T> => {
-    return apiRequest<T>(url, options, showErrorToast)
+    const result = await apiRequest<T>(url, options, showErrorToast)
+    if (result === null) {
+      throw new Error("API returned null result")
+    }
+    return result
   }
 
   const get = async <T = any>(url: string, showErrorToast = true): Promise<T> => {

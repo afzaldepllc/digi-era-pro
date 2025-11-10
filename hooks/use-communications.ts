@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import { useSocket } from '@/components/providers/socket-provider'
 import {
-  fetchChannels,
-  fetchMessages,
-  sendMessage,
-  markMessageAsRead,
-  createChannel,
   setActiveChannel,
   clearActiveChannel,
+  setChannels,
+  setMessages,
   addMessage,
   updateMessage,
   setTyping,
@@ -21,27 +18,33 @@ import {
   setFilters,
   setSort,
   setPagination,
+  setLoading,
+  setActionLoading,
+  setMessagesLoading,
   clearError,
   setError,
   addNotification,
   clearNotifications,
   resetState
 } from '@/store/slices/communicationSlice'
+import {
+  useGenericQuery,
+  useGenericCreate,
+  useGenericUpdate,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
 import type {
   FetchMessagesParams,
   CreateMessageData,
   CreateChannelData,
-  UpdateMessageData,
   CommunicationFilters,
   CommunicationSort,
   ITypingIndicator,
   IParticipant,
-  ICommunication
+  ICommunication,
+  IChannel
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
-
-// Global flag to prevent multiple fetches across component remounts
-let hasFetchedChannelsGlobal = false
 
 export function useCommunications() {
   const dispatch = useAppDispatch()
@@ -68,6 +71,78 @@ export function useCommunications() {
     unreadCount,
     notifications
   } = useAppSelector((state) => state.communications)
+
+  // Define options for generic hooks - Channels
+  const channelOptions: UseGenericQueryOptions<IChannel> = useMemo(() => ({
+    entityName: 'channels',
+    baseUrl: '/api/communications/channels',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setChannels(entities as IChannel[])),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }), [dispatch])
+
+  // Define options for generic hooks - Messages
+  const messageOptions: UseGenericQueryOptions<ICommunication> = useMemo(() => ({
+    entityName: 'messages',
+    baseUrl: '/api/communications/messages',
+    reduxDispatchers: {
+      setLoading: (loading) => dispatch(setMessagesLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }), [dispatch])
+
+  // Memoize query params to prevent unnecessary re-renders
+  const channelQueryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  const messageQueryParams = useMemo(() => ({
+    page: 1,
+    limit: 50,
+    filters: activeChannelId ? { channelId: activeChannelId } : {},
+    sort: {
+      field: 'createdAt' as const,
+      direction: 'asc' as const,
+    },
+  }), [activeChannelId])
+
+  // Use generic hooks for channels
+  const { 
+    data: fetchedChannels, 
+    isLoading: channelsQueryLoading, 
+    refetch: refetchChannels 
+  } = useGenericQuery(channelOptions, channelQueryParams, true)
+
+  // Use generic hooks for messages (only fetch when activeChannelId exists)
+  const { 
+    data: fetchedMessages, 
+    isLoading: messagesQueryLoading, 
+    refetch: refetchMessages 
+  } = useGenericQuery(messageOptions, messageQueryParams, !!activeChannelId)
+
+  // Update Redux with fetched messages when they arrive
+  useEffect(() => {
+    if (fetchedMessages && activeChannelId) {
+      dispatch(setMessages({ channelId: activeChannelId, messages: fetchedMessages }))
+    }
+  }, [fetchedMessages, activeChannelId, dispatch])
+
+  // Mutations
+  const createChannelMutation = useGenericCreate<IChannel>(channelOptions)
+  const sendMessageMutation = useGenericCreate<ICommunication>(messageOptions)
+  const updateMessageMutation = useGenericUpdate<ICommunication>(messageOptions)
 
   // Socket.io integration
   useEffect(() => {
@@ -171,16 +246,16 @@ export function useCommunications() {
 
   // Channel operations
   const handleFetchChannels = useCallback((params: { isInternal?: boolean } = {}) => {
-    return dispatch(fetchChannels(params))
-  }, [dispatch])
+    // Update filters if needed
+    if (params.isInternal !== undefined) {
+      dispatch(setFilters({ isInternal: params.isInternal }))
+    }
+    return refetchChannels()
+  }, [dispatch, refetchChannels])
 
   const handleSelectChannel = useCallback((channelId: string) => {
     console.log('handleSelectChannel called with:', channelId)
     dispatch(setActiveChannel(channelId))
-    
-    // Fetch messages for the selected channel
-    console.log('Dispatching fetchMessages for channelId:', channelId)
-    dispatch(fetchMessages({ channelId }))
   }, [dispatch])
 
   const handleClearChannel = useCallback(() => {
@@ -189,22 +264,23 @@ export function useCommunications() {
 
   // Message operations
   const handleFetchMessages = useCallback((params: FetchMessagesParams) => {
-    return dispatch(fetchMessages(params))
-  }, [dispatch])
+    // The generic hook will automatically refetch when activeChannelId changes
+    return refetchMessages()
+  }, [refetchMessages])
 
   const handleSendMessage = useCallback(async (messageData: CreateMessageData) => {
     try {
-      const result = await dispatch(sendMessage(messageData))
+      const result = await sendMessageMutation.mutateAsync(messageData)
       
-      if (sendMessage.fulfilled.match(result)) {
-        toast({
-          title: "Message sent",
-          description: "Your message has been sent successfully",
-        })
-        return result.payload.data
-      } else {
-        throw new Error(result.payload as string)
-      }
+      toast({
+        title: "Message sent",
+        description: "Your message has been sent successfully",
+      })
+      
+      // Refetch messages to update the list
+      await refetchMessages()
+      
+      return result
     } catch (error: any) {
       toast({
         title: "Error",
@@ -213,21 +289,21 @@ export function useCommunications() {
       })
       throw error
     }
-  }, [dispatch, toast])
+  }, [sendMessageMutation, toast, refetchMessages])
 
   const handleCreateChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
-      const result = await dispatch(createChannel(channelData))
+      const result = await createChannelMutation.mutateAsync(channelData)
       
-      if (createChannel.fulfilled.match(result)) {
-        toast({
-          title: "Channel created",
-          description: "New conversation started successfully",
-        })
-        return result.payload.data
-      } else {
-        throw new Error(result.payload as string)
-      }
+      toast({
+        title: "Channel created",
+        description: "New conversation started successfully",
+      })
+      
+      // Refetch channels to update the list
+      await refetchChannels()
+      
+      return result
     } catch (error: any) {
       toast({
         title: "Error",
@@ -236,11 +312,14 @@ export function useCommunications() {
       })
       throw error
     }
-  }, [dispatch, toast])
+  }, [createChannelMutation, toast, refetchChannels])
 
   const handleMarkAsRead = useCallback((messageId: string, channelId: string) => {
-    return dispatch(markMessageAsRead({ messageId, channelId }))
-  }, [dispatch])
+    return updateMessageMutation.mutateAsync({ 
+      id: messageId, 
+      data: { isRead: true } 
+    })
+  }, [updateMessageMutation])
 
   const handleUpdateMessage = useCallback((channelId: string, messageId: string, updates: Partial<ICommunication>) => {
     dispatch(updateMessage({ channelId, messageId, updates }))
@@ -389,14 +468,6 @@ export function useCommunications() {
     return filtered
   }, [sortedChannels, filters])
 
-  // Auto-refresh channels on mount
-  useEffect(() => {
-    if (!hasFetchedChannelsGlobal) {
-      hasFetchedChannelsGlobal = true
-      handleFetchChannels()
-    }
-  }, [])
-
   // Clear error after 5 seconds
   useEffect(() => {
     if (error) {
@@ -411,7 +482,7 @@ export function useCommunications() {
   return {
     // State
     channels: filteredChannels,
-    allChannels: channels,
+    allChannels: fetchedChannels || channels,
     activeChannelId,
     selectedChannel,
     messages: activeMessages,
@@ -421,9 +492,9 @@ export function useCommunications() {
     allTypingUsers: typingUsers,
     isChannelListExpanded,
     isContextPanelVisible,
-    loading,
-    actionLoading,
-    messagesLoading,
+    loading: channelsQueryLoading || loading,
+    actionLoading: createChannelMutation.isPending || sendMessageMutation.isPending || actionLoading,
+    messagesLoading: messagesQueryLoading || messagesLoading,
     error,
     filters,
     sort,

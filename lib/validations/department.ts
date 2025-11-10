@@ -7,10 +7,10 @@ export const DEPARTMENT_CONSTANTS = {
     MAX_LENGTH: 100,
   },
   DESCRIPTION: {
-    MAX_LENGTH: 500,
+    MAX_LENGTH: 2000, // Increased to handle HTML content
   },
   STATUS: {
-    VALUES: ['active', 'inactive'] as const,
+    VALUES: ['active', 'inactive', 'deleted'] as const,
     DEFAULT: 'active' as const,
   },
   PAGINATION: {
@@ -65,14 +65,15 @@ export const baseDepartmentSchema = z.object({
     'Department name is required'
   ),
 
-  description: createStringValidator({
-    max: DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH,
-    required: false,
-  }).nullable().optional().transform((val) => {
-    // Convert empty strings and null to undefined
-    if (!val || val.trim() === '') return undefined
-    return val.trim()
-  }),
+  description: z.string()
+    .max(DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH, `Description cannot exceed ${DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH} characters`)
+    .nullable()
+    .optional()
+    .transform((val) => {
+      // Convert empty strings, null, and empty HTML to undefined
+      if (!val || val.trim() === '' || val.trim() === '<p><br></p>') return undefined
+      return val.trim()
+    }),
 
   status: z.enum(DEPARTMENT_CONSTANTS.STATUS.VALUES, {
     errorMap: () => ({ message: 'Status must be either active or inactive' })

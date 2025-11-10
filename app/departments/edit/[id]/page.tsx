@@ -1,45 +1,41 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useParams } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch, useAppSelector } from "@/hooks/redux";
-import {
-  fetchDepartmentById,
-  updateDepartment,
-  clearError,
-  setSelectedDepartment
-} from "@/store/slices/departmentSlice";
+import { useGenericQueryById } from "@/hooks/use-generic-query";
+import { useDepartments } from "@/hooks/use-departments";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { handleAPIError } from "@/lib/utils/api-client";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
-import { updateDepartmentSchema, UpdateDepartmentData } from '@/lib/validations/department'
-
-
+import { updateDepartmentSchema, UpdateDepartmentData } from '@/lib/validations/department';
 
 export default function EditDepartmentPage() {
   const router = useRouter();
   const params = useParams();
-  const dispatch = useAppDispatch();
+  const departmentId = params?.id as string;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const departmentId = params?.id as string;
+  // Use generic query to fetch department
+  const genericOptions = {
+    entityName: 'departments',
+    baseUrl: '/api/departments',
+    reduxDispatchers: {
+      setEntity: (department: any) => { },
+    },
+  };
+  const { data: department, isLoading: departmentLoading, error } = useGenericQueryById(genericOptions, departmentId, !!departmentId);
+  console.log(department)
 
- 
-
-  // Redux state
-  const {
-    selectedDepartment,
-    actionLoading,
-    error
-  } = useAppSelector((state) => state.departments);
+  // Use updateDepartment from the custom hook
+  const { updateDepartment, actionLoading } = useDepartments();
 
   const form = useForm<UpdateDepartmentData>({
     resolver: zodResolver(updateDepartmentSchema),
@@ -50,56 +46,31 @@ export default function EditDepartmentPage() {
     },
   });
 
-  // Load department data
-  useEffect(() => {
-    if (departmentId) {
-      dispatch(fetchDepartmentById(departmentId));
-    }
-  }, [dispatch, departmentId]);
-
   // Populate form when department data is loaded
   useEffect(() => {
-    if (selectedDepartment) {
+    if (department) {
       form.reset({
-        name: selectedDepartment.name,
-        description: selectedDepartment.description || "",
-        status: selectedDepartment.status,
+        name: department.name,
+        description: department.description || "",
+        status: department.status,
       });
     }
-  }, [selectedDepartment, form]);
+  }, [department, form]);
 
   // Handle errors
   useEffect(() => {
     if (error) {
-      toast({
-        title: "Error",
-        description: error,
-        variant: "destructive",
-      });
-      dispatch(clearError());
+      handleAPIError(error, "Failed to load department");
     }
-  }, [error, toast, dispatch]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      dispatch(setSelectedDepartment(null));
-    };
-  }, [dispatch]);
+  }, [error]);
 
   const handleSubmit = async (data: UpdateDepartmentData) => {
-    if (!selectedDepartment || !selectedDepartment._id) return;
+    if (!department || !department._id) return;
 
     setLoading(true);
     try {
-      console.log('Form data being sent:', data);
-
-      const result = await dispatch(
-        updateDepartment({
-          id: selectedDepartment._id!,
-          data
-        })
-      ).unwrap();
+      // @ts-ignore
+      await updateDepartment(department._id, data);
 
       toast({
         title: "Success",
@@ -108,14 +79,10 @@ export default function EditDepartmentPage() {
 
       router.push("/departments");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error || "Failed to update department",
-        variant: "destructive",
-      });
+      handleAPIError(error, "Failed to update department");
     } finally {
       setLoading(false);
-    }
+    } 
   };
 
   const { isNavigating, handleNavigation } = useNavigationLoading();
@@ -141,6 +108,7 @@ export default function EditDepartmentPage() {
           name: "status",
           label: "Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "active", label: "Active" },
@@ -152,18 +120,18 @@ export default function EditDepartmentPage() {
         {
           name: "description",
           label: "Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Enter department description (optional)",
           description: "Brief description of the department's purpose and responsibilities",
           cols: 12,
-          rows: 4,
+          rows: 6,
         },
       ]
     }
   ];
 
   // Show loading skeleton while fetching department data
-  if (actionLoading && !selectedDepartment) {
+  if (departmentLoading && !department) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -199,7 +167,7 @@ export default function EditDepartmentPage() {
   }
 
   // Show error if department not found
-  if (!actionLoading && !selectedDepartment) {
+  if (!actionLoading && !department) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -223,11 +191,15 @@ export default function EditDepartmentPage() {
     );
   }
 
+  if (!department) {
+    return null; // Prevent rendering with undefined
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Edit Department"
-        subtitle={`Update information for "${selectedDepartment?.name}"`}
+        subtitle={`Update information for "${department?.name}"`}
         showAddButton={false}
         actions={
           <Button

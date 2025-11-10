@@ -17,7 +17,7 @@ const MediaSchema = new Schema<IMedia>({
         required: [true, "File type is required"],
         trim: true,
         maxlength: [50, "File type cannot exceed 50 characters"],
-        index: true,
+        // index: true, // Removed - covered by compound indexes
     },
     file: {
         type: String,
@@ -25,18 +25,17 @@ const MediaSchema = new Schema<IMedia>({
         trim: true,
         maxlength: [500, "File path cannot exceed 500 characters"],
         unique: true,
-        index: true,
     },
     mime_type: {
         type: String,
         trim: true,
         maxlength: [100, "MIME type cannot exceed 100 characters"],
-        index: true,
+        // index: true, // Removed - covered by compound indexes
     },
     uploaded_by: {
         type: Schema.Types.ObjectId,
         ref: 'User',
-        index: true,
+        // index: true, // Removed - covered by compound indexes
     },
 }, {
     timestamps: true,

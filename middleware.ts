@@ -1,43 +1,49 @@
 import { NextRequest, NextResponse } from "next/server"
-import { applySecurityHeaders, validateClientIP, SecurityEventType, logSecurityEvent } from "@/lib/security/helmet-adapter"
+import { applySecurityHeaders } from "@/lib/security/helmet-adapter"
+
+// Cache for static route checks
+const staticRouteCache = new Map<string, boolean>()
+const STATIC_CACHE_SIZE = 1000
+
+function isStaticRoute(pathname: string): boolean {
+  // Check cache first
+  if (staticRouteCache.has(pathname)) {
+    return staticRouteCache.get(pathname)!
+  }
+
+  const isStatic = (
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/api/') ||
+    pathname.includes('.') ||
+    pathname.startsWith('/favicon')
+  )
+
+  // Cache the result
+  staticRouteCache.set(pathname, isStatic)
+
+  // Clean cache if it gets too large
+  if (staticRouteCache.size > STATIC_CACHE_SIZE) {
+    const firstKey = staticRouteCache.keys().next().value
+    staticRouteCache.delete(firstKey as string)
+  }
+
+  return isStatic
+}
 
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  
-  // Skip middleware for:
-  // 1. Static assets (performance)
-  // 2. API routes (they handle their own security via genericApiRoutesMiddleware)
-  // 3. NextAuth routes (they handle their own security)
-  if (
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/') || // All API routes handle their own middleware
-    pathname.includes('.') || // Static files (images, css, js, etc.)
-    pathname.startsWith('/favicon')
-  ) {
+
+  // PERFORMANCE: Skip middleware for static assets and API routes
+  // API routes handle their own security via genericApiRoutesMiddleware
+  if (isStaticRoute(pathname)) {
     return NextResponse.next()
   }
-  
-  // Create response with security headers
+
+  // Create response with minimal processing
   const response = NextResponse.next()
-  
-  // Enhanced security checks for UI routes only
-  // (API routes handle their own security through genericApiRoutesMiddleware)
-  
-  // IP validation for sensitive UI routes
-  if (pathname.includes('/auth/') || pathname.includes('/admin/') || pathname.includes('/dashboard/')) {
-    const ipValidation = validateClientIP(req)
-    if (ipValidation.isSuspicious) {
-      logSecurityEvent(SecurityEventType.SUSPICIOUS_IP, {
-        ip: ipValidation.ip,
-        userAgent: req.headers.get('user-agent') || 'unknown',
-        url: req.url,
-        severity: 'medium',
-        message: `Suspicious IP detected on UI route: ${ipValidation.reason}`,
-      })
-    }
-  }
-  
-  // Apply security headers to all UI routes
+
+  // Apply security headers only to dynamic UI routes
+  // Removed IP validation for performance - handle in API routes if needed
   return applySecurityHeaders(response)
 }
 

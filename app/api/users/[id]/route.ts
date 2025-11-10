@@ -3,6 +3,7 @@ import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import User from "@/models/User"
 import mongoose from "mongoose"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
@@ -22,7 +23,7 @@ export async function GET(
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user: currentUser, userEmail } = await genericApiRoutesMiddleware(request, 'users', 'read')
+    const { session, user: currentUser, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'users', 'read')
 
     const { id } = await params
 
@@ -32,9 +33,12 @@ export async function GET(
     }
 
     const user = await executeGenericDbQuery(async () => {
-      const userData = await User.findById(id)
+      // Apply soft delete filter - only super admins can see deleted users
+      const filter = addSoftDeleteFilter({ _id: id }, isSuperAdmin)
+
+      const userData = await User.findOne(filter)
         .populate('role', '_id name displayName hierarchyLevel permissions status')
-        .populate('department','_id name status')
+        .populate('department', '_id name status')
         .lean()
         .exec()
 
@@ -42,7 +46,7 @@ export async function GET(
         throw new Error('User not found')
       }
       return userData
-    }, `user-${id}`, CACHE_TTL) // Use built-in caching
+    }, `user-${id}-${isSuperAdmin ? 'admin' : 'user'}`, CACHE_TTL) // Use built-in caching
 
     return NextResponse.json({
       success: true,
@@ -62,7 +66,7 @@ export async function PUT(
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user: sessionUser, userEmail } = await genericApiRoutesMiddleware(request, 'users', 'update')
+    const { session, user: sessionUser, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'users', 'update')
 
     const { id } = await params
 
@@ -76,7 +80,7 @@ export async function PUT(
     // Basic validation
     const allowedFields = ['name', 'email', 'role', 'phone', 'department', 'position', 'status'];
     const updateData: any = {};
-    
+
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field];
@@ -87,14 +91,21 @@ export async function PUT(
       return createErrorResponse('No valid fields to update', 400)
     }
 
+    // Prevent setting status to 'deleted' through update (use DELETE endpoint)
+    if (updateData.status === 'deleted') {
+      return createErrorResponse('Cannot set status to deleted through update. Use DELETE endpoint instead.', 400)
+    }
+
     // Get current user's role and existing user data
     const [currentUser, existingUser] = await Promise.all([
       executeGenericDbQuery(async () => {
         return await User.findOne({ email: userEmail }).populate('role').lean()
       }, `current-user-${userEmail}`, 60000), // 1-minute cache for current user
-      
+
       executeGenericDbQuery(async () => {
-        return await User.findById(id).populate('role')
+        // Apply soft delete filter - prevent updates on deleted records unless super admin
+        const filter = addSoftDeleteFilter({ _id: id }, isSuperAdmin)
+        return await User.findOne(filter).populate('role')
       }, `existing-user-${id}`, 30000) // 30-second cache for existing user
     ])
 
@@ -103,7 +114,7 @@ export async function PUT(
     }
 
     if (!existingUser) {
-      return createErrorResponse('User not found', 404)
+      return createErrorResponse('User not found or has been deleted', 404)
     }
 
     const currentUserRole = currentUser.role as any
@@ -111,7 +122,7 @@ export async function PUT(
     const existingUserRole = existingUser.role as any
 
     // Protect super admin users from modification
-    if ( existingUserRole?.name === 'super_admin') {
+    if (existingUserRole?.name === 'super_admin') {
       return createErrorResponse('Super Administrator account cannot be modified', 403)
     }
 
@@ -153,14 +164,14 @@ export async function PUT(
   }
 }
 
-// DELETE /api/users/[id] - Delete user
+// DELETE /api/users/[id] - Soft delete user
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user: sessionUser, userEmail } = await genericApiRoutesMiddleware(request, 'users', 'delete')
+    const { session, user: sessionUser, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'users', 'delete')
 
     const { id } = await params
 
@@ -174,10 +185,12 @@ export async function DELETE(
       executeGenericDbQuery(async () => {
         return await User.findOne({ email: userEmail }).populate('role').lean()
       }, `current-user-${userEmail}`, 60000),
-      
+
       executeGenericDbQuery(async () => {
-        return await User.findById(id).populate('role').lean()
-      }, `user-${id}`, 30000)
+        // Use soft delete filter to check if user exists and is not already deleted
+        const filter = addSoftDeleteFilter({ _id: id }, false) // Don't include deleted for validation
+        return await User.findOne(filter).populate('role').lean()
+      }, `user-for-delete-${id}`, 30000)
     ])
 
     if (!currentUser?.role) {
@@ -185,10 +198,10 @@ export async function DELETE(
     }
 
     if (!existingUser) {
-      return createErrorResponse('User not found', 404)
+      return createErrorResponse('User not found or already deleted', 404)
     }
 
-    // For now, allow super_admin and admin roles to delete users
+    // For now, allow super_admin and admin roles to delete users  
     const currentUserRole = currentUser.role as any
     const allowedRoles = ['super_admin', 'admin'];
     if (!allowedRoles.includes(currentUserRole.name)) {
@@ -211,21 +224,17 @@ export async function DELETE(
       return createErrorResponse('Only Super Administrators can delete admin users', 403)
     }
 
-    // Delete user (or mark as inactive for soft delete)
-    await executeGenericDbQuery(async () => {
-      return await User.findByIdAndUpdate(id, { 
-        status: 'inactive',
-        updatedAt: new Date()
-      })
-    })
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('user', id, userEmail)
 
-    // Clear related caches
-    clearCache(`user-${id}`)
-    clearCache(`users`)
+    if (!deleteResult.success) {
+      return createErrorResponse(deleteResult.message, 400)
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'User deleted successfully'
+      message: deleteResult.message,
+      data: deleteResult.data
     })
 
   } catch (error: any) {

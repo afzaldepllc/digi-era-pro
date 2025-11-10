@@ -5,20 +5,14 @@ import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch, useAppSelector } from "@/hooks/redux";
-import {
-  fetchLeadById,
-  updateLead,
-  clearError,
-  setSelectedLead
-} from "@/store/slices/leadSlice";
+import { useLeads } from "@/hooks/use-leads";
+import { useGenericQueryById } from "@/hooks/use-generic-query";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { usePermissions } from "@/hooks/use-permissions";
 import Swal from 'sweetalert2';
 import { updateLeadFormSchema } from '@/lib/validations/lead';
@@ -27,21 +21,23 @@ import type { UpdateLeadFormData } from '@/lib/validations/lead';
 export default function EditLeadPage() {
   const router = useRouter();
   const params = useParams();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
   const { canCreate } = usePermissions();
-  const [loading, setLoading] = useState(false);
-
   const leadId = params?.id as string;
 
- 
+  // Generic options for leads
+  const genericOptions = {
+    entityName: 'leads',
+    baseUrl: '/api/leads',
+    reduxDispatchers: {
+      setEntity: (lead: any) => { }, // Will be handled by the query
+    },
+  };
 
-  // Redux state
-  const {
-    selectedLead,
-    actionLoading,
-    error
-  } = useAppSelector((state) => state.leads);
+  // Fetch lead data
+  const { data: lead, isLoading: leadLoading } = useGenericQueryById(genericOptions, leadId, !!leadId);
+
+  const { updateLead, actionLoading } = useLeads();
 
   const form = useForm<UpdateLeadFormData>({
     resolver: zodResolver(updateLeadFormSchema),
@@ -74,69 +70,49 @@ export default function EditLeadPage() {
     },
   });
 
-  // Load lead data
-  useEffect(() => {
-    if (leadId) {
-      dispatch(fetchLeadById(leadId));
-    }
-  }, [dispatch, leadId]);
-
   // Populate form when lead data is loaded
   useEffect(() => {
-    if (selectedLead) {
+    if (lead) {
       form.reset({
-        name: selectedLead.name,
-        email: selectedLead.email,
-        phone: selectedLead.phone || "",
-        position: selectedLead.position || "",
-        company: selectedLead.company || "",
-        website: selectedLead.website || "",
-        industry: selectedLead.industry || "",
-        companySize: (selectedLead.companySize && ['startup', 'small', 'medium', 'large', 'enterprise'].includes(selectedLead.companySize)) ? selectedLead.companySize as any : undefined,
-        annualRevenue: selectedLead.annualRevenue ? String(selectedLead.annualRevenue) : "",
-        employeeCount: selectedLead.employeeCount ? String(selectedLead.employeeCount) : "",
-        status: selectedLead.status,
-        source: selectedLead.source,
-        priority: selectedLead.priority,
-        nextFollowUpDate: selectedLead.nextFollowUpDate ? new Date(selectedLead.nextFollowUpDate).toISOString().split('T')[0] : "",
-        notes: selectedLead.notes || "",
-        projectName: selectedLead.projectName,
-        projectType: (selectedLead.projectType && ['web', 'mobile', 'desktop', 'api', 'consulting', 'other'].includes(selectedLead.projectType)) ? selectedLead.projectType as any : undefined,
-        complexity: (selectedLead.complexity && ['simple', 'medium', 'complex'].includes(selectedLead.complexity)) ? selectedLead.complexity as any : undefined,
-        projectBudget: selectedLead.projectBudget ? String(selectedLead.projectBudget) : "",
-        estimatedHours: selectedLead.estimatedHours ? String(selectedLead.estimatedHours) : "",
-        projectTimeline: selectedLead.projectTimeline || "",
-        projectDescription: selectedLead.projectDescription || "",
-        technologies: selectedLead.technologies ? selectedLead.technologies.join(", ") : "",
-        projectRequirements: selectedLead.projectRequirements ? selectedLead.projectRequirements.join(", ") : "",
-      deliverables: selectedLead.deliverables ? selectedLead.deliverables.join(", ") : "",
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone || "",
+        position: lead.position || "",
+        company: lead.company || "",
+        website: lead.website || "",
+        industry: lead.industry || "",
+        companySize: (lead.companySize && ['startup', 'small', 'medium', 'large', 'enterprise'].includes(lead.companySize)) ? lead.companySize as any : undefined,
+        annualRevenue: lead.annualRevenue ? String(lead.annualRevenue) : "",
+        employeeCount: lead.employeeCount ? String(lead.employeeCount) : "",
+        status: lead.status,
+        source: lead.source,
+        priority: lead.priority,
+        nextFollowUpDate: lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate).toISOString().split('T')[0] : "",
+        notes: lead.notes || "",
+        projectName: lead.projectName,
+        projectType: (lead.projectType && ['web', 'mobile', 'desktop', 'api', 'consulting', 'other'].includes(lead.projectType)) ? lead.projectType as any : undefined,
+        complexity: (lead.complexity && ['simple', 'medium', 'complex'].includes(lead.complexity)) ? lead.complexity as any : undefined,
+        projectBudget: lead.projectBudget ? String(lead.projectBudget) : "",
+        estimatedHours: lead.estimatedHours ? String(lead.estimatedHours) : "",
+        projectTimeline: lead.projectTimeline || "",
+        projectDescription: lead.projectDescription || "",
+        technologies: lead.technologies ? lead.technologies.join(", ") : "",
+        projectRequirements: lead.projectRequirements ? lead.projectRequirements.join(", ") : "",
+        deliverables: lead.deliverables ? lead.deliverables.join(", ") : "",
       });
     }
-  }, [selectedLead, form]);
-
-  // Handle errors
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error",
-        description: error,
-        variant: "destructive",
-      });
-      dispatch(clearError());
-    }
-  }, [error, toast, dispatch]);
+  }, [lead, form]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      dispatch(setSelectedLead(null));
+      // Cleanup if needed
     };
-  }, [dispatch]);
+  }, []);
 
   const handleSubmit = async (data: UpdateLeadFormData) => {
-    if (!selectedLead || !selectedLead._id) return;
+    if (!lead || !lead._id) return;
 
-    setLoading(true);
     try {
       console.log('Form data being sent:', data);
 
@@ -161,12 +137,7 @@ export default function EditLeadPage() {
         nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
       };
 
-      const result = await dispatch(
-        updateLead({
-          id: selectedLead._id!,
-          data: cleanedData
-        })
-      ).unwrap();
+      const result = await updateLead(leadId, cleanedData);
 
       toast({
         title: "Success",
@@ -175,30 +146,48 @@ export default function EditLeadPage() {
 
       router.push("/leads");
     } catch (error: any) {
+      console.error('Update lead error:', error)
+
+      // Handle structured API errors
+      let errorMessage = "Failed to update lead"
+      let errorDetails = ""
+
+      if (error?.error) {
+        errorMessage = error.error
+        if (error.details && Array.isArray(error.details)) {
+          errorDetails = error.details.join(', ')
+        } else if (error.details) {
+          errorDetails = typeof error.details === 'string' ? error.details : JSON.stringify(error.details)
+        }
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+
       toast({
         title: "Error",
-        description: error || "Failed to update lead",
+        description: errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const { isNavigating, handleNavigation } = useNavigationLoading();
-
   const handleCancel = () => {
-    handleNavigation("/leads");
+    router.push("/leads");
   };
 
   const handleCreateClient = async () => {
-    if (!selectedLead) return;
+    if (!lead) return;
 
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Create Client from Lead',
-        text: `Are you sure you want to create a client account for ${selectedLead.name}? This will qualify the lead and create a new client profile.`,
+        text: `Are you sure you want to create a client account for ${lead.name}? This will qualify the lead and create a new client profile.`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Yes, Create Client',
@@ -210,7 +199,7 @@ export default function EditLeadPage() {
       if (!result.isConfirmed) return;
 
       // Call API to create client from lead
-      const response = await fetch(`/api/leads/${selectedLead._id}/create-client`, {
+      const response = await fetch(`/api/leads/${leadId}/create-client`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +214,7 @@ export default function EditLeadPage() {
 
       toast({
         title: "Success",
-        description: `Client created successfully for ${selectedLead.name}`,
+        description: `Client created successfully for ${lead.name}`,
       });
 
       // Navigate to client edit page
@@ -272,17 +261,15 @@ export default function EditLeadPage() {
           placeholder: "+1 (555) 123-4567",
           description: "Phone number with country code",
           cols: 12,
-          mdCols: 6,
+          mdCols: 12,
         },
-        {
-          name: "position",
-          label: "Job Title",
-          type: "text" as const,
-          placeholder: "CEO, CTO, Manager, etc.",
-          description: "Contact's job title or position",
-          cols: 12,
-          mdCols: 6,
-        },
+      ]
+    },
+    {
+      subform_title: "Company Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
         {
           name: "company",
           label: "Company Name",
@@ -302,18 +289,28 @@ export default function EditLeadPage() {
           mdCols: 6,
         },
         {
+          name: "position",
+          label: "Job Title",
+          type: "text" as const,
+          placeholder: "CEO, CTO, Manager, etc.",
+          description: "Contact's job title or position",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
           name: "industry",
           label: "Industry",
           type: "text" as const,
           placeholder: "Technology, Healthcare, Finance, etc.",
           description: "Industry or sector the company operates in",
           cols: 12,
-          mdCols: 4,
+          mdCols: 6,
         },
         {
           name: "companySize",
           label: "Company Size",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "startup", label: "Startup (1-10 employees)" },
             { value: "small", label: "Small (11-50 employees)" },
@@ -343,24 +340,18 @@ export default function EditLeadPage() {
           cols: 12,
           mdCols: 4,
         },
-        {
-          name: "status",
-          label: "Status",
-          type: "select" as const,
-          required: true,
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-            { value: "qualified", label: "Qualified" },
-            { value: "unqualified", label: "Unqualified" },
-          ],
-          cols: 12,
-          mdCols: 3,
-        },
+      ]
+    },
+    {
+      subform_title: "Source & Follow-up",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
         {
           name: "source",
           label: "Lead Source",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "website", label: "Website" },
@@ -377,9 +368,25 @@ export default function EditLeadPage() {
           mdCols: 3,
         },
         {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+            { value: "qualified", label: "Qualified" },
+            { value: "unqualified", label: "Unqualified" },
+          ],
+          cols: 12,
+          mdCols: 3,
+        },
+        {
           name: "priority",
           label: "Priority",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "low", label: "Low" },
@@ -411,6 +418,8 @@ export default function EditLeadPage() {
     },
     {
       subform_title: "Project Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "projectName",
@@ -426,6 +435,7 @@ export default function EditLeadPage() {
           name: "projectType",
           label: "Project Type",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "web", label: "Web Development" },
             { value: "mobile", label: "Mobile App" },
@@ -442,6 +452,7 @@ export default function EditLeadPage() {
           name: "complexity",
           label: "Complexity",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "simple", label: "Simple" },
             { value: "medium", label: "Medium" },
@@ -518,7 +529,7 @@ export default function EditLeadPage() {
   ];
 
   // Show loading skeleton while fetching lead data
-  if (actionLoading && !selectedLead) {
+  if (leadLoading && !lead) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -554,7 +565,7 @@ export default function EditLeadPage() {
   }
 
   // Show error if lead not found
-  if (!actionLoading && !selectedLead) {
+  if (!actionLoading && !lead) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -582,19 +593,19 @@ export default function EditLeadPage() {
     <div className="space-y-6">
       <PageHeader
         title="Edit Lead"
-        subtitle={`Update information for "${selectedLead?.name}"`}
+        subtitle={`Update information for "${lead?.name}"`}
         showAddButton={false}
         actions={
           <div className="flex items-center gap-2">
             {/* Create Client button - only show if lead can be converted */}
-            {selectedLead &&
-              selectedLead.status === 'active' &&
-              !selectedLead.clientId &&
+            {lead &&
+              lead.status === 'active' &&
+              !lead.clientId &&
               canCreate('clients') && (
                 <Button
                   variant="default"
                   onClick={handleCreateClient}
-                  disabled={loading}
+                  disabled={actionLoading}
                   className="bg-green-600 hover:bg-green-700"
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -605,10 +616,10 @@ export default function EditLeadPage() {
             <Button
               variant="outline"
               onClick={handleCancel}
-              disabled={isNavigating || loading}
+              disabled={actionLoading}
             >
-              <ArrowLeft className={`h-4 w-4 mr-2 ${isNavigating ? 'animate-spin' : ''}`} />
-              {isNavigating ? 'Going back...' : 'Back to Leads'}
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Leads
             </Button>
           </div>
         }
@@ -620,7 +631,7 @@ export default function EditLeadPage() {
           fields={formFields}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          loading={loading}
+          loading={actionLoading}
           submitText="Update Lead"
           cancelText="Cancel"
         />

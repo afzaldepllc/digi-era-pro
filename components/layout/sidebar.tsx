@@ -1,30 +1,25 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, memo, useMemo, useCallback } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { usePermissions } from "@/hooks/use-permissions"
+import { useNavigation } from "@/components/providers/navigation-provider"
+import { Deferred } from "@/components/ui/deferred"
+import { UserCog, Handshake } from 'lucide-react';
 import {
   Home,
   Users2,
-  Building2,
-  Briefcase,
   Target,
-  BarChart3,
-  Mail,
   FolderOpen,
-  Calendar,
-  FileText,
   Network,
-  Shield,
   Eye,
   UserPlus,
-  UserCheck,
   Plus,
   Building,
   TrendingUp,
@@ -90,7 +85,7 @@ const menuItems: MenuSection[] = [
         allowedActions: ["read"],
         subItems: [
           {
-            title: "All Users",
+            title: "Users List",
             href: "/users",
             icon: Eye,
             allowedResource: "users",
@@ -114,7 +109,7 @@ const menuItems: MenuSection[] = [
         allowedActions: ["read"],
         subItems: [
           {
-            title: "All Leads",
+            title: "Leads List",
             href: "/leads",
             icon: Eye,
             allowedResource: "leads",
@@ -127,25 +122,18 @@ const menuItems: MenuSection[] = [
             allowedResource: "leads",
             allowedActions: ["create"],
           },
-          {
-            title: "Lead Sources",
-            href: "/leads/sources",
-            icon: Target,
-            allowedResource: "leads",
-            allowedActions: ["read"],
-          },
         ],
       },
       {
         title: "Clients",
         href: "/clients",
-        icon: Target,
+        icon: Handshake,
         badge: null,
         allowedResource: "clients",
         allowedActions: ["read"],
         subItems: [
           {
-            title: "All Clients",
+            title: "Clients List",
             href: "/clients",
             icon: Eye,
             allowedResource: "clients",
@@ -170,7 +158,7 @@ const menuItems: MenuSection[] = [
         allowedActions: ["read"],
         subItems: [
           {
-            title: "All Projects",
+            title: "Projects List",
             href: "/projects",
             icon: Eye,
             allowedResource: "projects",
@@ -183,110 +171,16 @@ const menuItems: MenuSection[] = [
             allowedResource: "projects",
             allowedActions: ["create"],
           },
-          {
-            title: "Project Templates",
-            href: "/projects/templates",
-            icon: Folder,
-            allowedResource: "projects",
-            allowedActions: ["read"],
-          },
         ],
       },
+    ],
+  },
+
+  {
+    title: "HRM",
+    items: [
       {
-        title: "Tasks",
-        href: "/tasks",
-        icon: Calendar,
-        badge: null,
-        allowedResource: "tasks",
-        allowedActions: ["read"],
-        subItems: [
-          {
-            title: "All Tasks",
-            href: "/tasks",
-            icon: Eye,
-            allowedResource: "tasks",
-            allowedActions: ["read"],
-          },
-          {
-            title: "Create Task",
-            href: "/tasks/create",
-            icon: Plus,
-            allowedResource: "tasks",
-            allowedActions: ["create"],
-          },
-          {
-            title: "Task Calendar",
-            href: "/tasks/calendar",
-            icon: Calendar,
-            allowedResource: "tasks",
-            allowedActions: ["read"],
-          },
-        ],
-      },
-      {
-        title: "Proposals",
-        href: "/proposals",
-        icon: FileText,
-        badge: null,
-        allowedResource: "proposals",
-        allowedActions: ["read"],
-        subItems: [
-          {
-            title: "All Proposals",
-            href: "/proposals",
-            icon: Eye,
-            allowedResource: "proposals",
-            allowedActions: ["read"],
-          },
-          {
-            title: "Create Proposal",
-            href: "/proposals/create",
-            icon: Plus,
-            allowedResource: "proposals",
-            allowedActions: ["create"],
-          },
-          {
-            title: "Proposal Templates",
-            href: "/proposals/templates",
-            icon: FileCheck,
-            allowedResource: "proposals",
-            allowedActions: ["read"],
-          },
-        ],
-      },
-      {
-        title: "Communications",
-        href: "/communications",
-        icon: MessageSquare,
-        badge: null,
-        allowedResource: "communications",
-        allowedActions: ["read"],
-        subItems: [
-          {
-            title: "All Messages",
-            href: "/communications",
-            icon: Eye,
-            allowedResource: "communications",
-            allowedActions: ["read"],
-          },
-          {
-            title: "Create Channel",
-            href: "/communications?create=true",
-            icon: Plus,
-            allowedResource: "communications",
-            allowedActions: ["create"],
-          },
-          {
-            title: "Client Portal Chat",
-            href: "/client-portal/chat",
-            icon: MessageSquare,
-            allowedResource: "communications",
-            allowedActions: ["read"],
-          },
-        ]
-      },
-      {
-        title: "HRM",
+        title: "Departments",
         href: '/departments',
         icon: Network,
         badge: null,
@@ -294,7 +188,7 @@ const menuItems: MenuSection[] = [
         allowedActions: ["read"],
         subItems: [
           {
-            title: "All Departments",
+            title: "Departments List",
             href: '/departments',
             icon: Eye,
             allowedResource: "departments",
@@ -307,8 +201,18 @@ const menuItems: MenuSection[] = [
             allowedResource: "departments",
             allowedActions: ["create"],
           },
-           {
-            title: "All Roles",
+        ]
+      },
+      {
+        title: "Roles",
+        href: '/roles',
+        icon: UserCog,
+        badge: null,
+        allowedResource: "roles",
+        allowedActions: ["read"],
+        subItems: [
+          {
+            title: "Roles List",
             href: "/roles",
             icon: Eye,
             allowedResource: "roles",
@@ -322,6 +226,35 @@ const menuItems: MenuSection[] = [
             allowedActions: ["create"],
           },
         ]
+      },
+    ],
+  },
+  {
+    title: "Chat & Communications",
+    items: [
+      {
+        title: "Messages Inbox",
+        href: "/communications",
+        icon: Eye,
+        badge: null,
+        allowedResource: "communications",
+        allowedActions: ["read"],
+      },
+      {
+        title: "Create Channel",
+        href: "/communications?create=true",
+        icon: Plus,
+        badge: null,
+        allowedResource: "communications",
+        allowedActions: ["read"],
+      },
+      {
+        title: "Client Portal Chat",
+        href: "/client-portal/chat",
+        icon: MessageSquare,
+        badge: null,
+        allowedResource: "communications",
+        allowedActions: ["read"],
       },
     ],
   },
@@ -344,10 +277,17 @@ interface SidebarProps {
   className?: string
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname()
-  const isCommunicationsRoute = pathname.startsWith("/communications")||pathname.startsWith("/client-portal")
+  const router = useRouter()
+  const { navigateTo, isNavigating } = useNavigation()
   
+  // Memoize route calculations
+  const isCommunicationsRoute = useMemo(() => 
+    pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal"),
+    [pathname]
+  )
+
   const [collapsed, setCollapsed] = useState(isCommunicationsRoute)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])
@@ -355,19 +295,50 @@ export function Sidebar({ className }: SidebarProps) {
   // Get permissions
   const { canAccess, loading: permissionsLoading } = usePermissions()
 
-  // Helper function to check if user can access a menu item
-  const canAccessItem = (item: MenuItem | MenuSubItem): boolean => {
+  // Aggressive prefetching for all accessible routes - NON-BLOCKING
+  useEffect(() => {
+    if (permissionsLoading) return
+
+    // Use requestIdleCallback to prefetch only when browser is idle
+    const prefetchRoutes = () => {
+      menuItems.forEach(section => {
+        section.items.forEach(item => {
+          if (!item.allowedResource || canAccess(item.allowedResource, item.allowedActions)) {
+            router.prefetch(item.href)
+            item.subItems?.forEach(subItem => {
+              if (!subItem.allowedResource || canAccess(subItem.allowedResource, subItem.allowedActions)) {
+                router.prefetch(subItem.href)
+              }
+            })
+          }
+        })
+      })
+    }
+
+    // Use requestIdleCallback if available for non-blocking prefetch
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const handle = requestIdleCallback(prefetchRoutes, { timeout: 2000 })
+      return () => cancelIdleCallback(handle)
+    } else {
+      // Fallback to setTimeout
+      const timer = setTimeout(prefetchRoutes, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [permissionsLoading, canAccess, router])
+
+  // Memoized helper function to check if user can access a menu item
+  const canAccessItem = useCallback((item: MenuItem | MenuSubItem): boolean => {
     if (!item.allowedResource || !item.allowedActions) {
       return true // Show items without allowedResource/allowedActions requirements
     }
     return canAccess(item.allowedResource, item.allowedActions)
-  }
+  }, [canAccess])
 
-  // Helper function to check if any sub-items are accessible
-  const hasAccessibleSubItems = (subItems?: MenuSubItem[]): boolean => {
+  // Memoized helper function to check if any sub-items are accessible
+  const hasAccessibleSubItems = useCallback((subItems?: MenuSubItem[]): boolean => {
     if (!subItems) return false
     return subItems.some(subItem => canAccessItem(subItem))
-  }
+  }, [canAccessItem])
 
   // Handle responsive behavior
   useEffect(() => {
@@ -393,13 +364,13 @@ export function Sidebar({ className }: SidebarProps) {
 
   // Collapse sidebar for communications routes
   useEffect(() => {
-      const isMobile = window.innerWidth < 1024
-      if (isMobile && isCommunicationsRoute) {
-        setCollapsed(false) // On mobile, always show full sidebar when open
-        setMobileOpen(false)
-      } else if (!isMobile && isCommunicationsRoute) {
-          setCollapsed(true)
-        }
+    const isMobile = window.innerWidth < 1024
+    if (isMobile && isCommunicationsRoute) {
+      setCollapsed(false) // On mobile, always show full sidebar when open
+      setMobileOpen(false)
+    } else if (!isMobile && isCommunicationsRoute) {
+      setCollapsed(true)
+    }
   }, [pathname])
 
   // Prevent body scroll when mobile sidebar is open
@@ -475,16 +446,18 @@ export function Sidebar({ className }: SidebarProps) {
         )}
       >
         {/* Header */}
-        <div className="flex h-16 items-center justify-between border-b bg-gradient-to-r from-sidebar/98 to-sidebar-accent/5 backdrop-blur-sm px-4 shrink-0 shadow-sm">
+        <div className="flex h-16 gap-2 items-center justify-between border-b bg-gradient-to-r from-sidebar/98 to-sidebar-accent/5 backdrop-blur-sm px-3  shrink-0 shadow-sm">
           {!collapsed && (
             <Link href="/" className="flex items-center space-x-3 min-w-0 group">
               <div className="flex h-9 w-12 items-center justify-center shrink-0 overflow-hidden transition-transform duration-300 group-hover:scale-110">
                 <Image
                   src="/digi-era-logo.webp"
-                  width={80}
-                  height={80}
+                  width={48}
+                  height={36}
                   alt="Logo"
-                  className="object-contain drop-shadow-sm"
+                  className="object-contain drop-shadow-sm max-h-full max-w-full"
+                  style={{ width: 'auto', height: 'auto' }}
+                  sizes="48px"
                 />
               </div>
               <div className="min-w-0">
@@ -503,10 +476,11 @@ export function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={toggleCollapsed}
-            className="h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110"
+            className={` ${collapsed ? "h-11 w-11 " : "h-8 w-8 "} p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110`}
           >
             <ChevronLeft className={cn(
-              "h-4 w-4 transition-transform duration-300",
+              "transition-transform duration-300",
+              collapsed ? "h-9 w-9" : "h-4 w-4",
               collapsed && "rotate-180"
             )} />
           </Button>
@@ -614,31 +588,32 @@ export function Sidebar({ className }: SidebarProps) {
                                     {accessibleSubItems?.map((subItem, subIndex) => {
                                       const isSubActive = pathname === subItem.href
                                       return (
-                                        <Link key={subIndex} href={subItem.href}>
-                                          <div
-                                            className={cn(
-                                              "group flex items-center rounded-md px-3 py-2 text-sm transition-all duration-300",
-                                              "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
-                                              "border-l-2 border-transparent hover:border-sidebar-accent/50",
-                                              isSubActive
-                                                ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
-                                                : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
-                                            )}
-                                          >
-                                            <div className={cn(
-                                              "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300 mr-3 shrink-0",
-                                              "transform group-hover:scale-110",
-                                              isSubActive
-                                                ? "bg-primary/20 text-white shadow-sm ring-1 ring-primary/30"
-                                                : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent/30"
-                                            )}>
-                                              <subItem.icon className="h-3.5 w-3.5" />
-                                            </div>
+                                        <div 
+                                          key={subIndex}
+                                          onClick={() => navigateTo(subItem.href)}
+                                          className={cn(
+                                            "group flex items-center rounded-md px-3 py-2 text-sm transition-all duration-300 cursor-pointer",
+                                            "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
+                                            "border-l-2 border-transparent hover:border-sidebar-accent/50",
+                                            isSubActive
+                                              ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
+                                              : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
+                                            isNavigating && "opacity-60 pointer-events-none"
+                                          )}
+                                        >
+                                          <div className={cn(
+                                            "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300 mr-3 shrink-0",
+                                            "transform group-hover:scale-110",
+                                            isSubActive
+                                              ? "bg-primary/20 text-white shadow-sm ring-1 ring-primary/30"
+                                              : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent/30"
+                                          )}>
+                                            <subItem.icon className="h-3.5 w-3.5" />
+                                          </div>
                                             <span className="tracking-wide truncate min-w-0">
                                               {subItem.title}
                                             </span>
                                           </div>
-                                        </Link>
                                       )
                                     })}
                                   </div>
@@ -646,33 +621,34 @@ export function Sidebar({ className }: SidebarProps) {
                               </Collapsible>
                             ) : (
                               canAccessItem(item) && (
-                                <Link href={item.href}>
-                                  <div
-                                    className={cn(
-                                      "group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300",
-                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
-                                      "border border-transparent",
-                                      isActive
-                                        ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
-                                        : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
-                                      collapsed && "justify-center px-2",
-                                    )}
-                                  >
-                                    <div className={cn(
-                                      "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                                      "transform group-hover:scale-110 group-hover:rotate-3",
-                                      collapsed ? "h-8 w-8" : "h-8 w-8 mr-3",
-                                      isActive
-                                        ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
-                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
-                                    )}>
-                                      <item.icon className="h-4 w-4" />
-                                    </div>
-                                    {!collapsed && (
-                                      <div className="flex flex-1 items-center justify-between min-w-0">
-                                        <span className="tracking-wide truncate">
-                                          {item.title}
-                                        </span>
+                                <div
+                                  onClick={() => navigateTo(item.href)}
+                                  className={cn(
+                                    "group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer",
+                                    "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
+                                    "border border-transparent",
+                                    isActive
+                                      ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
+                                      : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
+                                    collapsed && "justify-center px-2",
+                                    isNavigating && "opacity-60 pointer-events-none"
+                                  )}
+                                >
+                                  <div className={cn(
+                                    "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                    "transform group-hover:scale-110 group-hover:rotate-3",
+                                    collapsed ? "h-8 w-8" : "h-8 w-8 mr-3",
+                                    isActive
+                                      ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
+                                      : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
+                                  )}>
+                                    <item.icon className="h-4 w-4" />
+                                  </div>
+                                  {!collapsed && (
+                                    <div className="flex flex-1 items-center justify-between min-w-0">
+                                      <span className="tracking-wide truncate">
+                                        {item.title}
+                                      </span>
                                         {item.badge && (
                                           <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
                                             {item.badge}
@@ -681,7 +657,6 @@ export function Sidebar({ className }: SidebarProps) {
                                       </div>
                                     )}
                                   </div>
-                                </Link>
                               )
                             )}
                           </div>
@@ -697,4 +672,4 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
     </>
   )
-}
+})

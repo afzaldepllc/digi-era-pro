@@ -35,7 +35,6 @@ import {
   Copy,
   Download,
   Archive,
-  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TableLoader } from "./loader";
@@ -68,6 +67,7 @@ export interface ActionMenuItem<T> {
   requiresDelete?: boolean;
   hasPermission?: (row: T) => boolean;
   hideIfNoPermission?: boolean;
+  hideIf?: (row: T) => boolean;
 }
 
 // Simplified interface - no need for explicit enabled flags for edit/delete
@@ -113,6 +113,7 @@ export interface DataTableProps<T> {
   columns: ColumnDef<T>[];
   loading?: boolean;
   totalCount?: number;
+  NoOfCards?: number;
   pageSize?: number;
   currentPage?: number;
   onPageChange?: (page: number) => void;
@@ -146,6 +147,14 @@ export interface DataTableProps<T> {
   // Legacy support
   showQuickView?: boolean;
   onQuickView?: (row: T) => void;
+
+  // Stats cards for summary information
+  statsCards?: Array<{
+    title: string;
+    value: any;
+    icon?: React.ReactNode;
+    color?: string;
+  }>;
 }
 
 const DataTable = <T extends Record<string, any>>({
@@ -153,6 +162,7 @@ const DataTable = <T extends Record<string, any>>({
   columns,
   loading = false,
   totalCount = 0,
+  NoOfCards = 4,
   pageSize = 5,
   currentPage = 1,
   onPageChange,
@@ -180,6 +190,7 @@ const DataTable = <T extends Record<string, any>>({
   onExport,
   showQuickView = false,
   onQuickView,
+  statsCards, // Add this
 }: DataTableProps<T>) => {
   const [currentView, setCurrentView] = useState<"table" | "grid">(defaultView);
   const router = useRouter();
@@ -294,6 +305,7 @@ const DataTable = <T extends Record<string, any>>({
         variant: "destructive" as const,
         requiresDelete: true,
         hideIfNoPermission: true,
+        hideIf: (row: T) => (row as any).status === 'deleted',
       });
     }
 
@@ -338,36 +350,51 @@ const DataTable = <T extends Record<string, any>>({
 
   // Combine all actions
   const allActions = useMemo((): ActionMenuItem<T>[] => {
-    const combined = [...buildGenericActions];
+    // Clone generic actions
+    const generic = [...buildGenericActions];
 
-    // Add custom actions from config
-    if (actions?.custom) {
-      combined.push(...actions.custom);
+    // Find indices for "Edit" and "Delete"
+    const editIdx = generic.findIndex(a => a.label?.toLowerCase() === "edit");
+    const deleteIdx = generic.findIndex(a => a.label?.toLowerCase() === "delete");
+
+    // Insert custom actions after "Edit" (or after "View" if "Edit" not found)
+    let insertIdx = editIdx !== -1 ? editIdx + 1 : 1;
+    // But before "Delete" if "Delete" exists and would be before insertIdx
+    if (deleteIdx !== -1 && deleteIdx < insertIdx) {
+      insertIdx = deleteIdx;
     }
 
-    // Add legacy custom actions
-    combined.push(...customActions);
+    // Gather all custom actions
+    const custom = actions?.custom ?? [];
+    const legacyCustom = customActions ?? [];
+    const allCustom = [...custom, ...legacyCustom];
 
-    return combined;
+    // Insert custom actions at the calculated index
+    generic.splice(insertIdx, 0, ...allCustom);
+
+    return generic;
   }, [buildGenericActions, actions?.custom, customActions]);
 
   // Enhanced permission checking function
   const checkActionPermission = (action: ActionMenuItem<T>, row: T): { hasPermission: boolean; isDisabled: boolean } => {
+    // First check if action is disabled by row-specific logic
+    const isRowDisabled = action.disabled ? action.disabled(row) : false;
+
     if (!enablePermissionChecking) {
-      return { hasPermission: true, isDisabled: false };
+      return { hasPermission: true, isDisabled: isRowDisabled };
     }
 
     // Custom permission check function takes precedence
     if (action.hasPermission) {
       const customCheck = action.hasPermission(row);
-      return { hasPermission: customCheck, isDisabled: !customCheck };
+      return { hasPermission: customCheck, isDisabled: isRowDisabled || !customCheck };
     }
 
     // Check specific permission requirement
     if (action.requiredPermission) {
       const { resource, action: permAction, condition } = action.requiredPermission;
       const permitted = hasPermission(resource, permAction, condition);
-      return { hasPermission: permitted, isDisabled: !permitted };
+      return { hasPermission: permitted, isDisabled: isRowDisabled || !permitted };
     }
 
     // Check simple permission flags with resource name
@@ -386,12 +413,7 @@ const DataTable = <T extends Record<string, any>>({
       }
     }
 
-    // Check if action is disabled by row-specific logic
-    if (action.disabled && action.disabled(row)) {
-      return { hasPermission: true, isDisabled: true };
-    }
-
-    return { hasPermission: true, isDisabled: false };
+    return { hasPermission: true, isDisabled: isRowDisabled };
   };
 
   // Filter actions based on permissions
@@ -401,6 +423,11 @@ const DataTable = <T extends Record<string, any>>({
 
       // Hide action if no permission and hideIfNoPermission is true (default)
       if (!permitted && (action.hideIfNoPermission !== false)) {
+        return false;
+      }
+
+      // Hide action if hideIf condition is met
+      if (action.hideIf && action.hideIf(row)) {
         return false;
       }
 
@@ -459,21 +486,23 @@ const DataTable = <T extends Record<string, any>>({
             return (
               <DropdownMenuItem
                 key={actionIndex}
-                onClick={(e) => {
+                onSelect={(e) => {
                   e.stopPropagation();
-                  if (!isDisabled) {
-                    action.onClick(row);
+                  if (isDisabled) {
+                    e.preventDefault();
+                    return;
                   }
+                  action.onClick(row);
                 }}
                 disabled={isDisabled}
                 className={cn(
                   action.variant === "destructive" ? "text-destructive" : "",
-                  isDisabled ? "opacity-50 cursor-not-allowed" : "",
+                  isDisabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
                   !permitted && showActionsIfNoPermission ? "opacity-50" : ""
                 )}
               >
                 {action.icon}
-                <span className="ml-2">{action.label}</span>
+                <span>{action.label}</span>
                 {!permitted && showActionsIfNoPermission && (
                   <span className="ml-auto text-xs text-muted-foreground">(No permission)</span>
                 )}
@@ -513,21 +542,34 @@ const DataTable = <T extends Record<string, any>>({
   if (loading) {
     return (
       <div className={cn("space-y-4", className)}>
-        {showViewToggle && (
-          <div className="flex justify-end">
-            <div className="flex items-center gap-2 p-1 bg-muted rounded-md">
-              <div className="h-8 w-8 bg-muted-foreground/20 rounded animate-pulse" />
-              <div className="h-8 w-8 bg-muted-foreground/20 rounded animate-pulse" />
-            </div>
-          </div>
-        )}
-        <TableLoader rows={pageSize} columns={columns.length} />
-      </div>
+        <TableLoader NoOfCards={NoOfCards} rows={pageSize} columns={columns.length} />
+      </div >
     );
   }
 
   return (
     <div className={cn("space-y-4", className)}>
+      {/* Stats Cards - Add this section before existing content */}
+      {statsCards && statsCards.length > 0 && (
+        <div className="grid grid-flow-col auto-cols-fr gap-4">
+          {statsCards.map((stat, index) => (
+            <div key={index} className="bg-card rounded-lg border p-4 flex-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                  <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                </div>
+                {stat.icon && (
+                  <div className={stat.color}>
+                    {stat.icon}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Records per page:</span>
@@ -641,7 +683,7 @@ const DataTable = <T extends Record<string, any>>({
       )}
 
       {/* Pagination */}
-      {totalCount > pageSize && (
+      {totalCount > 0 && (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">
             Showing {startItem} to {endItem} of {totalCount} entries
@@ -699,3 +741,7 @@ const DataTable = <T extends Record<string, any>>({
 };
 
 export default DataTable;
+
+// Re-export HtmlTextRenderer for convenience
+export { default as HtmlTextRenderer } from './html-text-renderer';
+export type { HtmlTextRendererProps } from './html-text-renderer';

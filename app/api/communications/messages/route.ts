@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
                 const orConditions = [{ channelId: query.channelId }]
                 // Check if channelId is a valid ObjectId for _id filter
                 if (/^[0-9a-fA-F]{24}$/.test(query.channelId)) {
-                    orConditions.push({ _id: query.channelId })
+                    orConditions.push({ _id: query.channelId as any })
                 }
                 filter.$or = orConditions
             }

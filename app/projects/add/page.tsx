@@ -4,9 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppSelector, useAppDispatch } from "@/hooks/redux";
-import { createProject } from "@/store/slices/projectSlice";
-import { fetchClients } from "@/store/slices/clientSlice";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
@@ -15,11 +12,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { createProjectFormSchema } from '@/lib/validations/project';
 import { CreateProjectFormData } from '@/types';
+import { useProjects } from '@/hooks/use-projects';
+import { useClients } from '@/hooks/use-clients';
 
 export default function AddProjectPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -41,55 +39,21 @@ export default function AddProjectPage() {
     },
   });
 
-  // Redux state
-  const { clients, loading: clientsLoading } = useAppSelector((state) => state.clients);
+  // Use new hooks
+  const { createProject } = useProjects();
+  const { clients, loading: clientsLoading } = useClients();
 
-  // Fetch clients and prefill data on component mount
-  useEffect(() => {
-    dispatch(fetchClients({}));
-  }, [dispatch]);
-
-  // Prefill project data from lead if available
+  // Prefill project data from client if available
   useEffect(() => {
     if (prefill && clientId && clients.length > 0) {
-      // Find the client and get related lead data for prefilling
+      // Find the client and get related data for prefilling
       const client = clients.find(c => c._id === clientId);
       if (client && client._id) {
         // Prefill basic client selection and disable it
         form.setValue('clientId', client._id);
 
-        // If client has lead data, prefill project information
-        if (client.leadDetails || client.leadId) {
-          const leadData = client.leadDetails;
-          if (leadData) {
-            // Prefill from lead's project information
-            if (leadData.projectName) {
-              form.setValue('name', leadData.projectName);
-            }
-            if (leadData.projectDescription) {
-              form.setValue('description', leadData.projectDescription);
-            }
-            if (leadData.projectRequirements && leadData.projectRequirements.length > 0) {
-              form.setValue('requirements', leadData.projectRequirements.join(', '));
-            }
-            if (leadData.projectType) {
-              form.setValue('projectType', leadData.projectType);
-            }
-            if (leadData.projectTimeline) {
-              form.setValue('timeline', leadData.projectTimeline);
-            }
-            if (leadData.projectBudget) {
-              form.setValue('budget', leadData.projectBudget.toString());
-            }
-          } else if (client.leadId) {
-            // If we have leadId but not leadDetails, we could fetch it here
-            // For now, just set a basic project name
-            form.setValue('name', `${client.name} Project`);
-          }
-        } else {
-          // No lead data available, just set basic info
-          form.setValue('name', `${client.name} Project`);
-        }
+        // Set basic project name from client
+        form.setValue('name', `${client.name} Project`);
       }
     }
   }, [prefill, clientId, clients, form]);
@@ -97,15 +61,14 @@ export default function AddProjectPage() {
   const handleSubmit = async (data: CreateProjectFormData) => {
     setLoading(true);
     try {
-      const result = await dispatch(createProject(data)).unwrap();
-
+      const result = await createProject(data);
       toast({
         title: "Success",
         description: "Project created successfully",
       });
 
       // Navigate to project edit page for further configuration
-      router.push(`/projects/edit/${result._id}`);
+      router.push(`/projects`);
     } catch (error: any) {
       console.error('Error creating project:', error);
       toast({
@@ -126,11 +89,15 @@ export default function AddProjectPage() {
 
   // Prepare client options for dropdown
   const clientOptions = clients
-    .filter(client => client.status === 'qualified' && client._id) // Only qualified clients can have projects
+    // .filter(client => client.status === 'qualified' && client._id) // Only qualified clients can have projects
+    .filter(client => client.clientStatus === 'qualified') // Only qualified clients can have projects
     .map(client => ({
       value: client._id!,
       label: `${client.name} (${client.email})`,
     }));
+
+  console.log('clients98', clients);
+  console.log('clientOPtions', clientOptions);
 
   const formFields = [
     {
@@ -149,6 +116,7 @@ export default function AddProjectPage() {
           name: "clientId",
           label: "Client",
           type: "select" as const,
+          searchable: true,
           placeholder: "Select a client",
           required: true,
           disabled: !!clientId, // Disable if prefilled from client page
@@ -195,6 +163,7 @@ export default function AddProjectPage() {
           name: "priority",
           label: "Priority",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "low", label: "Low" },
             { value: "medium", label: "Medium" },
@@ -209,6 +178,7 @@ export default function AddProjectPage() {
           name: "status",
           label: "Status",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "pending", label: "Pending" },
             { value: "active", label: "Active" },

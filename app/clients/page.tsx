@@ -1,30 +1,31 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useClients } from "@/hooks/use-clients";
-import { useDebounceSearch } from "@/hooks/use-debounced-search";
 import PageHeader from "@/components/ui/page-header";
 import DataTable, { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
 import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Client, ClientFilters } from "@/types";
-import { Building2, Users, AlertTriangle, User, Mail, Phone, FolderPlus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import CustomModal from "@/components/ui/custom-modal";
+import { Client, ClientFilters, ClientSort } from "@/types";
+import { Building2, Users, User, Mail, Phone, FolderPlus, MapPin, Calendar } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import Swal from 'sweetalert2';
+import { handleAPIError } from "@/lib/utils/api-client";
 
 export default function ClientsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { canCreate, canDelete } = usePermissions();
+  const { canCreate } = usePermissions();
 
   // Hooks
   const {
     clients,
     loading,
-    actionLoading,
     error,
     pagination,
     filters,
@@ -41,31 +42,9 @@ export default function ClientsPage() {
   // Local state
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-
-  // Keep reference to current filters for search debouncing
-  const filtersRef = useRef(filters);
-  filtersRef.current = filters;
-
-  // Search handlers
-  const handleDebouncedSearch = useCallback((searchTerm: string) => {
-    const currentFilters = filtersRef.current;
-    setFilters({
-      search: searchTerm,
-      status: currentFilters.status,
-    });
-  }, [setFilters]);
-
-  const { searchTerm, setSearchTerm, isSearching } = useDebounceSearch({
-    onSearch: handleDebouncedSearch,
-    delay: 500,
-  });
-
-  // Initialize search term from Redux filters
-  useEffect(() => {
-    if (filters.search !== searchTerm) {
-      setSearchTerm(filters.search || '');
-    }
-  }, [filters.search]);
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
+  const [selectedClientForView, setSelectedClientForView] = useState<Client | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Filter configuration
   const filterConfig: FilterConfig = useMemo(() => ({
@@ -83,6 +62,7 @@ export default function ClientsPage() {
         key: 'status',
         label: 'Status',
         type: 'select',
+        searchable: true,
         placeholder: 'All Statuses',
         cols: 12,
         mdCols: 6,
@@ -100,20 +80,21 @@ export default function ClientsPage() {
     },
   }), []);
 
-  // Map Redux filters to UI filters
+  // Map Redux filters to UI filters (convert empty strings to 'all' for selects)
   const uiFilters = useMemo(() => ({
-    search: searchTerm || '',
+    search: filters.search || '',
     status: filters.status || 'all',
-  }), [searchTerm, filters]);
+  }), [filters.search, filters.status]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: Record<string, any>) => {
+    // Convert 'all' values back to empty strings for the API
     const clientFilters: ClientFilters = {
-      search: filters.search,
+      search: newFilters.search || '',
       status: newFilters.status === 'all' ? '' : (newFilters.status || ''),
     };
     setFilters(clientFilters);
-  }, [setFilters, filters.search]);
+  }, [setFilters]);
 
   const handleFilterReset = useCallback(() => {
     const defaultFilters: ClientFilters = {
@@ -121,9 +102,7 @@ export default function ClientsPage() {
       status: '',
     };
     setFilters(defaultFilters);
-    setSearchTerm('');
-    setIsFilterExpanded(false);
-  }, [setFilters, setSearchTerm]);
+  }, [setFilters]);
 
   // Table columns configuration
   const columns: ColumnDef<Client>[] = [
@@ -172,7 +151,9 @@ export default function ClientsPage() {
       render: (value) => {
         const statusColors = {
           qualified: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
+          active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800',
           unqualified: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
+          deleted: 'bg-red-600 text-white dark:bg-red-900/20 dark:text-white-300 border-red-200 dark:border-red-800',
         };
 
         return (
@@ -237,7 +218,6 @@ export default function ClientsPage() {
         throw new Error('Client ID is required');
       }
 
-      // Navigate to project add page with client prefilled
       const params = new URLSearchParams();
       params.set('clientId', client._id);
       params.set('prefill', 'true');
@@ -245,7 +225,7 @@ export default function ClientsPage() {
       router.push(`/projects/add?${params.toString()}`);
 
     } catch (error: any) {
-      console.error('Error navigating to create project:', error);
+      console.log('Error navigating to create project:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -254,25 +234,24 @@ export default function ClientsPage() {
     }
   }, [router, toast]);
 
-
   // Custom actions for DataTable
   const customActions: ActionMenuItem<Client>[] = [
     {
       label: "Create Project",
       icon: <FolderPlus className="h-4 w-4" />,
       onClick: handleCreateProjectFromClient,
-      disabled: (client: Client) => {
-        // Disable if client is not qualified
-        return client.status !== 'qualified';
-      },
+      disabled: (client: Client) => client.status !== 'qualified',
       hasPermission: () => canCreate('projects'),
       hideIfNoPermission: true,
     },
   ];
 
   // Event handlers
-  const handleSort = useCallback((field: keyof Client, direction: "asc" | "desc") => {
-    setSort({ field: field as any, direction });
+  const handleSort = useCallback((field: string, direction: "asc" | "desc") => {
+    const validSortFields: (keyof Client)[] = ['name', 'email', 'company', 'clientStatus', 'status', 'createdAt', 'updatedAt'];
+    if (validSortFields.includes(field as keyof Client)) {
+      setSort({ field: field as ClientSort['field'], direction });
+    }
   }, [setSort]);
 
   const handlePageChange = useCallback((page: number) => {
@@ -283,8 +262,19 @@ export default function ClientsPage() {
     setPagination({ limit, page: 1 });
   }, [setPagination]);
 
+  const handleViewClient = useCallback((client: Client) => {
+    setSelectedClientForView(client);
+    setIsQuickViewOpen(true);
+    setActiveTab('overview');
+  }, []);
+
   const handleDeleteClient = useCallback(async (client: Client) => {
     const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
       title: `Delete ${client.name}?`,
       text: "Are you sure you want to delete this client?",
       icon: "error",
@@ -297,6 +287,11 @@ export default function ClientsPage() {
 
     if (result.isConfirmed) {
       Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
         title: 'Deleting...',
         text: 'Please wait while we delete the client.',
         allowOutsideClick: false,
@@ -308,9 +303,14 @@ export default function ClientsPage() {
       });
 
       try {
-        await deleteClient(client._id as string).unwrap();
+        await deleteClient(client._id as string);
 
         Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
           title: "Deleted!",
           text: "Client has been deleted successfully.",
           icon: "success",
@@ -327,30 +327,20 @@ export default function ClientsPage() {
         fetchClients();
       } catch (error: any) {
         Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
           title: "Error!",
-          text: "Failed to delete client. Please try again.",
+          text: error.error,
           icon: "error",
           confirmButtonText: "OK"
         });
-
-        toast({
-          title: "Error",
-          description: error || "Failed to delete client. Please try again.",
-          variant: "destructive",
-        });
+        handleAPIError(error, "Failed to delete user. Please try again.");
       }
     }
-  }, [deleteClient, toast]);
-
-  // Fetch clients effect
-  useEffect(() => {
-    fetchClients({
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort,
-    });
-  }, [pagination.page, pagination.limit, filters, sort]);
+  }, [deleteClient, toast, fetchClients]);
 
   // Error handling effect
   useEffect(() => {
@@ -373,54 +363,42 @@ export default function ClientsPage() {
 
   // Stats display
   const statsCards = useMemo(() => {
-    console.log('Rendering stats cards with stats:', stats);
-    if (!stats) return null;
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold">{stats.totalClients}</p>
-            </div>
-            <Users className="h-8 w-8 text-muted-foreground" />
+    if (!stats) return [];
+    return [
+      {
+        title: "Total",
+        value: stats.totalClients,
+        icon: <Users className="h-4 w-4" />,
+        color: "text-muted-foreground"
+      },
+      {
+        title: "Qualified",
+        value: stats.qualifiedClients,
+        icon: (
+          <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
+            <div className="h-3 w-3 bg-green-600 rounded-full" />
           </div>
-        </div>
-        <div className="bg-card rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Qualified</p>
-              <p className="text-2xl font-bold text-green-600">{stats.qualifiedClients}</p>
-            </div>
-            <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <div className="h-3 w-3 bg-green-600 rounded-full" />
-            </div>
+        ),
+        color: "text-green-600"
+      },
+      {
+        title: "Unqualified",
+        value: stats.unqualifiedClients,
+        icon: (
+          <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+            <div className="h-3 w-3 bg-red-600 rounded-full" />
           </div>
-        </div>
-        <div className="bg-card rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Unqualified</p>
-              <p className="text-2xl font-bold text-red-600">{stats.unqualifiedClients}</p>
-            </div>
-            <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
-              <div className="h-3 w-3 bg-red-600 rounded-full" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-card rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold text-blue-600">{stats.activeClients || 0}</p>
-            </div>
-            <Building2 className="h-8 w-8 text-muted-foreground" />
-          </div>
-        </div>
-      </div>
-    );
-  }, [stats, fetchClients]);
+        ),
+        color: "text-red-600"
+      },
+      {
+        title: "Active",
+        value: stats.activeClients || 0,
+        icon: <Building2 className="h-4 w-4" />,
+        color: "text-blue-600"
+      }
+    ];
+  }, [stats]);
 
   return (
     <div className="space-y-6">
@@ -436,16 +414,10 @@ export default function ClientsPage() {
         hasActiveFilters={Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')}
         isFilterExpanded={isFilterExpanded}
         onFilterToggle={() => {
-          if (Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')) {
-            handleFilterReset();
-          } else {
-            setIsFilterExpanded(!isFilterExpanded);
-          }
+          setIsFilterExpanded(!isFilterExpanded);
         }}
         activeFiltersCount={Object.values(uiFilters).filter(v => v && v !== 'all' && v !== '').length}
         filterText="Filter Clients"
-        clearFiltersText="Clear Filters"
-
         // Refresh functionality
         showRefreshButton={true}
         onRefresh={handleFilterReset}
@@ -458,25 +430,10 @@ export default function ClientsPage() {
             values={uiFilters}
             onFilterChange={handleFilterChange}
             onReset={handleFilterReset}
-            collapsible={false}
-            title="Filter Clients"
-            className="bg-card"
-            loading={isSearching}
-            onSearchChange={setSearchTerm}
+            loading={loading}
           />
         )}
       </PageHeader>
-
-      {/* Error Display */}
-      {error && (
-        <Alert variant="destructive" className="border-destructive bg-destructive/10">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="text-destructive-foreground">{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats Cards */}
-      {statsCards}
 
       <div className="space-y-4">
         {/* Data Table */}
@@ -493,15 +450,321 @@ export default function ClientsPage() {
           sortColumn={sort.field}
           sortDirection={sort.direction}
           emptyMessage="No clients found"
-
-          // Just pass the resource name - DataTable handles everything
           resourceName="clients"
           customActions={customActions}
-          onView={(client: Client) => setSelectedClient(client)}
+          onView={handleViewClient}
           onDelete={handleDeleteClient}
           enablePermissionChecking={true}
+          statsCards={statsCards}
         />
       </div>
+
+      {/* Quick View Modal */}
+      <CustomModal
+        isOpen={isQuickViewOpen}
+        onClose={() => setIsQuickViewOpen(false)}
+        title="Client Details"
+        modalSize="lg"
+      >
+        {selectedClientForView && (
+          <div className="space-y-4">
+            {/* Tab Navigation */}
+            <div className="border-b border-border">
+              <nav className="flex" aria-label="Tabs">
+                {[{
+                  id: 'overview', name: 'Overview'
+                },
+                { id: 'projects', name: 'Projects' },
+                { id: 'activity', name: 'Activity' }
+                ].map((tab) => (
+                  <div className="flex-1" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        "w-full text-center whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors",
+                        activeTab === tab.id
+                          ? "border-primary text-primary"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                      )}
+                    >
+                      {tab.name}
+                    </button>
+                  </div>
+                ))}
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            <div className="mt-4">
+              {/* Overview Tab */}
+              {activeTab === 'overview' && (
+                <div className="space-y-4">
+                  {/* Client Header */}
+                  <div className="flex items-center space-x-4">
+                    <div className="w-16 h-16 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <User className="h-8 w-8 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">{selectedClientForView.name}</h3>
+                      <p className="text-muted-foreground">{selectedClientForView.email}</p>
+                    </div>
+                  </div>
+
+                  {/* Client Details Grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Company</label>
+                      <p className="mt-1 flex items-center">
+                        <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                        {selectedClientForView.company || 'Not specified'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Status</label>
+                      <div className="mt-1">
+                        <Badge className={cn(
+                          "border",
+                          selectedClientForView.status === 'qualified'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800'
+                        )}>
+                          {selectedClientForView.status?.charAt(0).toUpperCase() + selectedClientForView.status?.slice(1)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Phone</label>
+                      <p className="mt-1 flex items-center">
+                        <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
+                        {selectedClientForView.phone || 'Not provided'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Location</label>
+                      <p className="mt-1 flex items-center">
+                        <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                        {/* {selectedClientForView?.address || 'Not specified'} */}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-muted-foreground">Project Interests</label>
+                      <div className="mt-1">
+                        {selectedClientForView.projectInterests && selectedClientForView.projectInterests.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {selectedClientForView.projectInterests.map((interest, index) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {interest}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic">No project interests specified</p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Created</label>
+                      <p className="mt-1">
+                        {new Date(selectedClientForView.createdAt as any).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Last Updated</label>
+                      <p className="mt-1">
+                        {new Date(selectedClientForView.updatedAt as any).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Projects Tab */}
+              {activeTab === 'projects' && (
+                <div className="space-y-4">
+                  <div className="text-center py-4">
+                    <h4 className="text-lg font-medium mb-2">Client Projects</h4>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Projects associated with this client
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Project Interests */}
+                    {/* <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                        <FolderPlus className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Project Interests</p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedClientForView.projectInterests && selectedClientForView.projectInterests.length > 0
+                            ? `${selectedClientForView.projectInterests.length} interest(s): ${selectedClientForView.projectInterests.join(', ')}`
+                            : 'No specific project interests recorded'
+                          }
+                        </p>
+                      </div>
+                    </div> */}
+
+                    {/* Client Status for Projects */}
+                    <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center",
+                        selectedClientForView.status === 'qualified'
+                          ? "bg-green-100 dark:bg-green-900/20"
+                          : "bg-red-100 dark:bg-red-900/20"
+                      )}>
+                        <span className={cn(
+                          "text-sm",
+                          selectedClientForView.status === 'qualified' ? "text-green-600" : "text-red-600"
+                        )}>
+                          {selectedClientForView.status === 'qualified' ? '✓' : '✗'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Project Eligibility</p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedClientForView.status === 'qualified'
+                            ? 'Qualified for new projects'
+                            : 'Not qualified for new projects'
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Budget Information */}
+                    {/* {selectedClientForView?.budget && (
+                      <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                        <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                          <span className="text-green-600 text-sm">$</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Budget Range</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedClientForView.budget}
+                          </p>
+                        </div>
+                      </div>
+                    )} */}
+                  </div>
+                </div>
+              )}
+
+              {/* Activity Tab */}
+              {activeTab === 'activity' && (
+                <div className="space-y-4">
+                  <div className="text-center py-4">
+                    <h4 className="text-lg font-medium mb-2">Client Activity</h4>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Recent activity and important events
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Client Registration */}
+                    <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                        <User className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Client Registration</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(selectedClientForView.createdAt as any).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status Update */}
+                    <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center",
+                        selectedClientForView.status === 'qualified'
+                          ? "bg-green-100 dark:bg-green-900/20"
+                          : "bg-red-100 dark:bg-red-900/20"
+                      )}>
+                        <span className={cn(
+                          "text-sm",
+                          selectedClientForView.status === 'qualified' ? "text-green-600" : "text-red-600"
+                        )}>
+                          {selectedClientForView.status === 'qualified' ? '✓' : '⚠'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          Status: {selectedClientForView.status?.charAt(0).toUpperCase() + selectedClientForView.status?.slice(1)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Current client qualification status
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Last Update */}
+                    <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                        <Calendar className="h-4 w-4 text-purple-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Last Updated</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(selectedClientForView.updatedAt as any).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Contact Information */}
+                    <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
+                      <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
+                        <Mail className="h-4 w-4 text-orange-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Contact Methods</p>
+                        <p className="text-xs text-muted-foreground">
+                          Email: {selectedClientForView.email}
+                          {selectedClientForView.phone && ` • Phone: ${selectedClientForView.phone}`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions Footer */}
+            <div className="flex justify-end space-x-3 pt-4 border-t border-border">
+              <Button
+                variant="outline"
+                onClick={() => setIsQuickViewOpen(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </CustomModal>
     </div>
   );
 }

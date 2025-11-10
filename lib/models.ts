@@ -13,6 +13,11 @@ import '../models/Channel'
 import '../models/Media'
 import '../models/Settings'
 import '../models/Lead'
+import '../models/Phase'
+import '../models/Milestone'
+import '../models/Comment'
+import '../models/Media'
+import '../models/TimeLog'
 
 // Initialize model registration
 let modelsRegistered = false

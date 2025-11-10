@@ -1,39 +1,30 @@
 "use client"
 
 import type React from "react"
-
-import { AuthGuard } from "@/components/auth/auth-guard"
+import { memo, useMemo } from "react"
+import { ProfessionalAuthGuard } from "@/components/auth/professional-auth-guard"
+import { InactivityWarning } from "@/components/auth/inactivity-warning"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { RouteGuard } from "../auth/route-guard"
-import { useThemeVariant } from "@/components/theme-variant-provider"
 import { usePathname } from "next/navigation"
-import { RouteDebug } from "../debug/route-debug"
 
 interface AdminLayoutProps {
   children: React.ReactNode
 }
 
-export function AdminLayout({ children }: AdminLayoutProps) {
+export const AdminLayout = memo(function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname()
-  const { isLoading: isThemeLoading, error: themeError } = useThemeVariant()
 
-  // use this pathname to determine if routes starts with "communications"
-  const isCommunicationsRoute = pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal");
+  // Memoize route calculations to prevent recalculation on every render
+  const isCommunicationsRoute = useMemo(() => 
+    pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal"),
+    [pathname]
+  )
 
-  if (isThemeLoading) {
-    return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-        <div className="loader" />
-      </div>
-    )
-  }
-  if (themeError) {
-    return <div className="flex items-center justify-center h-screen">Error loading theme: {themeError}</div>
-  }
-  // Map pathname to resource and action
-  const getResourceAndAction = (path: string) => {
-    const segments = path.split('/').filter(Boolean)
+  // Memoize resource and action calculation to prevent recalculation on every render
+  const { resource, action } = useMemo(() => {
+    const segments = (pathname || '').split('/').filter(Boolean)
 
     if (segments.length === 0) {
       return { resource: 'dashboard', action: 'read' }
@@ -56,13 +47,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     return { resource, action }
-  }
-
-  const { resource, action } = getResourceAndAction(pathname as string)
+  }, [pathname])
 
 
   return (
-    <AuthGuard>
+    <ProfessionalAuthGuard>
+      <InactivityWarning />
       <div className="flex min-h-screen bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col min-w-0">
@@ -81,6 +71,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </footer>
         </div>
       </div>
-    </AuthGuard>
+    </ProfessionalAuthGuard>
   )
-}
+})

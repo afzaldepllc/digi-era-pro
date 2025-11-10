@@ -50,7 +50,7 @@ const CommunicationSchema = new Schema<ICommunication>({
   channelId: {
     type: String,
     required: true,
-    index: true
+    // index: true // Removed - covered by compound indexes
   },
   subject: {
     type: String,
@@ -83,7 +83,7 @@ const CommunicationSchema = new Schema<ICommunication>({
   attachments: [{
     type: String,
     validate: {
-      validator: function(v: string) {
+      validator: function (v: string) {
         return /^https?:\/\/.+/.test(v)
       },
       message: 'Attachment must be a valid URL'
@@ -130,7 +130,7 @@ CommunicationSchema.virtual('replies', {
 })
 
 // Pre-save validation
-CommunicationSchema.pre('save', async function(next) {
+CommunicationSchema.pre('save', async function (next) {
   if (this.isModified('message')) {
     // Trim whitespace
     this.message = this.message.trim()

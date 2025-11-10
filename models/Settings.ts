@@ -51,20 +51,20 @@ const settingsSchema = new mongoose.Schema({
 // Indexes for better performance
 settingsSchema.index({ category: 1, key: 1 })
 settingsSchema.index({ isPublic: 1 })
-settingsSchema.index({ key: 1 }, { unique: true })
+// settingsSchema.index({ key: 1 }, { unique: true }) // Removed - duplicate of unique: true in field definition
 
 // Update the updatedAt field on save
-settingsSchema.pre('save', function(next) {
+settingsSchema.pre('save', function (next) {
   (this as ISettings).metadata.updatedAt = new Date()
   next()
 })
 
 // Static methods for common operations
-settingsSchema.statics.getSetting = async function(key: string) {
+settingsSchema.statics.getSetting = async function (key: string) {
   return await this.findOne({ key }).lean()
 }
 
-settingsSchema.statics.setSetting = async function(key: string, value: any, category: string = 'general', updatedBy: string = 'system') {
+settingsSchema.statics.setSetting = async function (key: string, value: any, category: string = 'general', updatedBy: string = 'system') {
   return await this.findOneAndUpdate(
     { key },
     {
@@ -83,7 +83,7 @@ settingsSchema.statics.setSetting = async function(key: string, value: any, cate
   )
 }
 
-settingsSchema.statics.getPublicSettings = async function(category?: string) {
+settingsSchema.statics.getPublicSettings = async function (category?: string) {
   const query: any = { isPublic: true }
   if (category) {
     query.category = category
@@ -91,7 +91,7 @@ settingsSchema.statics.getPublicSettings = async function(category?: string) {
   return await this.find(query).select('key value description category').lean()
 }
 
-settingsSchema.statics.getSettingsByCategory = async function(category: string) {
+settingsSchema.statics.getSettingsByCategory = async function (category: string) {
   return await this.find({ category }).sort({ key: 1 }).lean()
 }
 
@@ -117,7 +117,7 @@ export interface ISettingsModel extends mongoose.Model<ISettings> {
   getSettingsByCategory(category: string): Promise<ISettings[]>
 }
 
-const Settings = (mongoose.models.Settings as ISettingsModel) || 
+const Settings = (mongoose.models.Settings as ISettingsModel) ||
   mongoose.model<ISettings, ISettingsModel>('Settings', settingsSchema)
 
 export default Settings

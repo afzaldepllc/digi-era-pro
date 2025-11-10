@@ -118,6 +118,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Create Database Backup?',
         html: `
           <div class="text-left">
@@ -141,6 +146,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
 
       // Show loading
       Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Creating Backup...',
         text: 'Please wait while we create your database backup.',
         allowOutsideClick: false,
@@ -162,6 +172,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if (success) {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Backup Created Successfully!',
           text: `Database backup has been created at ${data.destinationPath}`,
           icon: 'success',
@@ -180,6 +195,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
         })
       } else {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Backup Failed!',
           text: 'Failed to create database backup. Please try again.',
           icon: 'error',
@@ -189,6 +209,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     } catch (error: any) {
       console.error('Backup creation error:', error)
       await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Error!',
         text: error.message || 'An unexpected error occurred while creating backup.',
         icon: 'error',
@@ -202,6 +227,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Create & Download Backup?',
         html: `
           <div class="text-left">
@@ -228,6 +258,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if ('showSaveFilePicker' in window) {
         const saveLocationResult = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Choose Save Location?',
           text: 'Do you want to choose where to save the backup file?',
           icon: 'question',
@@ -251,6 +286,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
 
       // Show loading
       Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Creating Backup...',
         text: 'Please wait while we create and prepare your backup for download.',
         allowOutsideClick: false,
@@ -302,6 +342,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if (saveResult.success) {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Backup Saved!',
           html: `
             <div class="text-left">
@@ -331,6 +376,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     } catch (error: any) {
       console.error('Create and download error:', error)
       await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Download Failed!',
         text: error.message || 'An error occurred while creating and downloading the backup.',
         icon: 'error',
@@ -349,6 +399,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
         // Validate backup file extension for server paths
         if (!data.backupPath.toLowerCase().endsWith('.json')) {
           await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
             title: 'Invalid File Type!',
             text: 'Please select a valid JSON backup file.',
             icon: 'error',
@@ -364,6 +419,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
         : '<p class="text-blue-600">Existing data will be preserved and merged with backup data.</p>'
 
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: data.dryRun ? 'Validate Backup File?' : 'Restore Database Backup?',
         html: `
           <div class="text-left">
@@ -386,6 +446,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
 
       // Show loading
       Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: data.dryRun ? 'Validating Backup...' : 'Restoring Database...',
         text: data.dryRun ? 'Please wait while we validate your backup file.' : 'Please wait while we restore your database.',
         allowOutsideClick: false,
@@ -445,6 +510,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if (success) {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: data.dryRun ? 'Validation Successful!' : 'Database Restored!',
           text: data.dryRun 
             ? 'The backup file is valid and can be restored.'
@@ -466,6 +536,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
         setSelectedFileContent(null)
       } else {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: data.dryRun ? 'Validation Failed!' : 'Restore Failed!',
           text: data.dryRun 
             ? 'The backup file is invalid or corrupted.'
@@ -477,6 +552,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     } catch (error: any) {
       console.error('Backup restoration error:', error)
       await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Error!',
         text: error.message || 'An unexpected error occurred during restore operation.',
         icon: 'error',
@@ -500,6 +580,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
         backupForm.setValue('destinationPath', folderPath)
         
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Folder Selected!',
           text: `Backup destination set to: ${folderPath}`,
           icon: 'success',
@@ -509,6 +594,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       } else {
         // Fallback for browsers that don't support File System Access API
         const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Select Backup Destination',
           html: `
             <div class="text-left">
@@ -551,6 +641,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
             
             customPath?.addEventListener('click', async () => {
               const { value } = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
                 title: 'Enter Custom Path',
                 input: 'text',
                 inputPlaceholder: 'Enter full path to backup directory',
@@ -607,6 +702,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
           restoreForm.setValue('backupPath', fileHandle.name)
           
           await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
             title: 'File Selected!',
             html: `
               <div class="text-left">
@@ -621,6 +721,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
           })
         } catch (error) {
           await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
             title: 'Invalid Backup File!',
             text: 'The selected file is not a valid JSON backup file.',
             icon: 'error',
@@ -639,6 +744,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
           if (file) {
             if (!file.name.toLowerCase().endsWith('.json')) {
               await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
                 title: 'Invalid File Type!',
                 text: 'Please select a JSON backup file.',
                 icon: 'error',
@@ -661,6 +771,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
               restoreForm.setValue('backupPath', file.name)
               
               await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
                 title: 'File Selected!',
                 html: `
                   <div class="text-left">
@@ -675,6 +790,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
               })
             } catch (error) {
               await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
                 title: 'Invalid Backup File!',
                 text: 'The selected file is not a valid JSON backup file.',
                 icon: 'error',
@@ -763,6 +883,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Download Backup File?',
         html: `
           <div class="text-left">
@@ -786,6 +911,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if ('showSaveFilePicker' in window) {
         const saveLocationResult = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'Choose Save Location?',
           text: 'Do you want to choose where to save the backup file?',
           icon: 'question',
@@ -809,6 +939,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
 
       // Show loading
       Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Downloading...',
         text: 'Please wait while we prepare your backup file.',
         allowOutsideClick: false,
@@ -845,6 +980,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
       
       if (saveResult.success) {
         await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
           title: 'File Saved!',
           html: `
             <div class="text-left">
@@ -865,6 +1005,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     } catch (error: any) {
       console.error('Download error:', error)
       await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Download Failed!',
         text: error.message || 'An error occurred while downloading the backup file.',
         icon: 'error',
@@ -878,6 +1023,11 @@ export function BackupManagement({ className }: BackupManagementProps) {
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
         title: 'Restore from this Backup?',
         html: `
           <div class="text-left">

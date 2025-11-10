@@ -1,22 +1,27 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
-  fetchTasks,
-  fetchTaskHierarchy,
-  fetchTaskById,
-  createTask,
-  updateTask,
-  assignTask,
-  updateTaskStatus,
-  deleteTask,
+  setTasks,
+  setSelectedTask,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
   setFilters,
   setSort,
   setPagination,
-  setSelectedTask,
-  setCurrentProjectId,
-  clearError,
+  setHierarchy,
   resetState,
 } from '@/store/slices/taskSlice'
+import {
+  useGenericQuery,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
+import { useQueryClient } from "@tanstack/react-query"
+import { apiRequest, handleAPIError } from '@/lib/utils/api-client'
 import type {
   FetchTasksParams,
   CreateTaskData,
@@ -30,58 +35,116 @@ export function useTasks() {
 
   const {
     tasks,
-    taskHierarchy,
     selectedTask,
     loading,
-    hierarchyLoading,
     actionLoading,
     error,
     filters,
     sort,
     pagination,
     stats,
-    currentProjectId,
+    hierarchy,
   } = useAppSelector((state) => state.tasks)
 
-  // CRUD operations
+  // Define options for generic hooks
+  const taskOptions: UseGenericQueryOptions<any> = {
+    entityName: 'tasks',
+    baseUrl: '/api/tasks',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setTasks(entities)),
+      setEntity: (entity) => dispatch(setSelectedTask(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
+
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  // Use generic hooks
+  const { data: fetchedTasks, isLoading: queryLoading, refetch: refetchTasks } = useGenericQuery(
+    taskOptions,
+    queryParams,
+    true
+  )
+
+  const createMutation = useGenericCreate(taskOptions)
+  const updateMutation = useGenericUpdate(taskOptions)
+  const deleteMutation = useGenericDelete(taskOptions)
+
+  const queryClient = useQueryClient()
+
+  // Fetch operations - Stable function that doesn't change on re-renders
   const handleFetchTasks = useCallback((params?: FetchTasksParams) => {
-    return dispatch(fetchTasks(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      ...filters,
-      sortBy: sort.field,
-      sortOrder: sort.direction
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
+    refetchTasks()
+  }, [refetchTasks])
 
-  const handleFetchTaskHierarchy = useCallback((projectId: string, departmentId?: string) => {
-    dispatch(setCurrentProjectId(projectId))
-    return dispatch(fetchTaskHierarchy({ projectId, departmentId }))
-  }, [dispatch])
-
-  const handleFetchTaskById = useCallback((id: string) => {
-    return dispatch(fetchTaskById(id))
-  }, [dispatch])
-
+  // CRUD operations
   const handleCreateTask = useCallback((taskData: CreateTaskData) => {
-    return dispatch(createTask(taskData))
-  }, [dispatch])
+    return createMutation.mutateAsync(taskData)
+  }, [createMutation])
 
   const handleUpdateTask = useCallback((id: string, data: UpdateTaskData) => {
-    return dispatch(updateTask({ id, data }))
-  }, [dispatch])
-
-  const handleAssignTask = useCallback((id: string, assigneeId: string) => {
-    return dispatch(assignTask({ id, assigneeId }))
-  }, [dispatch])
-
-  const handleUpdateTaskStatus = useCallback((id: string, status: string, actualHours?: number) => {
-    return dispatch(updateTaskStatus({ id, status, actualHours }))
-  }, [dispatch])
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
   const handleDeleteTask = useCallback((taskId: string) => {
-    return dispatch(deleteTask(taskId))
-  }, [dispatch])
+    return deleteMutation.mutateAsync(taskId)
+  }, [deleteMutation])
+
+  // Special operations that require direct API calls
+  const handleAssignTask = useCallback(async (id: string, assigneeId: string) => {
+    try {
+      await apiRequest(`${taskOptions.baseUrl}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ operation: 'assign', assigneeId })
+      })
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName] })
+      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName, id] })
+    } catch (error) {
+      handleAPIError(error, `Failed to assign task`)
+      throw error
+    }
+  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient])
+
+  const handleUpdateTaskStatus = useCallback(async (id: string, status: string, actualHours?: number) => {
+    try {
+      await apiRequest(`${taskOptions.baseUrl}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ operation: 'updateStatus', status, actualHours })
+      })
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName] })
+      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName, id] })
+    } catch (error) {
+      handleAPIError(error, `Failed to update task status`)
+      throw error
+    }
+  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient])
+
+  // Fetch task hierarchy for a project
+  const fetchTaskHierarchy = useCallback(async (projectId: string) => {
+    try {
+      const response = await apiRequest(`${taskOptions.baseUrl}?hierarchy=true&projectId=${projectId}`)
+      dispatch(setHierarchy(response))
+      return response
+    } catch (error) {
+      handleAPIError(error, `Failed to fetch task hierarchy`)
+      throw error
+    }
+  }, [taskOptions.baseUrl, dispatch])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<TaskFilters>) => {
@@ -100,10 +163,6 @@ export function useTasks() {
     dispatch(setSelectedTask(task))
   }, [dispatch])
 
-  const handleSetCurrentProjectId = useCallback((projectId: string | null) => {
-    dispatch(setCurrentProjectId(projectId))
-  }, [dispatch])
-
   // Utility operations
   const handleClearError = useCallback(() => {
     dispatch(clearError())
@@ -117,15 +176,9 @@ export function useTasks() {
     return handleFetchTasks()
   }, [handleFetchTasks])
 
-  const refreshTaskHierarchy = useCallback(() => {
-    if (currentProjectId) {
-      return handleFetchTaskHierarchy(currentProjectId)
-    }
-  }, [currentProjectId, handleFetchTaskHierarchy])
-
   // Computed values
   const hasTasks = tasks.length > 0
-  const hasTaskHierarchy = taskHierarchy.length > 0
+  const hasTaskHierarchy = hierarchy ? true : false
   const isFirstPage = pagination.page === 1
   const isLastPage = pagination.page >= pagination.pages
   const totalPages = pagination.pages
@@ -225,23 +278,20 @@ export function useTasks() {
 
   return {
     // State
-    tasks,
-    taskHierarchy,
+    tasks: fetchedTasks || tasks,
     selectedTask,
-    loading,
-    hierarchyLoading,
+    loading: queryLoading || loading,
     actionLoading,
     error,
     filters,
     sort,
     pagination,
     stats,
-    currentProjectId,
+    hierarchy,
 
     // CRUD operations
     fetchTasks: handleFetchTasks,
-    fetchTaskHierarchy: handleFetchTaskHierarchy,
-    fetchTaskById: handleFetchTaskById,
+    fetchTaskHierarchy,
     createTask: handleCreateTask,
     updateTask: handleUpdateTask,
     assignTask: handleAssignTask,
@@ -253,13 +303,11 @@ export function useTasks() {
     setSort: handleSetSort,
     setPagination: handleSetPagination,
     setSelectedTask: handleSetSelectedTask,
-    setCurrentProjectId: handleSetCurrentProjectId,
 
     // Utility operations
     clearError: handleClearError,
     resetState: handleResetState,
     refreshTasks,
-    refreshTaskHierarchy,
 
     // Computed values
     hasTasks,

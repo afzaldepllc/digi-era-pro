@@ -3,34 +3,26 @@
 import { usePathname } from "next/navigation"
 import type React from "react"
 import { AdminLayout } from "./admin-layout"
-import { useEffect, useState } from "react"
+import { memo, useMemo } from "react"
 
 interface LayoutProviderProps {
     children: React.ReactNode
 }
 
-export function LayoutProvider({ children }: LayoutProviderProps) {
-    const [mounted, setMounted] = useState(false)
+// Memoized layout provider to prevent unnecessary re-renders
+export const LayoutProvider = memo(function LayoutProvider({ children }: LayoutProviderProps) {
     const pathname = usePathname()
 
-    useEffect(() => {
-        setMounted(true)
-    }, [])
+    // Memoize the route check to prevent recalculation on every render
+    const isAuthRoute = useMemo(() => 
+        pathname?.startsWith("/auth"), 
+        [pathname]
+    )
 
-    // Prevent hydration mismatch
-    if (!mounted) {
-        return (
-            <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-                <div className="loader" />
-            </div>
-        )
-    }
-
-    const isAuthRoute = pathname?.startsWith("/auth")
-
+    // No artificial delays - render immediately for better performance
     if (isAuthRoute) {
         return <>{children}</>
     }
 
     return <AdminLayout>{children}</AdminLayout>
-}
+})

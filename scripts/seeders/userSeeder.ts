@@ -153,8 +153,13 @@ async function seedUsers() {
     console.log('🌱 Starting user seeding...')
 
     // Clear existing users
-    await User.deleteMany({})
-    console.log('✅ Cleared existing users')
+    const existingCount = await User.countDocuments()
+    if (existingCount > 0) {
+      await User.deleteMany({})
+      console.log(`✅ Cleared ${existingCount} existing users`)
+    } else {
+      console.log('✅ No existing users to clear')
+    }
 
     // Get all roles (both system and department roles)
     const allRoles = await Role.find({ status: 'active' })
@@ -317,6 +322,14 @@ async function seedUsers() {
     console.log('   Junior Executive: steve.juniordev@company.com / JuniorExec@123')
     console.log('   Intern: james.webintern@company.com / Intern@123')
     console.log('   Client: contact@abccompany.com / Client@123')
+
+    // Verify users were actually saved to database
+    const verifyCount = await User.countDocuments()
+    console.log(`\n🔍 Verification: ${verifyCount} users in database`)
+    
+    if (verifyCount !== createdUsers.length) {
+      console.warn(`⚠️  Warning: Expected ${createdUsers.length} users but found ${verifyCount} in database`)
+    }
 
     return {
       success: true,

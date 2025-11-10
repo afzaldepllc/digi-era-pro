@@ -97,11 +97,7 @@ export async function PUT(
       }
 
       return updated
-    })
-
-    // Clear role-related caches
-    clearCache(`role-${id}`)
-    clearCache('roles')
+    }, `role-permissions-${id}`)
 
     // Log the permission update (userEmail already extracted by middleware)
     console.log('Role permissions updated:', {
@@ -112,16 +108,6 @@ export async function PUT(
       permissions: permissions.map(p => ({ resource: p.resource, actions: p.actions })),
       timestamp: new Date().toISOString()
     })
-
-    // Clear all role-related cache entries to ensure fresh data on next fetch
-    const roleCache = require('../route').roleCache
-    if (roleCache && roleCache.delete) {
-      for (const key of roleCache.keys()) {
-        if (key.startsWith(id + '_')) {
-          roleCache.delete(key)
-        }
-      }
-    }
 
     return NextResponse.json({
       success: true,

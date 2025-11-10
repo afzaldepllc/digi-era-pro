@@ -1,141 +1,12 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { 
   ICommunication, 
   IChannel, 
   IParticipant, 
   ITypingIndicator, 
   CommunicationFilters, 
-  CommunicationSort,
-  FetchMessagesParams,
-  CreateMessageData,
-  CreateChannelData,
-  UpdateMessageData
+  CommunicationSort
 } from '@/types/communication'
-
-// Async Thunks (Real API implementations)
-export const fetchChannels = createAsyncThunk(
-  'communications/fetchChannels',
-  async (params: { isInternal?: boolean } = {}, { rejectWithValue }) => {
-    try {
-      const queryParams = new URLSearchParams()
-      if (params.isInternal !== undefined) {
-        queryParams.append('isInternal', params.isInternal.toString())
-      }
-
-      const response = await fetch(`/api/communications/channels?${queryParams}`)
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch channels')
-      }
-
-      return data
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to fetch channels')
-    }
-  }
-)
-
-export const fetchMessages = createAsyncThunk(
-  'communications/fetchMessages',
-  async (params: FetchMessagesParams, { rejectWithValue }) => {
-    try {
-      const queryParams = new URLSearchParams()
-      queryParams.append('channelId', params.channelId)
-      if (params.page) queryParams.append('page', params.page.toString())
-      if (params.limit) queryParams.append('limit', params.limit.toString())
-
-      const response = await fetch(`/api/communications/messages?${queryParams}`)
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch messages')
-      }
-
-      return data
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to fetch messages')
-    }
-  }
-)
-
-export const createChannel = createAsyncThunk(
-  'communications/createChannel',
-  async (channelData: CreateChannelData, { rejectWithValue }) => {
-    try {
-      const response = await fetch('/api/communications/channels', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(channelData),
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to create channel')
-      }
-
-      return data
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to create channel')
-    }
-  }
-)
-
-export const sendMessage = createAsyncThunk(
-  'communications/sendMessage',
-  async (messageData: CreateMessageData, { rejectWithValue }) => {
-    try {
-      const response = await fetch('/api/communications/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messageData),
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to send message')
-      }
-
-      return data
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to send message')
-    }
-  }
-)
-
-export const markMessageAsRead = createAsyncThunk(
-  'communications/markMessageAsRead',
-  async ({ messageId, channelId }: { messageId: string; channelId: string }, { rejectWithValue }) => {
-    try {
-      const response = await fetch(`/api/communications/messages/${messageId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ isRead: true }),
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to mark message as read')
-      }
-
-      return {
-        success: true,
-        data: { messageId, channelId, readAt: new Date().toISOString() }
-      }
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to mark message as read')
-    }
-  }
-)
 
 // State interface
 interface CommunicationState {
@@ -365,135 +236,49 @@ const communicationSlice = createSlice({
       state.notifications = []
     },
     
-    // Reset state
-    resetState: (state) => {
-      Object.assign(state, initialState)
-    }
-  },
-  
-  extraReducers: (builder) => {
-    // Fetch Channels
-    builder.addCase(fetchChannels.pending, (state) => {
-      state.loading = true
-      state.error = null
-    })
-    
-    builder.addCase(fetchChannels.fulfilled, (state, action) => {
-      state.loading = false
-      state.channels = action.payload.data
-      state.pagination = action.payload.pagination
-      
+    // Data setters for TanStack Query integration
+    setChannels: (state, action: PayloadAction<IChannel[]>) => {
+      state.channels = action.payload
       // Initialize unreadCount for channels if not present
       state.channels.forEach(channel => {
         if (channel.unreadCount === undefined || channel.unreadCount === null) {
           channel.unreadCount = 0
         }
       })
-      
       // Calculate total unread count
       state.unreadCount = state.channels.reduce((total, channel) => total + (channel.unreadCount || 0), 0)
-    })
+    },
     
-    builder.addCase(fetchChannels.rejected, (state, action) => {
-      state.loading = false
-      state.error = action.payload as string
-    })
+    setMessages: (state, action: PayloadAction<{ channelId: string; messages: ICommunication[] }>) => {
+      const { channelId, messages } = action.payload
+      state.messages[channelId] = messages
+    },
     
-    // Fetch Messages
-    builder.addCase(fetchMessages.pending, (state) => {
-      state.messagesLoading = true
-      state.error = null
-    })
+    // Loading state setters
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload
+    },
     
-    builder.addCase(fetchMessages.fulfilled, (state, action) => {
-      state.messagesLoading = false
-      
-      console.log('fetchMessages.fulfilled - channelId:', action.meta.arg.channelId)
-      console.log('fetchMessages.fulfilled - action.payload.data:', action.payload.data)
-      console.log('fetchMessages.fulfilled - data length:', action.payload.data?.length)
-      
-      state.messages[action.meta.arg.channelId] = action.payload.data
-      console.log('fetchMessages.fulfilled - state.messages after:', state.messages)
-    })
+    setActionLoading: (state, action: PayloadAction<boolean>) => {
+      state.actionLoading = action.payload
+    },
     
-    builder.addCase(fetchMessages.rejected, (state, action) => {
-      state.messagesLoading = false
-      state.error = action.payload as string
-    })
+    setMessagesLoading: (state, action: PayloadAction<boolean>) => {
+      state.messagesLoading = action.payload
+    },
     
-    // Create Channel
-    builder.addCase(createChannel.pending, (state) => {
-      state.actionLoading = true
-      state.error = null
-    })
-    
-    builder.addCase(createChannel.fulfilled, (state, action) => {
-      state.actionLoading = false
-      
-      const channel = action.payload.data
-      state.channels.push(channel)
-      
-      // Set as active channel
-      state.activeChannelId = channel.channelId
-      state.selectedChannel = channel
-    })
-    
-    builder.addCase(createChannel.rejected, (state, action) => {
-      state.actionLoading = false
-      state.error = action.payload as string
-    })
-    
-    // Send Message
-    builder.addCase(sendMessage.pending, (state) => {
-      state.actionLoading = true
-      state.error = null
-    })
-    
-    builder.addCase(sendMessage.fulfilled, (state, action) => {
-      state.actionLoading = false
-      
-      const message = action.payload.data
-      const channelId = message.channelId
-      
-      if (!state.messages[channelId]) {
-        state.messages[channelId] = []
-      }
-      
-      state.messages[channelId].push(message)
-      
-      // Update channel's last message
-      const channelIndex = state.channels.findIndex(ch => ch.channelId === channelId)
-      if (channelIndex !== -1) {
-        state.channels[channelIndex].lastMessage = message
-      }
-    })
-    
-    builder.addCase(sendMessage.rejected, (state, action) => {
-      state.actionLoading = false
-      state.error = action.payload as string
-    })
-    
-    // Mark Message as Read
-    builder.addCase(markMessageAsRead.fulfilled, (state, action) => {
-      const { messageId, channelId, readAt } = action.payload.data
-      
-      if (state.messages[channelId]) {
-        const messageIndex = state.messages[channelId].findIndex(msg => msg._id === messageId)
-        if (messageIndex !== -1) {
-          state.messages[channelId][messageIndex] = {
-            ...state.messages[channelId][messageIndex],
-            isRead: true,
-            readAt
-          }
-        }
-      }
-    })
+    // Reset state
+    resetState: (state) => {
+      Object.assign(state, initialState)
+    }
   }
 })
 
 export const {
   setActiveChannel,
   clearActiveChannel,
+  setChannels,
+  setMessages,
   addMessage,
   updateMessage,
   setTyping,
@@ -506,6 +291,9 @@ export const {
   setFilters,
   setSort,
   setPagination,
+  setLoading,
+  setActionLoading,
+  setMessagesLoading,
   clearError,
   setError,
   addNotification,

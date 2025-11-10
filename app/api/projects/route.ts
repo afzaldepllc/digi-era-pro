@@ -2,8 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Project from "@/models/Project"
 import User from "@/models/User"
-import Lead from "@/models/Lead"
-import { createProjectSchema, createProjectFormSchema, projectQuerySchema } from "@/lib/validations/project"
+import { createProjectFormSchema, projectQuerySchema } from "@/lib/validations/project"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import mongoose from 'mongoose'
 
@@ -66,12 +65,21 @@ export async function GET(request: NextRequest) {
     sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
 
     // Execute parallel queries with automatic connection management and caching
-    const [projects, total, stats] = await Promise.all([
+    const [projectsRaw, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
         return await Project.find(filter)
           .populate('client', 'name email status')
           .populate('departments', 'name status')
           .populate('creator', 'name email')
+          .populate({
+            path: 'tasks',
+            populate: [
+              { path: 'assignee', select: 'name email' },
+              { path: 'department', select: 'name' },
+              { path: 'creator', select: 'name email' }
+            ]
+          })
+          .populate('taskCount')
           .sort(sort)
           .skip((validatedParams.page - 1) * validatedParams.limit)
           .limit(validatedParams.limit)
@@ -124,28 +132,108 @@ export async function GET(request: NextRequest) {
       }, `projects-stats-${JSON.stringify(filter)}`, 300000) // 5-minute cache for stats
     ])
 
-    console.log('Projects fetched:', projects)
+    // Transform projects to group tasks by departments
+    const projects = projectsRaw.map((project: any) => {
+      if (!project.tasks || !Array.isArray(project.tasks)) {
+        return {
+          ...project,
+          departmentTasks: {}
+        }
+      }
+
+      // Group tasks by department
+      const departmentTasks: { [key: string]: any } = {}
+      
+      // Initialize department structure from project departments OR from tasks if departments not assigned
+      if (project.departments && Array.isArray(project.departments) && project.departments.length > 0) {
+        // Use project departments if available
+        project.departments.forEach((dept: any) => {
+          departmentTasks[dept._id.toString()] = {
+            departmentId: dept._id,
+            departmentName: dept.name,
+            tasks: [],
+            taskCount: 0,
+            subTaskCount: 0
+          }
+        })
+      } else if (project.tasks && Array.isArray(project.tasks) && project.tasks.length > 0) {
+        // If no departments assigned, infer from tasks
+        const uniqueDepartments = new Map()
+        project.tasks.forEach((task: any) => {
+          if (task.department && task.departmentId) {
+            uniqueDepartments.set(task.departmentId.toString(), {
+              departmentId: task.departmentId,
+              departmentName: task.department.name,
+              tasks: [],
+              taskCount: 0,
+              subTaskCount: 0
+            })
+          }
+        })
+        uniqueDepartments.forEach((value, key) => {
+          departmentTasks[key] = value
+        })
+      }
+
+      // Process tasks - first add main tasks
+      const mainTasks = project.tasks.filter((task: any) => task.type === 'task')
+      const subTasks = project.tasks.filter((task: any) => task.type === 'sub-task')
+
+      mainTasks.forEach((task: any) => {
+        const deptId = task.departmentId?.toString()
+        if (deptId) {
+          // Ensure department exists in departmentTasks
+          if (!departmentTasks[deptId] && task.department) {
+            departmentTasks[deptId] = {
+              departmentId: task.departmentId,
+              departmentName: task.department.name,
+              tasks: [],
+              taskCount: 0,
+              subTaskCount: 0
+            }
+          }
+
+          if (departmentTasks[deptId]) {
+            // Find sub-tasks for this main task
+            const taskSubTasks = subTasks.filter((subTask: any) => 
+              subTask.parentTaskId?.toString() === task._id.toString()
+            )
+
+            departmentTasks[deptId].tasks.push({
+              ...task,
+              subTasks: taskSubTasks
+            })
+            departmentTasks[deptId].taskCount++
+            departmentTasks[deptId].subTaskCount += taskSubTasks.length
+          }
+        }
+      })
+
+      // Convert departmentTasks object to array for easier frontend consumption
+      const departmentTasksArray = Object.values(departmentTasks)
+
+      return {
+        ...project,
+        departmentTasks: departmentTasksArray,
+        // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
+        departments: undefined,
+        tasks: undefined
+      }
+    })
+
+    console.log('Projects fetched and transformed:', projects)
 
     return NextResponse.json({
       success: true,
-      data: projects,
-      pagination: {
-        page: validatedParams.page,
-        limit: validatedParams.limit,
-        total,
-        pages: Math.ceil(total / validatedParams.limit)
-      },
-      stats,
-      filters: {
-        search: validatedParams.search,
-        status: validatedParams.status,
-        priority: validatedParams.priority,
-        clientId: validatedParams.clientId,
-        departmentId: validatedParams.departmentId
-      },
-      sort: {
-        field: validatedParams.sortBy,
-        direction: validatedParams.sortOrder
+      data: {
+        projects,
+        pagination: {
+          page: validatedParams.page,
+          limit: validatedParams.limit,
+          total,
+          pages: Math.ceil(total / validatedParams.limit)
+        },
+        stats
       },
       message: 'Projects retrieved successfully'
     })

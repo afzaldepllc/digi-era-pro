@@ -20,7 +20,7 @@ export interface IRole extends Document {
   permissions?: IPermission[]
   hierarchyLevel: number // Higher level can manage lower levels
   isSystemRole: boolean // Cannot be deleted (admin, super admin)
-  status: "active" | "inactive" | "archived"
+  status: "active" | "inactive" | "archived" | "deleted"
   maxUsers?: number // Limit how many users can have this role
   validityPeriod?: {
     startDate?: Date
@@ -42,7 +42,7 @@ const PermissionSchema = new Schema<IPermission>({
     required: [true, "Resource is required"],
     trim: true,
     lowercase: true,
-    index: true,
+    // index: true, // Removed - not frequently queried alone
   },
   actions: [{
     type: String,
@@ -81,7 +81,7 @@ const RoleSchema = new Schema<IRole>({
     required: [true, "Role name is required"],
     trim: true,
     maxlength: [100, "Name cannot exceed 100 characters"],
-    index: true,
+    // index: true, // Removed - covered by compound unique index
   },
   displayName: {
     type: String,
@@ -116,7 +116,7 @@ const RoleSchema = new Schema<IRole>({
         return "Department is required for non-system roles";
       }
     },
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   permissions: {
     type: [PermissionSchema],
@@ -134,18 +134,18 @@ const RoleSchema = new Schema<IRole>({
     min: [1, "Hierarchy level must be at least 1"],
     max: [10, "Hierarchy level cannot exceed 10"],
     default: 1,
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   isSystemRole: {
     type: Boolean,
     default: false,
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   status: {
     type: String,
-    enum: ["active", "inactive", "archived"],
+    enum: ["active", "inactive", "archived", "deleted"],
     default: "active",
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   maxUsers: {
     type: Number,

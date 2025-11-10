@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { executeGenericDbQuery } from "@/lib/mongodb"
 import Settings from "@/models/Settings"
-
-// Import theme variants from the main themes route
-import { THEME_VARIANTS } from "@/app/api/settings/themes/route"
+import { THEME_VARIANTS, VALID_THEME_VARIANTS } from "@/lib/constants/theme-variants"
 
 // Helper to create consistent error responses
 function createErrorResponse(message: string, status: number, details?: any) {
@@ -17,54 +15,82 @@ function createErrorResponse(message: string, status: number, details?: any) {
 // GET /api/public/themes - Get current theme (accessible to all authenticated users)
 export async function GET(request: NextRequest) {
   try {
-    // Use cached query with 30-second cache for theme data
+    // Set response headers for better caching
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60, s-maxage=60', // 1 minute cache
+      'X-Content-Type-Options': 'nosniff'
+    })
+
+    // Use cached query with shorter cache for faster response
     const themeData = await executeGenericDbQuery(async () => {
-      // Get current theme setting from database
-      const currentThemeSetting = await Settings.findOne({ 
-        key: 'theme_variant',
-        category: 'appearance',
-        isPublic: true // Only get public settings
-      }).lean()
+      try {
+        // Get current theme setting from database with timeout
+        const currentThemeSetting = await Settings.findOne({ 
+          key: 'theme_variant',
+          category: 'appearance',
+          isPublic: true // Only get public settings
+        }).lean().maxTimeMS(2000) // 2 second timeout
 
-      const currentTheme = currentThemeSetting?.value || 'default'
+        const currentTheme = currentThemeSetting?.value || 'default'
 
-      // Validate that the current theme exists in THEME_VARIANTS
-      const validTheme = THEME_VARIANTS[currentTheme as keyof typeof THEME_VARIANTS] 
-        ? currentTheme 
-        : 'default'
+        // Validate that the current theme exists in THEME_VARIANTS
+        const validTheme = THEME_VARIANTS[currentTheme as keyof typeof THEME_VARIANTS] 
+          ? currentTheme 
+          : 'default'
 
-      return { currentTheme: validTheme }
-    }, 'public-themes', 30000) // 30 second cache
+        return { currentTheme: validTheme }
+      } catch (dbError) {
+        console.warn('Database query failed, using default theme:', dbError)
+        return { currentTheme: 'default' }
+      }
+    }, 'public-themes', 15000) // Reduced to 15 second cache for faster updates
 
     const validTheme = themeData.currentTheme
+
+    // Always ensure the theme exists in THEME_VARIANTS
+    const finalTheme = THEME_VARIANTS[validTheme as keyof typeof THEME_VARIANTS] ? validTheme : 'default'
 
     // Return current theme and variants
     return NextResponse.json({
       success: true,
       data: {
-        currentTheme: validTheme,
-        themeConfig: THEME_VARIANTS[validTheme as keyof typeof THEME_VARIANTS],
+        currentTheme: finalTheme,
+        themeConfig: THEME_VARIANTS[finalTheme as keyof typeof THEME_VARIANTS],
         variants: THEME_VARIANTS,
-        availableThemes: Object.keys(THEME_VARIANTS),
+        availableThemes: VALID_THEME_VARIANTS,
         timestamp: new Date().toISOString() // For cache busting
       },
       message: 'Current theme retrieved successfully'
+    }, { 
+      status: 200,
+      headers 
     })
 
   } catch (error: any) {
     console.error('Error in GET /api/public/themes:', error)
     
-    // Return default theme in case of error to prevent app breaking
+    // Always return a valid response to prevent app breaking
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=30', // Short cache for errors
+      'X-Content-Type-Options': 'nosniff'
+    })
+
     return NextResponse.json({
       success: true,
       data: {
         currentTheme: 'default',
         themeConfig: THEME_VARIANTS.default,
         variants: THEME_VARIANTS,
-        availableThemes: Object.keys(THEME_VARIANTS),
+        availableThemes: VALID_THEME_VARIANTS,
         timestamp: new Date().toISOString()
       },
-      message: 'Fallback to default theme due to error'
+      message: 'Fallback to default theme due to error',
+      fallback: true
+    }, { 
+      status: 200, // Still return 200 to prevent client errors
+      headers 
     })
   }
 }

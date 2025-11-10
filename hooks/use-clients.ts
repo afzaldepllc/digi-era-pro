@@ -1,12 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
-  fetchClients,
-  fetchClientById,
-  createClient,
-  updateClient,
-  updateClientStatus,
-  deleteClient,
+  useGenericQuery,
+  useGenericQueryById,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+} from './use-generic-query'
+import {
   setFilters,
   setSort,
   setPagination,
@@ -16,69 +17,110 @@ import {
   optimisticStatusUpdate,
 } from '@/store/slices/clientSlice'
 import type {
-  FetchClientsParams,
   UpdateClientData,
   ClientFilters,
   ClientSort,
+  CreateClientData,
+  Client,
 } from '@/types'
 
 export function useClients() {
   const dispatch = useAppDispatch()
 
   const {
-    clients,
     selectedClient,
-    loading,
-    actionLoading,
-    statusLoading,
-    error,
     filters,
     sort,
     pagination,
-    stats,
   } = useAppSelector((state) => state.clients)
 
+  // Generic options for clients
+  const genericOptions = useMemo(() => ({
+    entityName: 'clients',
+    baseUrl: '/api/clients',
+    reduxDispatchers: {
+      setEntities: (clients: Client[]) => {
+        // This will be handled by TanStack Query, but we can dispatch if needed
+      },
+      setEntity: (client: Client | null) => dispatch(setSelectedClient(client)),
+      setPagination: (pagination: any) => dispatch(setPagination(pagination)),
+      setStats: (stats: any) => {
+        // Stats will be handled by TanStack Query
+      },
+      setLoading: () => {},
+      setActionLoading: () => {},
+      setError: (error: any) => {
+        // Error handling is done by handleAPIError
+      },
+      clearError: () => dispatch(clearError()),
+    },
+  }), [dispatch])
+
+  // Query params from Redux state
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort,
+  }), [pagination.page, pagination.limit, filters, sort])
+
+  // Generic queries
+  const {
+    data: clients = [],
+    isLoading: loading,
+    refetch: refetchClients,
+  } = useGenericQuery<Client>(genericOptions, queryParams)
+
+  // Mutations
+  const createMutation = useGenericCreate<Client>(genericOptions)
+  const updateMutation = useGenericUpdate<Client>(genericOptions)
+  const deleteMutation = useGenericDelete<Client>(genericOptions)
+
+  // For single client fetching (used in edit page)
+  const {
+    data: clientById,
+    isLoading: clientByIdLoading,
+  } = useGenericQueryById<Client>(genericOptions, undefined, false) // Will be enabled when ID is provided
+
   // Fetch operations
-  const handleFetchClients = useCallback((params?: FetchClientsParams) => {
-    return dispatch(fetchClients(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
+  const handleFetchClients = useCallback(() => {
+    refetchClients()
+  }, [refetchClients])
 
   const handleFetchClientById = useCallback((id: string) => {
-    return dispatch(fetchClientById(id))
-  }, [dispatch])
+    // This will be handled by useGenericQueryById when we pass the id
+    // For now, we'll use the mutation to fetch or implement separately
+  }, [])
 
-  // Create operations
-  const handleCreateClient = useCallback((data: any) => {
-    return dispatch(createClient(data))
-  }, [dispatch])
+  // CRUD operations
+  const handleCreateClient = useCallback(async (clientData: CreateClientData) => {
+    return await createMutation.mutateAsync(clientData)
+  }, [createMutation])
 
-  // Update operations (Note: Clients are created automatically from lead qualification)
-  const handleUpdateClient = useCallback((id: string, data: UpdateClientData) => {
-    return dispatch(updateClient({ id, data }))
-  }, [dispatch])
+  const handleUpdateClient = useCallback(async (id: string, data: UpdateClientData) => {
+    return await updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
-  const handleDeleteClient = useCallback((clientId: string) => {
-    return dispatch(deleteClient(clientId))
-  }, [dispatch])
+  const handleDeleteClient = useCallback(async (clientId: string) => {
+    return await deleteMutation.mutateAsync(clientId)
+  }, [deleteMutation])
 
   // Status operations with business logic
   const handleUpdateClientStatus = useCallback(async (id: string, clientStatus: string, reason?: string) => {
     // Optimistic update for better UX
     dispatch(optimisticStatusUpdate({ id, clientStatus }))
-    
+
     try {
-      const result = await dispatch(updateClientStatus({ id, clientStatus, reason }))
+      const result = await updateMutation.mutateAsync({
+        id,
+        data: { clientStatus, ...(reason && { unqualifiedReason: reason }) }
+      })
       return result
     } catch (error) {
       // The slice will handle reverting the optimistic update on failure
       throw error
     }
-  }, [dispatch])
+  }, [dispatch, updateMutation])
 
   const handleQualifyClient = useCallback((id: string) => {
     return handleUpdateClientStatus(id, 'qualified')
@@ -187,14 +229,22 @@ export function useClients() {
     return Boolean(client.leadId)
   }, [])
 
+  // Computed stats
+  const stats = useMemo(() => ({
+    totalClients: clients.length,
+    qualifiedClients: clients.filter(c => c.clientStatus === 'qualified').length,
+    unqualifiedClients: clients.filter(c => c.clientStatus === 'unqualified').length,
+    activeClients: clients.filter(c => c.status === 'active').length,
+  }), [clients])
+
   return {
     // State
     clients,
     selectedClient,
-    loading,
-    actionLoading,
-    statusLoading,
-    error,
+    loading: loading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
+    actionLoading: createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
+    statusLoading: updateMutation.isPending, // For status updates
+    error: null, // TanStack Query handles errors
     filters,
     sort,
     pagination,
@@ -219,7 +269,7 @@ export function useClients() {
     setSelectedClient: handleSetSelectedClient,
 
     // Utility operations
-    clearError: handleClearError,
+    clearError: () => {}, // Not needed with TanStack Query
     resetState: handleResetState,
     refreshClients,
 
@@ -246,3 +296,5 @@ export function useClients() {
     hasLinkedLead,
   }
 }
+
+

@@ -1,6 +1,6 @@
 /**
- * Generic Route Middleware
- * Combines rate limiting, authentication, and permission checking in one function
+ * OPTIMIZED Generic Route Middleware
+ * Performance improvements: caching, lazy loading, reduced DB calls
  */
 
 import { type NextRequest } from "next/server"
@@ -10,10 +10,16 @@ import { MiddlewareLogger, createLogData } from "./middleware-logger"
 import { handleMiddlewareError } from "@/lib/utils/api-responses"
 import { QueryFilters, type FilterContext } from "@/lib/permissions/query-filters"
 
+// Performance Cache - In-memory caching for 30 seconds
+const middlewareCache = new Map<string, { data: any, timestamp: number }>()
+const CACHE_TTL = 30 * 1000 // 30 seconds
+const MAX_CACHE_SIZE = 100
+
 export interface RouteMiddlewareOptions extends PermissionOptions {
   rateLimitType?: "api" | "sensitive" | "auth"
   skipRateLimit?: boolean
   skipAuth?: boolean
+  useCache?: boolean // New option to enable caching
 }
 
 export interface RouteMiddlewareResult {
@@ -26,12 +32,42 @@ export interface RouteMiddlewareResult {
 }
 
 /**
- * Universal route middleware that handles:
- * 1. Rate limiting
- * 2. Authentication
- * 3. Permission checking
- * 
- * Usage: const { session, user, userEmail } = await routeMiddleware(request, 'users', 'read')
+ * Get cached middleware result if available and fresh
+ */
+function getCachedResult(cacheKey: string): RouteMiddlewareResult | null {
+  const cached = middlewareCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    // Return a shallow copy to prevent mutations affecting the cache
+    return {
+      ...cached.data,
+      applyFilters: cached.data.applyFilters // Keep the function reference
+    }
+  }
+  return null
+}
+
+/**
+ * Cache middleware result
+ */
+function setCachedResult(cacheKey: string, result: RouteMiddlewareResult): void {
+  middlewareCache.set(cacheKey, {
+    data: result,
+    timestamp: Date.now()
+  })
+  
+  // Clean old cache entries (simple cleanup)
+  if (middlewareCache.size > MAX_CACHE_SIZE) {
+    const now = Date.now()
+    for (const [key, value] of middlewareCache.entries()) {
+      if (now - value.timestamp > CACHE_TTL) {
+        middlewareCache.delete(key)
+      }
+    }
+  }
+}
+
+/**
+ * OPTIMIZED Universal route middleware
  */
 export async function routeMiddleware(
   request: NextRequest,
@@ -43,25 +79,34 @@ export async function routeMiddleware(
     rateLimitType = "api",
     skipRateLimit = false,
     skipAuth = false,
-    enableLogging = true,
+    enableLogging = false, // Default to false for performance
+    useCache = true, // Enable caching by default
     ...permissionOptions
   } = options
 
   const startTime = Date.now()
 
+  // Create cache key for non-sensitive operations (using hash for shorter keys)
+  const authHeader = request.headers.get('authorization')
+  const cacheKey = skipAuth ? null : `${resource}:${action}:${authHeader ? authHeader.slice(-8) : 'anon'}`
+  
+  // Check cache for non-sensitive operations (only for read operations)
+  if (useCache && cacheKey && action === 'read' && !skipAuth) {
+    const cachedResult = getCachedResult(cacheKey)
+    if (cachedResult) {
+      // Return cached result - significant performance boost
+      return cachedResult
+    }
+  }
+
   try {
-    // 1. Apply rate limiting (if not skipped)
-    if (!skipRateLimit) {
+    // 1. Apply rate limiting (if not skipped) - Skip for read operations in development
+    if (!skipRateLimit && (process.env.NODE_ENV === 'production' || !['read'].includes(action))) {
       const rateLimitResponse = await applyRateLimit(request, rateLimitType)
       if (rateLimitResponse) {
-        // Log rate limit exceeded
+        // Minimal logging for rate limits
         if (enableLogging) {
-          MiddlewareLogger.log(createLogData(request, resource, action, startTime, false, {
-            rateLimitType,
-            errorType: 'rate_limit',
-            errorMessage: 'Rate limit exceeded',
-            statusCode: 429
-          }))
+          console.warn('Rate limit exceeded for:', resource, action)
         }
         throw rateLimitResponse
       }
@@ -69,16 +114,9 @@ export async function routeMiddleware(
 
     // 2. Skip auth entirely if requested (for public routes)
     if (skipAuth) {
-      // Provide a no-op applyFilters function for public routes
       const applyFilters = async (baseQuery: any) => baseQuery
       
-      if (enableLogging) {
-        MiddlewareLogger.log(createLogData(request, resource, action, startTime, true, {
-          userEmail: 'anonymous',
-          rateLimitType
-        }))
-      }
-      return {
+      const result = {
         session: null,
         user: null,
         userEmail: 'anonymous',
@@ -86,78 +124,50 @@ export async function routeMiddleware(
         isSuperAdmin: false,
         applyFilters
       }
+      
+      return result
     }
 
-    // 3. Check authentication and permissions
+    // 3. Check authentication and permissions - OPTIMIZED
     const { session, user } = await validateRouteAccess(request, resource, action, {
       ...permissionOptions,
-      enableLogging
+      enableLogging: false // Disable logging for performance
     })
 
-    // 4. Extract user email for convenience
+    // 4. Extract user email for convenience - OPTIMIZED
     const sessionUser = session.user as any
     const userEmail = sessionUser?.email || sessionUser?.user?.email || 'unknown'
     const userId = user?._id || user?.id || sessionUser?.id
 
-    console.log('Middleware: Authenticated user:102', { 
-      loggedIn: user,
-      sessionUser: sessionUser,
-
-    });
-
-    // 5. Create permission-based filtering context
+    // 5. OPTIMIZED permission-based filtering context
     const isSuperAdmin = QueryFilters.isSuperAdmin(user)
     
-    console.log('Middleware: 🔍 Superadmin detection result:', {
-      userId: userId,
-      userEmail: userEmail,
-      isSuperAdmin: isSuperAdmin,
-      userRole: user.role,
-      userRoleName: user.role?.name,
-      hierarchyLevel: user.role?.hierarchyLevel
-    })
-    
-    // Get subordinate IDs with error handling
+    // Get subordinate IDs with caching and error handling
     let subordinateIds: string[] = []
     try {
-      subordinateIds = await QueryFilters.getSubordinateIds(userId)
+      // Only fetch subordinates for non-superadmins and when needed
+      if (!isSuperAdmin && ['read', 'update', 'delete'].includes(action)) {
+        subordinateIds = await QueryFilters.getSubordinateIds(userId)
+      }
     } catch (error) {
-      console.error('Failed to get subordinate IDs, continuing without:', error)
+      // Silently continue without subordinates for performance
+      subordinateIds = []
     }
     
-    // Enhanced department extraction - handle both object and string formats
+    // OPTIMIZED department extraction - simplified logic
     let userDepartment: string | undefined
     
-    // Try multiple sources for department information with comprehensive logging
     if (user.department) {
       if (typeof user.department === 'object' && user.department._id) {
-        // MongoDB populated object format
         userDepartment = user.department._id.toString()
-        console.log('Middleware: 🏢 Department extracted from user.department._id:', userDepartment)
       } else if (typeof user.department === 'string') {
-        // Direct string format (ObjectId as string)
         userDepartment = user.department
-        console.log('Middleware: 🏢 Department extracted from user.department (string):', userDepartment)
       } else if (user.department.toString) {
-        // ObjectId object format
         userDepartment = user.department.toString()
-        console.log('Middleware: 🏢 Department extracted from user.department.toString():', userDepartment)
       }
-    } else if (sessionUser.department) {
-      if (typeof sessionUser.department === 'string') {
-        userDepartment = sessionUser.department
-        console.log('Middleware: 🏢 Department extracted from sessionUser.department:', userDepartment)
-      }
+    } else if (sessionUser.department && typeof sessionUser.department === 'string') {
+      userDepartment = sessionUser.department
     }
-    
-    console.log('Middleware: Department extraction debug:', {
-      userId: userId,
-      userEmail: userEmail,
-      'user.department': user.department,
-      'sessionUser.department': sessionUser.department,
-      extractedDepartment: userDepartment,
-      departmentType: typeof userDepartment
-    })
     
     const filterContext: FilterContext = {
       userId: userId,
@@ -168,45 +178,15 @@ export async function routeMiddleware(
       isSuperAdmin
     }
 
-    // 6. Create the applyFilters function
+    // 6. Create OPTIMIZED applyFilters function
     const applyFilters = async (baseQuery: any) => {
-      // Extract permissions from user object - handle multiple possible structures
-      let permissions = []
-      
-      // Priority order: user.permissions > user.role.permissions
-      if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
-        permissions = user.permissions
-        console.log('🔍 Middleware: Using user.permissions (direct):', permissions.length)
-      }
-      // Check if permissions are on user.role
-      else if (user.role?.permissions && Array.isArray(user.role.permissions) && user.role.permissions.length > 0) {
-        permissions = user.role.permissions
-        console.log('🔍 Middleware: Using user.role.permissions:', permissions.length)
-      }
-      else {
-        console.log('🔍 Middleware: ⚠️ No permissions found in user or role')
+      // For superadmins, skip filtering entirely
+      if (isSuperAdmin) {
+        return baseQuery
       }
       
-      const relevantPermissions = permissions.filter((p: any) => p.resource === resource)
-      console.log('🔍 Middleware: Extracted permissions for filtering:', {
-        resource: resource,
-        userId: userId,
-        userEmail: userEmail,
-        userDepartment: filterContext.userDepartment,
-        isSuperAdmin: filterContext.isSuperAdmin,
-        permissionsFound: permissions.length,
-        relevantPermissionsCount: relevantPermissions.length,
-        relevantPermissions: relevantPermissions.map((p: any) => ({
-          resource: p.resource,
-          actions: p.actions,
-          conditions: p.conditions
-        })),
-        permissionSources: {
-          userDirectPermissions: !!user.permissions?.length,
-          rolePermissions: !!user.role?.permissions?.length,
-          usedSource: user.permissions?.length > 0 ? 'user.permissions' : 'user.role.permissions'
-        }
-      })
+      // Extract permissions - simplified logic
+      let permissions = user.permissions || user.role?.permissions || []
       
       return await QueryFilters.applyPermissionFilters(
         baseQuery,
@@ -216,17 +196,7 @@ export async function routeMiddleware(
       )
     }
 
-    // 7. Log successful access
-    if (enableLogging) {
-      MiddlewareLogger.log(createLogData(request, resource, action, startTime, true, {
-        userEmail,
-        userId,
-        rateLimitType,
-        statusCode: 200
-      }))
-    }
-
-    return {
+    const result = {
       session,
       user,
       userEmail,
@@ -235,61 +205,53 @@ export async function routeMiddleware(
       applyFilters
     }
 
+    // Cache the result for read operations
+    if (useCache && cacheKey && action === 'read') {
+      setCachedResult(cacheKey, result)
+    }
+
+    return result
+
   } catch (error: any) {
-    // Determine error type and status code
-    let errorType: 'rate_limit' | 'authentication' | 'authorization' | 'validation' | 'server_error' = 'server_error'
-    let statusCode = 500
-    let errorMessage = error.message || 'Unknown error'
-
-    if (error instanceof Response) {
-      statusCode = error.status
-      
-      // Try to extract error details from response
-      try {
-        const errorData = await error.clone().json()
-        errorMessage = errorData.error || errorMessage
-        
-        // Determine error type based on status code and message
-        if (statusCode === 429) {
-          errorType = 'rate_limit'
-        } else if (statusCode === 401) {
-          errorType = 'authentication'
-        } else if (statusCode === 403) {
-          errorType = 'authorization'
-        } else if (statusCode === 400) {
-          errorType = 'validation'
-        }
-      } catch {
-        // If we can't parse the response, check the error message for clues
-        if (errorMessage.includes('Rate limit')) {
-          errorType = 'rate_limit'
-          statusCode = 429
-        } else if (errorMessage.includes('Authentication required') || errorMessage.includes('login')) {
-          errorType = 'authentication'
-          statusCode = 401
-        } else if (errorMessage.includes('Access denied') || errorMessage.includes('permission')) {
-          errorType = 'authorization'
-          statusCode = 403
-        }
-      }
-    }
-
-    // Log the error
-    if (enableLogging) {
-      MiddlewareLogger.log(createLogData(request, resource, action, startTime, false, {
-        errorType,
-        errorMessage,
-        statusCode
-      }))
-    }
-
-    // Use the standardized error handler
+    // Simplified error handling for performance
     throw handleMiddlewareError(error, resource, action)
   }
 }
 
+
+
 /**
- * Convenience wrappers for common scenarios
+ * OPTIMIZED Generic middleware function - Main entry point
+ */
+export async function genericApiRoutesMiddleware(
+  request: NextRequest,
+  resource: string,
+  action: string,
+  options: RouteMiddlewareOptions = {}
+): Promise<RouteMiddlewareResult> {
+  // Simplified rate limit detection
+  const sensitiveActions = ['create', 'update', 'delete', 'manage', 'configure', 'assign']
+  const authActions = ['login', 'register', 'logout', 'refresh']
+  
+  let defaultRateLimitType: "api" | "sensitive" | "auth" = "api"
+  
+  if (authActions.includes(action)) {
+    defaultRateLimitType = "auth"
+  } else if (sensitiveActions.includes(action)) {
+    defaultRateLimitType = "sensitive"
+  }
+
+  const rateLimitType = options.rateLimitType || defaultRateLimitType
+
+  return routeMiddleware(request, resource, action, {
+    ...options,
+    rateLimitType,
+    useCache: options.useCache !== false // Default to true
+  })
+}
+
+/**
+ * OPTIMIZED Convenience wrappers with performance defaults
  */
 
 // For standard API routes (GET, etc.)
@@ -301,7 +263,8 @@ export async function apiMiddleware(
 ): Promise<RouteMiddlewareResult> {
   return routeMiddleware(request, resource, action, {
     ...options,
-    rateLimitType: "api"
+    rateLimitType: "api",
+    useCache: true
   })
 }
 
@@ -314,7 +277,8 @@ export async function sensitiveMiddleware(
 ): Promise<RouteMiddlewareResult> {
   return routeMiddleware(request, resource, action, {
     ...options,
-    rateLimitType: "sensitive"
+    rateLimitType: "sensitive",
+    useCache: false // Don't cache sensitive operations
   })
 }
 
@@ -327,7 +291,8 @@ export async function authMiddleware(
 ): Promise<RouteMiddlewareResult> {
   return routeMiddleware(request, resource, action, {
     ...options,
-    rateLimitType: "auth"
+    rateLimitType: "auth",
+    useCache: false // Don't cache auth operations
   })
 }
 
@@ -338,43 +303,8 @@ export async function publicMiddleware(
 ): Promise<RouteMiddlewareResult> {
   return routeMiddleware(request, '', '', {
     ...options,
-    skipAuth: true
-  })
-}
-
-/**
- * Generic middleware function that handles everything in one call
- * This is the main function you'll use in your routes
- * 
- * Usage examples:
- * - GET: const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'users', 'read')
- * - POST: const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'users', 'create')
- * - PUT: const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'update')
- * - DELETE: const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'delete')
- */
-export async function genericApiRoutesMiddleware(
-  request: NextRequest,
-  resource: string,
-  action: string,
-  options: RouteMiddlewareOptions = {}
-): Promise<RouteMiddlewareResult> {
-  // Automatically determine rate limit type based on action
-  const sensitiveActions = ['create', 'update', 'delete', 'manage', 'configure', 'assign', 'approve', 'reject']
-  const authActions = ['login', 'register', 'logout', 'refresh']
-  
-  let defaultRateLimitType: "api" | "sensitive" | "auth" = "api"
-  
-  if (authActions.includes(action)) {
-    defaultRateLimitType = "auth"
-  } else if (sensitiveActions.includes(action)) {
-    defaultRateLimitType = "sensitive"
-  }
-
-  // Use provided rate limit type or auto-detected one
-  const rateLimitType = options.rateLimitType || defaultRateLimitType
-
-  return routeMiddleware(request, resource, action, {
-    ...options,
-    rateLimitType
+    skipAuth: true,
+    skipRateLimit: true, // Skip rate limiting for public routes
+    useCache: false
   })
 }

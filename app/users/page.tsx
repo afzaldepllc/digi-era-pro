@@ -1,33 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useAppSelector } from "@/hooks/redux";
-import { useDebounceSearch } from "@/hooks/use-debounced-search";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import DataTable from "@/components/ui/data-table";
 import PageHeader from "@/components/ui/page-header";
 import CustomModal from "@/components/ui/custom-modal";
-import Loader, { CardLoader, TableLoader } from "@/components/ui/loader";
 import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
 import { cn } from "@/lib/utils";
-import { ErrorDisplay } from "@/components/ui/error-display";
-import { handleAPIError, getErrorMessage } from "@/lib/utils/api-client";
+import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2'
 import {
-  RefreshCw,
-  Edit,
-  Trash2,
-  Eye,
   Users,
   UserCheck,
   UserX,
   AlertTriangle,
-  EyeIcon,
-  Filter,
 } from "lucide-react";
 import type { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
 import type { Role, User } from "@/types";
@@ -43,64 +33,47 @@ export default function UsersPage() {
   const { toast } = useToast();
 
   // Permission checks
-  const { fetchDepartments } = useDepartments();
-  const { fetchRoles } = useRoles();
+  const { allDepartments } = useDepartments();
+  const { roles, fetchRoles } = useRoles();
   const {
-    fetchUsers,
+    users: hookUsers,
+    selectedUser: hookSelectedUser,
+    loading: hookLoading,
+    actionLoading: hookActionLoading,
+    error: hookError,
     deleteUser,
     setFilters,
     setSort,
     setPagination,
     setSelectedUser,
-    clearError
+    clearError,
+    fetchUsers, // ✅ Add this
   } = useUsers();
 
-  // Redux state
+  // Redux state for filters, sort, pagination (these are managed by Redux for persistence)
   const {
-    users,
-    loading,
-    actionLoading,
-    error,
-    selectedUser,
     filters,
     sort,
     pagination,
     stats,
   } = useAppSelector((state) => state.users);
 
+  // Use hook data and loading states
+  const users = hookUsers;
+  const selectedUser = hookSelectedUser;
+  const loading = hookLoading;
+  const actionLoading = hookActionLoading;
+  const error = hookError;
+
   // Local UI state
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  const [availableRoles, setAvailableRoles] = useState<Array<{ value: string, label: string }>>([]);
+  const [availableRoles, setAvailableRoles] = useState<Array<{ value: string, label: string }>>(roles);
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
   const [activeTab, setActiveTab] = useState('overview');
-
-  // Keep filters in a ref for debounced search
-  const filtersRef = useRef(filters);
-  filtersRef.current = filters;
-
-  // Debounced search functionality
-  const handleDebouncedSearch = useCallback((searchTerm: string) => {
-    const currentFilters = filtersRef.current;
-    setFilters({
-      search: searchTerm,
-      role: currentFilters.role,
-      status: currentFilters.status,
-      department: currentFilters.department,
-    });
-  }, [setFilters]);
-
-  const { searchTerm, setSearchTerm, isSearching } = useDebounceSearch({
-    onSearch: handleDebouncedSearch,
-    delay: 500,
-  });
-
-  // Initialize search term from Redux filters
-  useEffect(() => {
-    if (filters.search !== searchTerm) {
-      setSearchTerm(filters.search || '');
-    }
-  }, [filters.search]);
+  console.log("users list 76", users);
+  console.log('stats are: ', stats);
+  // setAvailableRoles(roles)
 
   // Filter configuration
   const filterConfig: FilterConfig = useMemo(() => ({
@@ -118,6 +91,7 @@ export default function UsersPage() {
         key: 'role',
         label: 'Role',
         type: 'select',
+        searchable: true,
         placeholder: 'All Roles',
         cols: 12, // Full width on mobile
         mdCols: 6, // Half width on medium screens
@@ -131,6 +105,7 @@ export default function UsersPage() {
         key: 'status',
         label: 'Status',
         type: 'select',
+        searchable: true,
         placeholder: 'All Statuses',
         cols: 12, // Full width on mobile
         mdCols: 6, // Half width on medium screens
@@ -146,6 +121,7 @@ export default function UsersPage() {
         key: 'department',
         label: 'Department',
         type: 'select',
+        searchable: true,
         placeholder: 'All Departments',
         cols: 12, // Full width on mobile
         mdCols: 6, // Half width on medium screens
@@ -166,36 +142,35 @@ export default function UsersPage() {
 
   // Map Redux filters to UI filters (convert empty strings to 'all' for selects)
   const uiFilters = useMemo(() => ({
-    search: searchTerm, // Use debounced search term instead of filters.search
+    search: filters.search || '',
     role: filters.role || 'all',
     status: filters.status || 'all',
     department: filters.department || 'all',
-  }), [searchTerm, filters]);
+  }), [filters]);
 
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: Record<string, any>) => {
-    // Don't handle search through this function since it's debounced separately
-    const userFilters: UserFilters = {
-      search: filters.search, // Keep current search from Redux
-      role: newFilters.role === 'all' ? '' : (newFilters.role || ''),
-      status: newFilters.status === 'all' ? '' : (newFilters.status || ''),
-      department: newFilters.department === 'all' ? '' : (newFilters.department || ''),
+    // Convert 'all' values back to empty strings for the API
+    const processedFilters = {
+      search: newFilters.search || '',
+      role: newFilters.role === 'all' ? '' : newFilters.role || '',
+      status: newFilters.status === 'all' ? '' : newFilters.status || '',
+      department: newFilters.department === 'all' ? '' : newFilters.department || '',
     };
-    setFilters(userFilters);
-  }, [setFilters, filters.search]);
+
+    setFilters(processedFilters);
+  }, [setFilters]);
 
   const handleFilterReset = useCallback(() => {
-    const defaultFilters: UserFilters = {
+    const resetFilters: UserFilters = {
       search: '',
       role: '',
       status: '',
       department: '',
     };
-    setFilters(defaultFilters);
-    setSearchTerm(''); // Also reset the search term
-    setIsFilterExpanded(false); // Close filter panel when filters are reset
-  }, [setFilters, setSearchTerm]);
+    setFilters(resetFilters);
+  }, [setFilters]);
 
   // Sort handlers
   const handleSort = useCallback((field: keyof User, direction: "asc" | "desc") => {
@@ -216,29 +191,29 @@ export default function UsersPage() {
   }, [setPagination]);
 
   // Fetch available roles for filter
-  const fetchAvailableRoles = useCallback(async () => {
-    try {
-      const response = await fetchRoles({ page: 1, limit: 100 }).unwrap();
-      if (response.success) {
-        const roleOptions = response?.roles?.map((role: any) => ({
-          value: role._id,
-          label: role.displayName || role.name,
-        })) || [];
-        setAvailableRoles(roleOptions);
-      }
-    } catch (error) {
-      console.error('Failed to fetch roles for filter:', error);
-      handleAPIError(error, "Failed to load roles for filtering");
-    }
-  }, [fetchRoles]);
+  // const fetchAvailableRoles = useCallback(async () => {
+  //   try {
+  //     const response = await fetchRoles({ page: 1, limit: 100 });
+  //     if (response?.roles) {
+  //       const roleOptions = response?.roles?.map((role: any) => ({
+  //         value: role._id,
+  //         label: role.displayName || role.name,
+  //       })) || [];
+  //       setAvailableRoles(roleOptions);
+  //     }
+  //   } catch (error) {
+  //     console.error('Failed to fetch roles for filter:', error);
+  //     handleAPIError(error, "Failed to load roles for filtering");
+  //   }
+  // }, [fetchRoles]);
 
   // Fetch available departments for filter
   const fetchAvailableDepartments = useCallback(async () => {
     try {
-      const response = await fetchDepartments({ page: 1, limit: 100 }).unwrap();
-      if (response.success) {
-        const { data } = response;
-        const departmentOptions = data?.departments?.map((dept: any) => ({
+      // Use allDepartments from the hook instead of fetching
+      const currentAllDepartments = allDepartments;
+      if (currentAllDepartments && currentAllDepartments.length > 0) {
+        const departmentOptions = currentAllDepartments.map((dept: any) => ({
           value: dept._id,
           label: dept.name,
         })) || [];
@@ -248,31 +223,27 @@ export default function UsersPage() {
       console.error('Failed to fetch departments for filter:', error);
       handleAPIError(error, "Failed to load departments for filtering");
     }
-  }, [fetchDepartments]);
+  }, []); // Remove allDepartments from dependencies to prevent infinite re-runs
 
   // Fetch roles and departments for filters on mount
-  useEffect(() => {
-    fetchAvailableRoles();
-    fetchAvailableDepartments();
-  }, [fetchAvailableRoles, fetchAvailableDepartments]);
+  // useEffect(() => {
+  //   fetchAvailableRoles();
+  //   if (availableDepartments.length === 0) {
+  //     fetchAvailableDepartments();
+  //   }
+  // }, [fetchAvailableRoles, fetchAvailableDepartments]);
 
-  // Fetch users effect
-  useEffect(() => {
-    const fetchParams = {
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort,
-    };
-    fetchUsers(fetchParams);
-  }, [fetchUsers, pagination.page, pagination.limit, filters, sort]);
 
-  // Clear error when component unmounts
+  // Update available departments when allDepartments changes
   useEffect(() => {
-    return () => {
-      clearError();
-    };
-  }, [clearError]);
+    if (allDepartments && allDepartments.length > 0) {
+      const departmentOptions = allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      })) || [];
+      setAvailableDepartments(departmentOptions);
+    }
+  }, [allDepartments]);
 
   // User actions
   const handleViewUser = useCallback((user: User) => {
@@ -286,6 +257,11 @@ export default function UsersPage() {
 
   const handleDeleteUser = useCallback(async (user: User) => {
     const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
       title: `Delete ${user.name}?`,
       text: "Are you sure you want to delete this user?",
       icon: "error",
@@ -299,6 +275,11 @@ export default function UsersPage() {
     if (result.isConfirmed) {
       // Show simple loading with SweetAlert's built-in loader
       Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
         title: 'Deleting...',
         text: 'Please wait while we delete the user.',
         allowOutsideClick: false,
@@ -310,10 +291,15 @@ export default function UsersPage() {
       });
 
       try {
-        await deleteUser(user._id as string).unwrap();
+        await deleteUser(user._id as string);
 
         // Show success message
         Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
           title: "Deleted!",
           text: "User has been deleted successfully.",
           icon: "success",
@@ -329,8 +315,13 @@ export default function UsersPage() {
       } catch (error: any) {
         // Show error message
         Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
           title: "Error!",
-          text: "Failed to delete user. Please try again.",
+          text: error.error,
           icon: "error",
           confirmButtonText: "OK"
         });
@@ -517,123 +508,64 @@ export default function UsersPage() {
     },
   ] : [];
 
-  if (loading && users.length === 0) {
-    return (
-      <div>
-        <PageHeader
-          title="Users List"
-          subtitle="Loading users..."
-        />
-        <CardLoader cards={4} columns={4} height="h-32" />
-        <TableLoader showViewToggle={true} showRowsPerPage={true} />
-      </div>
-    );
-  }
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
+    <div className="container mx-auto p-6 space-y-6">
       <PageHeader
-        title="Users List"
-        addButtonText={"Add User"}
+        title="Users"
+        subtitle="Manage system users and their permissions"
         onAddClick={() => router.push('/users/add')}
-        // Filter functionality
         showFilterButton={true}
         hasActiveFilters={Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')}
+
         isFilterExpanded={isFilterExpanded}
         onFilterToggle={() => {
-          if (Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')) {
-            // If there are active filters, clear them
-            handleFilterReset();
-          } else {
-            // Otherwise just toggle the filter panel
-            setIsFilterExpanded(!isFilterExpanded);
-          }
+          setIsFilterExpanded(!isFilterExpanded);
         }}
-        activeFiltersCount={Object.values(uiFilters).filter(v => v && v !== 'all' && v !== '').length}
-        filterText="Filter Users"
-        clearFiltersText="Clear Filters"
 
-        // Refresh functionality
+        activeFiltersCount={Object.values(uiFilters).filter(v => v && v !== 'all' && v !== '').length}
+
+        filterText="Filter Users"
+        addButtonText="Add User"
         showRefreshButton={true}
-        onRefresh={handleFilterReset}
+        onRefresh={() => {
+          handleFilterReset();
+          fetchUsers(); // ✅ This will refetch the data
+        }}
         isRefreshing={loading}
       >
-        {/* Generic Filter */}
-        {isFilterExpanded && (
-          <GenericFilter
-            config={filterConfig}
-            values={uiFilters}
-            onFilterChange={handleFilterChange}
-            onReset={handleFilterReset}
-            collapsible={false}
-            title="Filter Users"
-            className="bg-card"
-            loading={isSearching}
-            onSearchChange={setSearchTerm}
-          />
-        )}
+        {
+          isFilterExpanded && (
+            <GenericFilter
+              config={filterConfig}
+              values={uiFilters}
+              onFilterChange={handleFilterChange}
+              loading={loading}
+            />
+          )
+        }
       </PageHeader>
 
-      {/* Error Display */}
-      {error && (
-        <ErrorDisplay
-          error={{ error, statusCode: 500 }}
-          resource="users"
-          action="read"
-          onRetry={() => {
-            clearError();
-          }}
-          className="mb-6"
-        />
-      )}
-
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {statsCards.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {stat.title}
-                </CardTitle>
-                <div className={stat.color}>
-                  {stat.icon}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
       {/* Filters and Table */}
-      {loading && users.length > 0 ? (
-        <TableLoader />
-      ) : (
-        <DataTable
-          data={users}
-          columns={columns}
-          totalCount={pagination.total}
-          pageSize={pagination.limit}
-          currentPage={pagination.page}
-          onPageChange={handlePageChange}
-          onPageSizeChange={handlePageSizeChange}
-          onSort={handleSort}
-          sortColumn={sort.field}
-          sortDirection={sort.direction}
-          loading={loading}
-          emptyMessage="No users found"
-          // Just pass the resource name - DataTable handles permissions internally
-          resourceName="users"
-          // No need to specify actions - edit and delete are auto-enabled based on permissions
-          onView={handleViewUser}
-          onDelete={handleDeleteUser}
-
-          enablePermissionChecking={true}
-        />
-      )}
+      <DataTable
+        data={users}
+        columns={columns}
+        totalCount={pagination.total}
+        pageSize={pagination.limit}
+        currentPage={pagination.page}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        onSort={handleSort}
+        sortColumn={sort.field}
+        sortDirection={sort.direction}
+        loading={loading}
+        emptyMessage="No users found"
+        resourceName="users"
+        onView={handleViewUser}
+        onDelete={handleDeleteUser}
+        enablePermissionChecking={true}
+        statsCards={statsCards} // Add this prop
+      />
 
       {/* Quick View Modal */}
       <CustomModal

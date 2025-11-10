@@ -13,9 +13,9 @@ export interface IUser extends Document {
   position?: string
   reportsTo?: mongoose.Types.ObjectId // For subordinate relationships
   assignedTo?: mongoose.Types.ObjectId[] // For assignment tracking
-  status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" // Extended for clients
+  status: "active" | "inactive" | "deleted" | "suspended" | "qualified" | "unqualified" // Extended for clients
   permissions: string[] // Additional permissions beyond role
-  
+
   // Client-specific fields
   isClient: boolean // Flag to identify client users
   leadId?: mongoose.Types.ObjectId // Reference to Lead model (for clients created from leads)
@@ -62,7 +62,7 @@ export interface IUser extends Document {
   comparePassword(candidatePassword: string): Promise<boolean>
   generatePasswordResetToken(): string
   changedPasswordAfter(JWTTimestamp: number): boolean
-  
+
   // Client-specific methods
   qualifyClient(): Promise<void>
   unqualifyClient(reason?: string): Promise<void>
@@ -75,7 +75,7 @@ const UserSchema = new Schema<IUser>(
       required: [true, "Name is required"],
       trim: true,
       maxlength: [100, "Name cannot be more than 100 characters"],
-      index: true,
+      // index: true, // Removed - covered by text search index
     },
     email: {
       type: String,
@@ -95,12 +95,12 @@ const UserSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: 'Role',
       required: [true, "Role is required"],
-      index: true,
+      // index: true, // Removed - covered by compound indexes
     },
     legacyRole: {
       type: String,
       enum: ["admin", "user", "manager", "hr", "finance", "sales"],
-      index: true,
+      // index: true, // Removed - legacy field, index not needed
       // Keep for backward compatibility during migration
     },
     avatar: {
@@ -111,8 +111,8 @@ const UserSchema = new Schema<IUser>(
       type: String,
       trim: true,
       validate: {
-        validator: function(v: string) {
-          return !v || /^[\+]?[1-9][\d]{0,15}$/.test(v);
+        validator: function (v: string) {
+          return !v || /^(\+[1-9][0-9]{6,14}|[0-9]{7,15})$/.test(v);
         },
         message: "Please enter a valid phone number"
       }
@@ -120,10 +120,10 @@ const UserSchema = new Schema<IUser>(
     department: {
       type: Schema.Types.ObjectId,
       ref: 'Department',
-      required: function(this: IUser) {
+      required: function (this: IUser) {
         return !this.isClient; // Department not required for clients
       },
-      index: true,
+      // index: true, // Removed - covered by compound indexes
     },
     position: {
       type: String,
@@ -134,7 +134,7 @@ const UserSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: false,
-      index: true,
+      // index: true, // Removed - not frequently queried, can be sparse if needed
     },
     // For assignment tracking
     assignedTo: [{
@@ -143,40 +143,39 @@ const UserSchema = new Schema<IUser>(
     }],
     status: {
       type: String,
-      enum: ["active", "inactive", "suspended", "qualified", "unqualified"],
+      enum: ["active", "inactive", "deleted", "suspended", "qualified", "unqualified"],
       default: "active",
-      index: true,
+      // index: true, // Removed - covered by compound indexes
     },
     permissions: [{
       type: String,
       trim: true,
     }],
-    
+
     // Client-specific fields
     isClient: {
       type: Boolean,
       default: false,
-      index: true, // For filtering clients vs regular users
+      // index: true, // Removed - covered by compound indexes
     },
     leadId: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',
       required: false,
-      index: true,
     },
     clientStatus: {
       type: String,
       enum: ["qualified", "unqualified"],
-      required: function(this: IUser) {
+      required: function (this: IUser) {
         return this.isClient; // Only required for client users
       },
-      index: true,
+      // index: true, // Removed - covered by compound indexes
     },
     company: {
       type: String,
       trim: true,
       maxlength: [200, "Company name cannot exceed 200 characters"],
-      required: function(this: IUser) {
+      required: function (this: IUser) {
         return this.isClient; // Company required for clients
       },
     },
@@ -264,8 +263,8 @@ UserSchema.index({ department: 1, status: 1 }); // Department filtering
 UserSchema.index({ status: 1, lastLogin: -1 }); // Active users sorted by last login
 
 // Text search index for name and email search in user list
-UserSchema.index({ 
-  name: 'text', 
+UserSchema.index({
+  name: 'text',
   email: 'text'
 }, {
   weights: {
@@ -277,8 +276,8 @@ UserSchema.index({
 
 // Performance indexes for authentication and session management
 UserSchema.index({ 'resetPasswordToken': 1 }, { sparse: true });
-UserSchema.index({ 'resetPasswordExpire': 1 }, { 
-  sparse: true, 
+UserSchema.index({ 'resetPasswordExpire': 1 }, {
+  sparse: true,
   expireAfterSeconds: 0 // TTL index for automatic cleanup
 });
 
@@ -294,7 +293,7 @@ UserSchema.index({ isClient: 1, createdAt: -1 }); // Client chronological listin
 UserSchema.index({ company: 1 }, { sparse: true }); // Company-based searches
 
 // Virtual for full name (if needed)
-UserSchema.virtual('fullName').get(function() {
+UserSchema.virtual('fullName').get(function () {
   return this.name;
 });
 
@@ -351,14 +350,14 @@ UserSchema.methods.comparePassword = async function (candidatePassword: string):
 // Generate password reset token
 UserSchema.methods.generatePasswordResetToken = function (): string {
   const resetToken = require('crypto').randomBytes(32).toString('hex');
-  
+
   this.resetPasswordToken = require('crypto')
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-  
+
   this.resetPasswordExpire = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-  
+
   return resetToken;
 }
 
@@ -385,36 +384,36 @@ UserSchema.methods.toJSON = function () {
 }
 
 // New role-based permission methods
-UserSchema.methods.hasPermission = async function(resource: string, action: string, condition?: string): Promise<boolean> {
+UserSchema.methods.hasPermission = async function (resource: string, action: string, condition?: string): Promise<boolean> {
   // Populate role if not already populated
   if (!this.roleDetails) {
     await this.populate('roleDetails')
   }
-  
+
   if (!this.roleDetails) return false
-  
+
   // Check if role has the permission
-  const hasRolePermission = this.roleDetails.permissions.some((perm: any) => 
-    perm.resource === resource.toLowerCase() && 
+  const hasRolePermission = this.roleDetails.permissions.some((perm: any) =>
+    perm.resource === resource.toLowerCase() &&
     perm.actions.includes(action.toLowerCase()) &&
     (!condition || perm.conditions?.[condition] === true)
   )
-  
+
   // Also check additional user permissions
   const additionalPermission = `${resource.toLowerCase()}.${action.toLowerCase()}`
   const hasAdditionalPermission = this.permissions.includes(additionalPermission) || this.permissions.includes('*')
-  
+
   return hasRolePermission || hasAdditionalPermission
 }
 
-UserSchema.methods.getAllPermissions = async function(): Promise<string[]> {
+UserSchema.methods.getAllPermissions = async function (): Promise<string[]> {
   // Populate role if not already populated
   if (!this.roleDetails) {
     await this.populate('roleDetails')
   }
-  
+
   const rolePermissions: string[] = []
-  
+
   if (this.roleDetails) {
     this.roleDetails.permissions.forEach((perm: any) => {
       perm.actions.forEach((action: string) => {
@@ -422,83 +421,83 @@ UserSchema.methods.getAllPermissions = async function(): Promise<string[]> {
       })
     })
   }
-  
+
   // Combine role permissions with additional permissions
   return Array.from(new Set([...rolePermissions, ...this.permissions]))
 }
 
-UserSchema.methods.canAccessDepartment = async function(departmentId: string): Promise<boolean> {
+UserSchema.methods.canAccessDepartment = async function (departmentId: string): Promise<boolean> {
   // Populate role if not already populated
   if (!this.roleDetails) {
     await this.populate('roleDetails')
   }
-  
+
   // User can always access their own department
   if (this.department.toString() === departmentId.toString()) return true
-  
+
   // Check if role has department-wide access conditions
   if (!this.roleDetails) return false
-  
-  return this.roleDetails.permissions.some((perm: any) => 
+
+  return this.roleDetails.permissions.some((perm: any) =>
     perm.conditions?.department === true
   )
 }
 
-UserSchema.methods.canManageUser = async function(targetUser: any): Promise<boolean> {
+UserSchema.methods.canManageUser = async function (targetUser: any): Promise<boolean> {
   // Populate role if not already populated
   if (!this.roleDetails) {
     await this.populate('roleDetails')
   }
-  
+
   if (!this.roleDetails) return false
-  
+
   // Check hierarchy level - can only manage lower or equal levels
   if (targetUser.roleDetails?.hierarchyLevel >= this.roleDetails.hierarchyLevel) {
     return false
   }
-  
+
   // Check if has user management permissions
   return this.hasPermission('users', 'update')
 }
 
 // Client-specific methods
-UserSchema.methods.isClientUser = function(): boolean {
+UserSchema.methods.isClientUser = function (): boolean {
   return this.isClient === true
 }
 
-UserSchema.methods.isQualifiedClient = function(): boolean {
+UserSchema.methods.isQualifiedClient = function (): boolean {
   return this.isClient && this.clientStatus === 'qualified'
 }
 
-UserSchema.methods.qualifyClient = async function(): Promise<void> {
+UserSchema.methods.qualifyClient = async function (): Promise<void> {
   if (!this.isClient) {
     throw new Error('User is not a client')
   }
-  
+
   this.clientStatus = 'qualified'
   this.status = 'qualified'
   await this.save()
 }
 
-UserSchema.methods.unqualifyClient = async function(reason?: string): Promise<void> {
+UserSchema.methods.unqualifyClient = async function (reason?: string): Promise<void> {
   if (!this.isClient) {
     throw new Error('User is not a client')
   }
-  
+
   this.clientStatus = 'unqualified'
   this.status = 'unqualified'
-  
+
   // Update metadata with unqualification reason
   if (reason) {
     this.metadata = this.metadata || {}
     this.metadata.notes = reason
   }
-  
+
   await this.save()
 }
 
 // Static methods for client management
-UserSchema.statics.createClientFromLead = async function(leadData: any, createdBy: string) {
+UserSchema.statics.createClientFromLead = async function (leadData: any, createdBy: string) {
   // Find the client role
   const Role = mongoose.model('Role')
   const clientRole = await Role.findOne({ name: /^client$/i })
@@ -535,43 +534,27 @@ UserSchema.statics.createClientFromLead = async function(leadData: any, createdB
   return await clientUser.save()
 }
 
-UserSchema.statics.getClientStats = async function(filter = {}) {
+UserSchema.statics.getClientStats = async function (filter = {}) {
   const clientFilter = { ...filter, isClient: true }
-  
+
   const stats = await this.aggregate([
     { $match: clientFilter },
     {
       $group: {
-        _id: '$clientStatus',
-        count: { $sum: 1 }
+        _id: null,
+        totalClients: { $sum: 1 },
+        qualifiedClients: { $sum: { $cond: [{ $eq: ['$clientStatus', 'qualified'] }, 1, 0] } },
+        unqualifiedClients: { $sum: { $cond: [{ $eq: ['$clientStatus', 'unqualified'] }, 1, 0] } },
       }
     }
   ])
 
-  const result = {
-    totalClients: 0,
-    qualifiedClients: 0,
-    unqualifiedClients: 0
-  }
-
-  stats.forEach((stat: any) => {
-    result.totalClients += stat.count
-    
-    switch (stat._id) {
-      case 'qualified':
-        result.qualifiedClients = stat.count
-        break
-      case 'unqualified':
-        result.unqualifiedClients = stat.count
-        break
-    }
-  })
-
-  return result
+  console.log('Client stats aggregation result:', stats)
+  return stats
 }
 
 // Static method to get user roles and permissions
-UserSchema.statics.getRolePermissions = function(role: string): string[] {
+UserSchema.statics.getRolePermissions = function (role: string): string[] {
   const rolePermissions: Record<string, string[]> = {
     admin: ['*'], // Full access
     manager: [
@@ -595,7 +578,7 @@ UserSchema.statics.getRolePermissions = function(role: string): string[] {
       'dashboard.read', 'profile.read', 'profile.update'
     ]
   };
-  
+
   return rolePermissions[role] || rolePermissions.user;
 }
 

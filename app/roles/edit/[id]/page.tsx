@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import GenericForm from "@/components/ui/generic-form";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { updateRoleSchema, UpdateRoleData } from "@/lib/validations/role";
+import { handleAPIError } from "@/lib/utils/api-client";
 
 
 export default function EditRolePage() {
@@ -36,7 +37,8 @@ export default function EditRolePage() {
     setSelectedRole
   } = useRoles();
 
-  const { departments, fetchDepartments } = useDepartments();
+  const { departments, allDepartments, fetchDepartments } = useDepartments();
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
   const { isNavigating, handleNavigation } = useNavigationLoading();
 
   // Initialize form
@@ -62,7 +64,6 @@ export default function EditRolePage() {
       try {
         await Promise.all([
           fetchRoles(),
-          fetchDepartments(),
         ]);
       } catch (error) {
         toast({
@@ -73,7 +74,7 @@ export default function EditRolePage() {
       }
     };
     loadData();
-  }, [router, fetchRoles, fetchDepartments, toast]);
+  }, [router, fetchRoles, toast]);
 
   // Load specific role data
   useEffect(() => {
@@ -125,14 +126,45 @@ export default function EditRolePage() {
 
       router.push("/roles");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update role",
-        variant: "destructive",
-      });
+      handleAPIError(error, "Failed to update role");
     }
   };
 
+  // Fetch available departments for filter
+  const fetchAvailableDepartments = useCallback(async () => {
+    try {
+      // Use allDepartments from the hook instead of fetching
+      const currentAllDepartments = allDepartments;
+      if (currentAllDepartments && currentAllDepartments.length > 0) {
+        const departmentOptions = currentAllDepartments.map((dept: any) => ({
+          value: dept._id,
+          label: dept.name,
+        })) || [];
+        setAvailableDepartments(departmentOptions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch departments for filter:', error);
+      handleAPIError(error, "Failed to load departments for filtering");
+    }
+  }, []); // Remove allDepartments from dependencies to prevent infinite re-runs
+
+  // Fetch roles and departments for filters on mount
+  useEffect(() => {
+    if (availableDepartments.length === 0) {
+      fetchAvailableDepartments();
+    }
+  }, [fetchAvailableDepartments]);
+
+  // Update available departments when allDepartments changes
+  useEffect(() => {
+    if (allDepartments && allDepartments.length > 0) {
+      const departmentOptions = allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      })) || [];
+      setAvailableDepartments(departmentOptions);
+    }
+  }, [allDepartments]);
 
 
   const handleCancel = () => {
@@ -188,14 +220,15 @@ export default function EditRolePage() {
           name: "department",
           label: "Department",
           type: "select" as const,
+          searchable: true,
           required: true,
           placeholder: "Select department",
           description: "The department this role belongs to",
           disabled: isProtectedRole,
-          options: departments.map(dept => ({
-            value: dept._id!,
-            label: dept.name,
-          })),
+          options: [
+            { value: 'all', label: 'All Departments' },
+            ...availableDepartments,
+          ],
           cols: 12,
           mdCols: 4,
           lgCols: 3,
@@ -204,6 +237,7 @@ export default function EditRolePage() {
           name: "status",
           label: "Status",
           type: "select" as const,
+          searchable: true,
           required: true,
           placeholder: "Select status",
           disabled: isProtectedRole,

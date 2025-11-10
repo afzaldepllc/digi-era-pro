@@ -329,3 +329,23 @@ After client creation,support agent can create the project from the project menu
 After project creation user navigate to the project edit page where the support team(support agent ) can categorize the project against multiple departments or a single department and can create the task for each department or this can be done by the department lead also which can also create task or sub task of the task and assign that task or sub task to his team mate 
 Than team mate works on the tasks and update the status (pending,completed..)
 While when support department categorize the project than it manager approve it and than goes to team lead 
+
+
+
+
+### neglect this one for project and task creation module implementation
+
+firstally use the given .md files to understand the current flow and structure of this crm app and follow them for next implementation 
+
+now most of the things are implemented related to the project and task creation need many improvements to meet our actual requirements mentioned bellow but using the generic appraoches 
+
+## ensure that  Project Categorization and task/sub task creation should eb handled in this way:
+## Project can be assigned to multiple departments(categories) in the project edit case, it is not necessary that project has single category.
+
+### The project add page having all important fields and project is added correctally .After the project creation, it will navigate to the ‘Edit Project’ page with a route like ‘/edit/[project_id]’ , where there is a button in the pageHeader to create the tasks as now i want to handle the task creation in the separate route .
+### in the task creation page firstally there is a button for adding the department for which we want to create the task.when we click on that button than modal should open in which we should select the department and add some additional info and create it.After creating,the list of adding department should be there in the task creation page.against every department we can create the task, so there should be a button for creating the task against a department, against every department, there should be a task list with action button to view, edit and delete the task and there is not need the separate department creation tab just a single button should create the department ,
+
+
+## There would be proper algorithm for creating the tasks and sub tasks which should we train the employee of this crm how to create the task and sub task for a project so also guide me how to create the proper algorithm here 
+
+make sure to follow the current flow of this app like for modal use "CustomModal" and use all the other generic appraches which are using currentally in this app and also make sure not create so many new  files to meet the requirements and code should be optimized and working well

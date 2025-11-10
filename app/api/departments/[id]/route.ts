@@ -3,11 +3,10 @@ import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Department from "@/models/Department"
 import { updateDepartmentSchema, departmentIdSchema } from "@/lib/validations/department"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 interface RouteParams {
-  params: {
-    id: string
-  }
+  params: Promise<{ id: string }>
 }
 
 // Helper to create consistent error responses
@@ -23,27 +22,28 @@ function createErrorResponse(message: string, status: number, details?: any) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    const { id } = await params
 
     // Validate department ID
-    const validatedParams = departmentIdSchema.parse({ id: params.id })
+    const validatedParams = departmentIdSchema.parse({ id })
 
     // Find department with automatic connection management
     const department = await executeGenericDbQuery(async () => {
-      const dept = await Department.findOne({
-        _id: validatedParams.id,
-        status: 'active'
-      }).lean()
+      // Apply soft delete filter - only super admins can see deleted departments
+      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin)
+
+      const dept = await Department.findOne(filter).lean()
 
       if (!dept) {
         throw new Error("Department not found")
       }
       return dept
-    }, `department-${validatedParams.id}`, 300000) // 5-minute cache
+    }, `department-${validatedParams.id}-${isSuperAdmin ? 'admin' : 'user'}`, 300000) // 5-minute cache
 
     return NextResponse.json({
       success: true,
-      data: { department },
+      data: department,
       message: 'Department retrieved successfully'
     })
 
@@ -68,32 +68,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'departments', 'update')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'update')
 
     // Validate department ID
-    const validatedParams = departmentIdSchema.parse({ id: params.id })
+    const { id } = await params
+    const validatedParams = departmentIdSchema.parse({ id })
 
     const body = await request.json()
     const validatedData = updateDepartmentSchema.parse(body)
 
+    // Prevent setting status to 'deleted' through update (use DELETE endpoint)
+    if (validatedData.status === 'deleted') {
+      return createErrorResponse('Cannot set status to deleted through update. Use DELETE endpoint instead.', 400)
+    }
+
     // Update department with automatic connection management
     const updatedDepartment = await executeGenericDbQuery(async () => {
-      // Check if department exists
-      const existingDepartment = await Department.findOne({
-        _id: validatedParams.id,
-        status: 'active'
-      })
+      // Check if department exists (apply soft delete filter - prevent updates on deleted records unless super admin)
+      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin)
+      const existingDepartment = await Department.findOne(filter)
 
       if (!existingDepartment) {
-        throw new Error("Department not found")
+        throw new Error("Department not found or has been deleted")
       }
 
-      // Check if new name already exists (if name is being updated)
+      // Check if new name already exists (if name is being updated, exclude deleted departments)
       if (validatedData.name && validatedData.name !== existingDepartment.name) {
         const duplicateDepartment = await Department.findOne({
           name: { $regex: new RegExp(`^${validatedData.name}$`, 'i') },
           _id: { $ne: validatedParams.id },
-          status: 'active'
+          status: { $ne: 'deleted' }
         })
 
         if (duplicateDepartment) {
@@ -115,7 +119,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      data: { department: updatedDepartment },
+      data: updatedDepartment,
       message: 'Department updated successfully'
     })
 
@@ -144,53 +148,37 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/departments/[id] - Delete department (soft delete)
+// DELETE /api/departments/[id] - Soft delete department
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'departments', 'delete')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'delete')
 
     // Validate department ID
-    const validatedParams = departmentIdSchema.parse({ id: params.id })
+    const { id } = await params
+    const validatedParams = departmentIdSchema.parse({ id })
 
-    // Delete department with automatic connection management
-    await executeGenericDbQuery(async () => {
-      // Check if department exists
-      const existingDepartment = await Department.findOne({
-        _id: validatedParams.id,
-      })
-
-      if (!existingDepartment) {
-        throw new Error("Department not found")
-      }
-
-      // TODO: Check if department has associated users before deletion
-      // This would require importing User model and checking for references
-      /*
-      const associatedUsers = await User.countDocuments({
-        department: existingDepartment.name,
-        status: 'active'
-      })
-
-      if (associatedUsers > 0) {
-        throw new Error("Cannot delete department with associated users")
-      }
-      */
-
-      // Soft delete - set status to inactive
-      return await Department.findByIdAndUpdate(
-        validatedParams.id,
-        { status: 'inactive', updatedAt: new Date() }
-      )
+    // Check if department exists (exclude already deleted departments)
+    const existingDepartment = await executeGenericDbQuery(async () => {
+      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, false) // Don't include deleted for validation
+      return await Department.findOne(filter)
     })
 
-    // Clear department-related caches
-    clearCache(`department-${validatedParams.id}`)
-    clearCache('departments')
+    if (!existingDepartment) {
+      return createErrorResponse('Department not found or already deleted', 404)
+    }
+
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('department', validatedParams.id, userEmail)
+
+    if (!deleteResult.success) {
+      return createErrorResponse(deleteResult.message, 400)
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Department deleted successfully'
+      message: deleteResult.message,
+      data: deleteResult.data
     })
 
   } catch (error: any) {

@@ -1,26 +1,45 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
-import type { Role } from '@/types'
 import {
-  fetchRoles,
-  fetchRoleById,
-  fetchRolesByDepartment,
-  createRole,
-  updateRole,
-  updateRolePermissions,
-  deleteRole,
+  setRoles,
+  setSelectedRole,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
   setFilters,
   setSort,
   setPagination,
-  setSelectedRole,
-  clearError,
-  resetRoles,
-  type FetchRolesParams,
-  type CreateRoleData,
-  type UpdateRoleData,
-  type RoleFilters,
-  type RoleSort,
+  setStats,
+  resetState,
 } from '@/store/slices/roleSlice'
+import {
+  useGenericQuery,
+  useGenericQueryById,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
+import { apiRequest, handleAPIError } from '@/lib/utils/api-client'
+import type {
+  Role,
+  RoleFilters,
+  RoleSort,
+  CreateRoleData,
+} from '@/types'
+
+export interface FetchRolesParams {
+  page?: number
+  limit?: number
+  filters?: RoleFilters
+  sort?: RoleSort
+}
+
+export interface UpdateRoleData extends Partial<CreateRoleData> {
+  _id: string
+  status?: "active" | "inactive" | "archived"
+}
 
 export function useRoles() {
   const dispatch = useAppDispatch()
@@ -37,41 +56,140 @@ export function useRoles() {
     stats,
   } = useAppSelector((state) => state.roles)
 
-  // Fetch operations
+  // Define options for generic hooks
+  const roleOptions: UseGenericQueryOptions<any> = {
+    entityName: 'roles',
+    baseUrl: '/api/roles',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setRoles(entities)),
+      setEntity: (entity) => dispatch(setSelectedRole(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
+
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  const allRolesParams = useMemo(() => ({
+    page: 1,
+    limit: 100,
+    filters: {},
+    sort: {
+      field: 'name' as const,
+      direction: 'asc' as const,
+    },
+  }), [])
+
+  // Use generic hooks
+  const { data: fetchedRoles, isLoading: queryLoading, refetch: refetchRoles } = useGenericQuery(
+    roleOptions,
+    queryParams,
+    true
+  )
+
+  // Separate query for fetching all roles (for filters/dropdowns)
+  const { data: allRoles } = useGenericQuery(
+    roleOptions,
+    allRolesParams,
+    true
+  )
+
+  const createMutation = useGenericCreate(roleOptions)
+  const updateMutation = useGenericUpdate(roleOptions)
+  const deleteMutation = useGenericDelete(roleOptions)
+
+  // Fetch operations - Stable function that doesn't change on re-renders
   const handleFetchRoles = useCallback((params?: FetchRolesParams) => {
-    const defaultParams = {
-      page: 1,
-      limit: 10,
-      filters: {},
-      sort: { field: 'createdAt' as keyof Role, direction: 'desc' as const }
-    }
-    return dispatch(fetchRoles(params || defaultParams))
-  }, [dispatch, pagination.page, pagination.limit, filters, sort])
-
-  const handleFetchRoleById = useCallback((roleId: string) => {
-    return dispatch(fetchRoleById(roleId))
-  }, [dispatch])
-
-  const handleFetchRolesByDepartment = useCallback((departmentId: string) => {
-    return dispatch(fetchRolesByDepartment(departmentId))
-  }, [dispatch])
+    refetchRoles()
+  }, [refetchRoles])
 
   // CRUD operations
   const handleCreateRole = useCallback((roleData: CreateRoleData) => {
-    return dispatch(createRole(roleData))
-  }, [dispatch])
+    return createMutation.mutateAsync(roleData)
+  }, [createMutation])
 
-  const handleUpdateRole = useCallback((roleData: UpdateRoleData) => {
-    return dispatch(updateRole(roleData))
-  }, [dispatch])
-
-  const handleUpdateRolePermissions = useCallback((roleId: string, permissions: any[]) => {
-    return dispatch(updateRolePermissions({ roleId, permissions }))
-  }, [dispatch])
+  const handleUpdateRole = useCallback((id: string, data: UpdateRoleData) => {
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
   const handleDeleteRole = useCallback((roleId: string) => {
-    return dispatch(deleteRole(roleId))
+    return deleteMutation.mutateAsync(roleId)
+  }, [deleteMutation])
+
+  // Role-specific operations
+  const handleFetchRoleById = useCallback(async (roleId: string) => {
+    try {
+      dispatch(setActionLoading(true))
+      const response = await apiRequest(`/api/roles/${roleId}`)
+      const role = response.data || response
+      dispatch(setSelectedRole(role))
+      dispatch(setActionLoading(false))
+      return role
+    } catch (error) {
+      dispatch(setError(error))
+      dispatch(setActionLoading(false))
+      handleAPIError(error, 'Failed to fetch role')
+      throw error
+    }
   }, [dispatch])
+
+  const handleFetchRolesByDepartment = useCallback(async (departmentId: string) => {
+    try {
+      dispatch(setLoading(true))
+      const response = await apiRequest(`/api/departments/${departmentId}/roles`)
+      const data = response.data || response
+      dispatch(setLoading(false))
+      return data
+    } catch (error) {
+      dispatch(setError(error))
+      dispatch(setLoading(false))
+      handleAPIError(error, 'Failed to fetch roles by department')
+      throw error
+    }
+  }, [dispatch])
+
+  const handleUpdateRolePermissions = useCallback(async (roleId: string, permissions: any[]) => {
+    try {
+      dispatch(setActionLoading(true))
+      const response = await apiRequest(`/api/roles/${roleId}/permissions`, {
+        method: 'PUT',
+        body: JSON.stringify({ permissions })
+      })
+
+      // Update the role in state
+      const updatedRole = response.data || response
+      const index = roles.findIndex(role => role._id === updatedRole._id)
+      if (index !== -1) {
+        const updatedRoles = [...roles]
+        updatedRoles[index] = updatedRole
+        dispatch(setRoles(updatedRoles))
+      }
+      if (selectedRole?._id === updatedRole._id) {
+        dispatch(setSelectedRole(updatedRole))
+      }
+
+      dispatch(setActionLoading(false))
+      return response
+    } catch (error) {
+      dispatch(setError(error))
+      dispatch(setActionLoading(false))
+      handleAPIError(error, 'Failed to update role permissions')
+      throw error
+    }
+  }, [dispatch, roles, selectedRole])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<RoleFilters>) => {
@@ -96,7 +214,7 @@ export function useRoles() {
   }, [dispatch])
 
   const handleResetRoles = useCallback(() => {
-    dispatch(resetRoles())
+    dispatch(resetState())
   }, [dispatch])
 
   const refreshRoles = useCallback(() => {
@@ -104,40 +222,40 @@ export function useRoles() {
   }, [handleFetchRoles])
 
   // Computed values
-  const hasRoles = Array.isArray(roles) && roles.length > 0
-  const isFirstPage = pagination?.page === 1
-  const isLastPage = pagination ? pagination.page >= pagination.pages : false
-  const totalPages = pagination?.pages || 0
-  const totalItems = pagination?.total || 0
+  const hasRoles = roles.length > 0
+  const isFirstPage = pagination.page === 1
+  const isLastPage = pagination.page >= pagination.pages
+  const totalPages = pagination.pages
+  const totalItems = pagination.total
 
   // Role utilities
   const getRoleById = useCallback((roleId: string) => {
-    return Array.isArray(roles) ? roles.find(role => role._id === roleId) : undefined
+    return roles.find(role => role._id === roleId)
   }, [roles])
 
   const getRolesByDepartment = useCallback((departmentId: string) => {
-    if (!Array.isArray(roles)) return []
     return roles.filter(role => role.department === departmentId ||
       (typeof role.department === 'object' && role.department?._id === departmentId))
   }, [roles])
 
   const getSystemRoles = useCallback(() => {
-    return Array.isArray(roles) ? roles.filter(role => role.isSystemRole) : []
+    return roles.filter(role => role.isSystemRole)
   }, [roles])
 
   const getDepartmentRoles = useCallback(() => {
-    return Array.isArray(roles) ? roles.filter(role => !role.isSystemRole) : []
+    return roles.filter(role => !role.isSystemRole)
   }, [roles])
 
   const getActiveRoles = useCallback(() => {
-    return Array.isArray(roles) ? roles.filter(role => role.status === 'active') : []
+    return roles.filter(role => role.status === 'active')
   }, [roles])
 
   return {
     // State
-    roles,
+    roles: fetchedRoles || roles,
+    allRoles: allRoles || [],
     selectedRole,
-    loading,
+    loading: queryLoading || loading,
     actionLoading,
     error,
     filters,

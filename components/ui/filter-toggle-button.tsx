@@ -36,17 +36,16 @@ const FilterToggleButton: React.FC<FilterToggleButtonProps> = ({
         className
       )}
     >
-      {hasActiveFilters ? (
+      {/* {hasActiveFilters ? (
         <X className="h-4 w-4" />
-      ) : (
-        <Filter
-          className={cn(
-            "h-4 w-4 transition-transform duration-200",
-            isExpanded && "rotate-180"
-          )}
-        />
-      )}
-      {hasActiveFilters ? clearText : filterText}
+      ) : ( */}
+      <Filter
+        className={cn(
+          "h-4 w-4 transition-transform duration-200",
+          isExpanded && "rotate-180"
+        )}
+      />
+      {filterText}
       {hasActiveFilters && (
         <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
           {activeFiltersCount}

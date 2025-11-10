@@ -6,6 +6,7 @@ import Role from "@/models/Role"
 import { clientQuerySchema } from "@/lib/validations/client"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { registerModels } from '@/lib/models'
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 // Cache TTL for client queries
 const CACHE_TTL = 60000 // 1 minute for client data
@@ -37,8 +38,12 @@ export async function GET(request: NextRequest) {
 
     const validatedParams = clientQuerySchema.parse(queryParams)
     console.log("clients34", validatedParams);
-    // Build MongoDB filter - always filter for clients only
-    const filter: any = { isClient: true }
+    // Build MongoDB filter - always filter for clients only with soft delete filter
+    let filter: any = { isClient: true }
+
+    // Apply soft delete filter - exclude deleted records unless super admin
+    filter = addSoftDeleteFilter(filter, isSuperAdmin)
+    console.log("clients46", filter);
 
     // Text search across multiple fields
     if (validatedParams.search) {
@@ -49,9 +54,14 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // Status filters
+    // Status filters - if user is not super admin, ensure we don't override soft delete filter
     if (validatedParams.status) {
-      filter.status = validatedParams.status
+      if (isSuperAdmin) {
+        filter.status = validatedParams.status
+      } else {
+        // For non-super admins, combine status filter with soft delete exclusion
+        filter.status = { $and: [{ $ne: 'deleted' }, { $eq: validatedParams.status }] }
+      }
     }
 
     if (validatedParams.clientStatus) {
@@ -106,25 +116,23 @@ export async function GET(request: NextRequest) {
 
     // Execute parallel queries with caching
     const cacheKey = `clients-${JSON.stringify({ filter, sort, skip, limit: validatedParams.limit })}`
-
+    console.log("clients119", filter);
     const [clients, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
         // return await User.find(filter)
-        //   .sort(sort)
-        //   .skip(skip)
-        //   .limit(validatedParams.limit)
-        //   .populate('role', 'name')
-        //   .populate('department', 'name')
-        //   .populate('leadId', 'name projectName status createdAt')
-        //   .select('-password -resetPasswordToken -resetPasswordExpire')
-        //   .lean()
         return await User.find({ isClient: true })
+          .sort(sort)
+          .skip(skip)
+          .limit(validatedParams.limit)
           .populate('role', 'name')
           .populate('department', 'name')
           .populate('leadId', 'name projectName status createdAt')
-          .lean();
+          .select('-password -resetPasswordToken -resetPasswordExpire')
+          .lean()
       }, cacheKey, CACHE_TTL),
+      
 
+      
       executeGenericDbQuery(async () => {
         return await User.countDocuments(filter)
       }, `clients-count-${JSON.stringify(filter)}`, CACHE_TTL),
@@ -290,6 +298,11 @@ async function createClientDirectly(data: any, user: any) {
   try {
     // Validate the input data
     const validatedData = createClientSchema.parse(data)
+
+    // Prevent creating clients with deleted status
+    if (validatedData.status === 'deleted') {
+      throw new Error("Cannot create clients with deleted status")
+    }
 
     const client = await executeGenericDbQuery(async () => {
       // Check if user with same email already exists

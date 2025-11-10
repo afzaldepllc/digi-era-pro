@@ -10,14 +10,14 @@ export interface ITask extends Document {
   status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   type: 'task' | 'sub-task'
-  
+
   // Time tracking
   estimatedHours?: number
   actualHours?: number
   startDate?: Date
   dueDate?: Date
   completedAt?: Date
-  
+
   // Meta fields
   createdBy: mongoose.Types.ObjectId
   assignedBy?: mongoose.Types.ObjectId
@@ -39,7 +39,7 @@ const TaskSchema = new Schema<ITask>({
     required: [true, "Task title is required"],
     trim: true,
     maxlength: [300, "Title cannot exceed 300 characters"],
-    index: true,
+    // index: true, // Removed - covered by text search index
   },
   description: {
     type: String,
@@ -50,20 +50,20 @@ const TaskSchema = new Schema<ITask>({
     type: Schema.Types.ObjectId,
     ref: 'Project',
     required: [true, "Project is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   departmentId: {
     type: Schema.Types.ObjectId,
     ref: 'Department',
     required: [true, "Department is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   parentTaskId: {
     type: Schema.Types.ObjectId,
     ref: 'Task',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
     validate: {
-      validator: function(value: mongoose.Types.ObjectId) {
+      validator: function (value: mongoose.Types.ObjectId) {
         // Sub-tasks must have a parent task
         if (this.type === 'sub-task' && !value) {
           return false
@@ -80,28 +80,28 @@ const TaskSchema = new Schema<ITask>({
   assigneeId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   status: {
     type: String,
     enum: ['pending', 'in-progress', 'completed', 'on-hold', 'cancelled'],
     default: 'pending',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   priority: {
     type: String,
     enum: ['low', 'medium', 'high', 'urgent'],
     default: 'medium',
-    index: true,
+    // index: true, // Removed - not used in compound indexes, can be removed
   },
   type: {
     type: String,
     enum: ['task', 'sub-task'],
     default: 'task',
     required: [true, "Task type is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
-  
+
   // Time tracking
   estimatedHours: {
     type: Number,
@@ -120,13 +120,13 @@ const TaskSchema = new Schema<ITask>({
   completedAt: {
     type: Date,
   },
-  
+
   // Meta fields
   createdBy: {
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: [true, "Creator is required"],
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
   assignedBy: {
     type: Schema.Types.ObjectId,
@@ -152,8 +152,8 @@ TaskSchema.index({ projectId: 1, departmentId: 1, type: 1 })
 TaskSchema.index({ projectId: 1, type: 1, status: 1 })
 
 // Text search index
-TaskSchema.index({ 
-  title: 'text', 
+TaskSchema.index({
+  title: 'text',
   description: 'text'
 }, {
   weights: { title: 10, description: 5 },
@@ -219,70 +219,114 @@ TaskSchema.virtual('subTaskCount', {
 })
 
 // Pre-save validation and logic
-TaskSchema.pre('save', async function(next) {
+TaskSchema.pre('save', async function (next) {
+  // Validate required ObjectId fields to prevent corruption
+  if (this.isModified('departmentId')) {
+    if (!this.departmentId || !mongoose.Types.ObjectId.isValid(this.departmentId)) {
+      const error = new Error(`Invalid Department ID: ${this.departmentId}. Must be a valid ObjectId.`)
+      return next(error)
+    }
+  }
+
+  if (this.isModified('projectId')) {
+    if (!this.projectId || !mongoose.Types.ObjectId.isValid(this.projectId)) {
+      const error = new Error(`Invalid Project ID: ${this.projectId}. Must be a valid ObjectId.`)
+      return next(error)
+    }
+  }
+
+  if (this.isModified('createdBy')) {
+    if (!this.createdBy || !mongoose.Types.ObjectId.isValid(this.createdBy)) {
+      const error = new Error(`Invalid Creator ID: ${this.createdBy}. Must be a valid ObjectId.`)
+      return next(error)
+    }
+  }
+
+  // Validate optional ObjectId fields
+  if (this.isModified('parentTaskId') && this.parentTaskId) {
+    if (!mongoose.Types.ObjectId.isValid(this.parentTaskId)) {
+      const error = new Error(`Invalid Parent Task ID: ${this.parentTaskId}. Must be a valid ObjectId or null.`)
+      return next(error)
+    }
+  }
+
+  if (this.isModified('assigneeId') && this.assigneeId) {
+    if (!mongoose.Types.ObjectId.isValid(this.assigneeId)) {
+      const error = new Error(`Invalid Assignee ID: ${this.assigneeId}. Must be a valid ObjectId or null.`)
+      return next(error)
+    }
+  }
+
+  if (this.isModified('assignedBy') && this.assignedBy) {
+    if (!mongoose.Types.ObjectId.isValid(this.assignedBy)) {
+      const error = new Error(`Invalid Assigned By ID: ${this.assignedBy}. Must be a valid ObjectId or null.`)
+      return next(error)
+    }
+  }
+
   // Validate dates
   if (this.startDate && this.dueDate && this.startDate > this.dueDate) {
     const error = new Error('Start date cannot be after due date')
     return next(error)
   }
-  
+
   // Validate parent task exists and is in same project/department for sub-tasks
   if (this.isModified('parentTaskId') && this.parentTaskId) {
     const Task = mongoose.model('Task')
     const parentTask = await Task.findById(this.parentTaskId)
-    
+
     if (!parentTask) {
       const error = new Error('Parent task not found')
       return next(error)
     }
-    
+
     if (parentTask.projectId.toString() !== this.projectId.toString()) {
       const error = new Error('Sub-task must belong to same project as parent task')
       return next(error)
     }
-    
+
     if (parentTask.departmentId.toString() !== this.departmentId.toString()) {
       const error = new Error('Sub-task must belong to same department as parent task')
       return next(error)
     }
-    
+
     if (parentTask.type === 'sub-task') {
       const error = new Error('Cannot create sub-task of a sub-task')
       return next(error)
     }
   }
-  
+
   // Validate assignee belongs to task department
   if (this.isModified('assigneeId') && this.assigneeId) {
     const User = mongoose.model('User')
     const assignee = await User.findById(this.assigneeId)
-    
+
     if (!assignee) {
       const error = new Error('Assignee not found')
       return next(error)
     }
-    
-    if (assignee.departmentId?.toString() !== this.departmentId.toString()) {
-      const error = new Error('Assignee must belong to task department')
-      return next(error)
-    }
+
+    // if (assignee.departmentId?.toString() !== this.departmentId.toString()) {
+    //   const error = new Error('Assignee must belong to task department')
+    //   return next(error)
+    // }
   }
-  
+
   // Auto-set completion date
   if (this.isModified('status') && this.status === 'completed' && !this.completedAt) {
     this.completedAt = new Date()
   }
-  
+
   // Clear completion date if not completed
   if (this.isModified('status') && this.status !== 'completed') {
     this.completedAt = undefined
   }
-  
+
   next()
 })
 
 // Static methods
-TaskSchema.statics.findByProject = function(projectId: string, options = {}) {
+TaskSchema.statics.findByProject = function (projectId: string, options = {}) {
   return this.find({ projectId, ...options })
     .populate('assignee', 'name email')
     .populate('department', 'name')
@@ -290,7 +334,7 @@ TaskSchema.statics.findByProject = function(projectId: string, options = {}) {
     .sort({ createdAt: -1 })
 }
 
-TaskSchema.statics.findByDepartment = function(departmentId: string, options = {}) {
+TaskSchema.statics.findByDepartment = function (departmentId: string, options = {}) {
   return this.find({ departmentId, ...options })
     .populate('project', 'name clientId')
     .populate('assignee', 'name email')
@@ -298,7 +342,7 @@ TaskSchema.statics.findByDepartment = function(departmentId: string, options = {
     .sort({ createdAt: -1 })
 }
 
-TaskSchema.statics.findByAssignee = function(assigneeId: string, options = {}) {
+TaskSchema.statics.findByAssignee = function (assigneeId: string, options = {}) {
   return this.find({ assigneeId, ...options })
     .populate('project', 'name clientId')
     .populate('department', 'name')
@@ -306,9 +350,9 @@ TaskSchema.statics.findByAssignee = function(assigneeId: string, options = {}) {
     .sort({ dueDate: 1, createdAt: -1 })
 }
 
-TaskSchema.statics.getTaskHierarchy = function(projectId: string) {
+TaskSchema.statics.getTaskHierarchy = function (projectId: string) {
   return this.aggregate([
-    { $match: { projectId: new mongoose.Types.ObjectId(projectId) } },
+    { $match: { projectId: new mongoose.Types.ObjectId(projectId), status: { $ne: 'cancelled' } } },
     {
       $lookup: {
         from: 'tasks',

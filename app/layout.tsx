@@ -2,16 +2,19 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { Providers } from "@/components/providers"
+import ClientProviders from "./ClientProviders"
 import { cn } from "@/lib/utils"
 import { LayoutProvider } from "@/components/layout/layout-provider"
-import { Suspense } from "react"
+import { ThemeProvider } from "@/components/theme-provider"
 
+// Optimize font loading for better LCP
 const inter = Inter({
   subsets: ["latin"],
   weight: ['400', '500', '600', '700'],
   variable: "--font-sans",
   display: 'swap',
+  preload: true,
+  adjustFontFallback: true, // Reduce CLS
 })
 
 export const metadata: Metadata = {
@@ -30,20 +33,28 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  console.log('we are in root layout')
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Preload critical resources for faster navigation */}
+        <link rel="preload" href="/digi-era-logo.webp" as="image" />
+        <link rel="dns-prefetch" href="//fonts.gstatic.com" />
+        {/* Optimize resource loading */}
+        <link rel="preconnect" href="//fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body className={cn(inter.variable, "font-sans antialiased")} suppressHydrationWarning>
-        <Suspense fallback={
-          <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-            <div className="loader" />
-          </div>}>
-          <Providers>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ClientProviders>
             <LayoutProvider>
               {children}
             </LayoutProvider>
-          </Providers>
-        </Suspense>
+          </ClientProviders>
+        </ThemeProvider>
       </body>
     </html>
   )

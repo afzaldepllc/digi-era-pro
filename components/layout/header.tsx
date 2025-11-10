@@ -1,12 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Bell, LogOut, Search, Settings, User } from "lucide-react"
-import { useSession, signOut } from "next-auth/react"
-import { SessionUtils } from "@/lib/utils/session-utils"
-
-import { Button } from "@/components/ui/button"
-import { MessageNotification } from "@/components/ui/message-notification"
+import { useState, memo, useCallback, useMemo } from "react"
+import { LogOut, User } from "lucide-react"
+import { useProfessionalSession } from "@/components/providers/professional-session-provider"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,36 +13,20 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
-
+import { MessageNotification } from "@/components/ui/message-notification"
 import CustomModal from "@/components/ui/custom-modal"
-import { ProfileSettings } from "@/components/profile/profile-setting"
+import { ProfileSettings } from '@/components/profile/profile-setting'
 
-export function Header() {
-  const { data: session } = useSession()
+export const Header = memo(function Header() {
+  const { user, logout } = useProfessionalSession()
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false)
   
-  // Type-safe session user access
-  const sessionUser = session?.user as any
+  // Memoize user data to prevent unnecessary re-renders
+  const sessionUser = useMemo(() => user, [user])
 
-  const handleSignOut = async () => {
-    try {
-      // Use comprehensive logout utility
-      await SessionUtils.performCompleteLogout('/auth/login')
-    } catch (error) {
-      console.error('Logout error:', error)
-      // Fallback: try NextAuth signOut
-      try {
-        await signOut({ 
-          callbackUrl: "/auth/login",
-          redirect: true 
-        })
-      } catch (signOutError) {
-        console.error('NextAuth signOut failed:', signOutError)
-        // Force redirect as last resort
-        window.location.href = '/auth/login'
-      }
-    }
-  }
+  const handleSignOut = useCallback(async () => {
+    await logout()
+  }, [logout])
 
   return (
 
@@ -57,6 +37,7 @@ export function Header() {
 
         {/* Right side */}
         <div className="flex items-center justify-end space-x-2 lg:space-x-4">
+          
           <ThemeToggle />
 
           <MessageNotification className="h-8 w-8 lg:h-9 lg:w-9" />
@@ -112,4 +93,4 @@ export function Header() {
 
     </>
   )
-}
+})

@@ -280,7 +280,7 @@ export function PermissionSelector({
           </CardTitle>
         </CardHeader>
         <CardContent>
-            <CardLoader columns={1} height="h-32" cards={1} />
+            <CardLoader height="h-32" cards={1} />
         </CardContent>
       </Card>
     )

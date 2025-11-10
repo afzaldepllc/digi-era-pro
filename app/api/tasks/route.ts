@@ -48,8 +48,11 @@ export async function GET(request: NextRequest) {
       ]
     }
     
+    // Exclude cancelled tasks by default unless specifically requested
     if (validatedParams.status) {
       filter.status = validatedParams.status
+    } else {
+      filter.status = { $ne: 'cancelled' }
     }
     
     if (validatedParams.priority) {
@@ -77,8 +80,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Department-based filtering for non-support users
-    if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-      filter.departmentId = user.departmentId
+    if (user.department && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+      // Ensure user.department is a valid ObjectId
+      const userDeptId = typeof user.department === 'string' ? user.department : user.department?._id
+      if (userDeptId && mongoose.Types.ObjectId.isValid(userDeptId)) {
+        filter.departmentId = new mongoose.Types.ObjectId(userDeptId)
+      }
     }
 
     // User-specific filtering for assigned tasks
@@ -96,65 +103,162 @@ export async function GET(request: NextRequest) {
     // Execute parallel queries
     const [tasks, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
-        return await Task.find(filter)
-          .populate('project', 'name clientId')
-          .populate('department', 'name status')
-          .populate('assignee', 'name email')
-          .populate('creator', 'name email')
-          .populate('parentTask', 'title')
-          .sort(sort)
-          .skip((validatedParams.page - 1) * validatedParams.limit)
-          .limit(validatedParams.limit)
-          .lean()
+        try {
+          return await Task.find(filter)
+            .populate('project', 'name clientId')
+            .populate('department', 'name status')
+            .populate('assignee', 'name email')
+            .populate('creator', 'name email')
+            .populate('parentTask', 'title')
+            .sort(sort)
+            .skip((validatedParams.page - 1) * validatedParams.limit)
+            .limit(validatedParams.limit)
+            .lean()
+        } catch (error: any) {
+          // If there's a cast error, try to find tasks with valid departmentId values only
+          if (error.name === 'CastError' && error.path === 'departmentId') {
+            console.warn('Found corrupted departmentId data, filtering out invalid records')
+            // Add regex filter to only match valid ObjectId format (24 hex characters)
+            const safeFilter = {
+              ...filter,
+              departmentId: { 
+                $regex: /^[0-9a-fA-F]{24}$/,
+                ...filter.departmentId ? { $eq: filter.departmentId } : {}
+              }
+            }
+            return await Task.find(safeFilter)
+              .populate('project', 'name clientId')
+              .populate('department', 'name status')
+              .populate('assignee', 'name email')
+              .populate('creator', 'name email')
+              .populate('parentTask', 'title')
+              .sort(sort)
+              .skip((validatedParams.page - 1) * validatedParams.limit)
+              .limit(validatedParams.limit)
+              .lean()
+          }
+          throw error
+        }
       }, `tasks-list-${JSON.stringify({ filter, sort, page: validatedParams.page, limit: validatedParams.limit })}`, 60000),
 
       executeGenericDbQuery(async () => {
-        return await Task.countDocuments(filter)
+        try {
+          return await Task.countDocuments(filter)
+        } catch (error: any) {
+          if (error.name === 'CastError' && error.path === 'departmentId') {
+            console.warn('Found corrupted departmentId data in count query, filtering out invalid records')
+            const safeFilter = {
+              ...filter,
+              departmentId: { 
+                $regex: /^[0-9a-fA-F]{24}$/,
+                ...filter.departmentId ? { $eq: filter.departmentId } : {}
+              }
+            }
+            return await Task.countDocuments(safeFilter)
+          }
+          throw error
+        }
       }, `tasks-count-${JSON.stringify(filter)}`, 60000),
 
       executeGenericDbQuery(async () => {
-        const pipeline = [
-          { $match: filter },
-          {
-            $group: {
-              _id: null,
-              totalTasks: { $sum: 1 },
-              pendingTasks: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
-              inProgressTasks: { $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] } },
-              completedTasks: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
-              onHoldTasks: { $sum: { $cond: [{ $eq: ["$status", "on-hold"] }, 1, 0] } },
-              cancelledTasks: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
-              
-              mainTasks: { $sum: { $cond: [{ $eq: ["$type", "task"] }, 1, 0] } },
-              subTasks: { $sum: { $cond: [{ $eq: ["$type", "sub-task"] }, 1, 0] } },
-              
-              lowPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "low"] }, 1, 0] } },
-              mediumPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "medium"] }, 1, 0] } },
-              highPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] } },
-              urgentPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "urgent"] }, 1, 0] } },
-              
-              totalEstimatedHours: { $sum: "$estimatedHours" },
-              totalActualHours: { $sum: "$actualHours" }
+        try {
+          const pipeline = [
+            { $match: filter },
+            {
+              $group: {
+                _id: null,
+                totalTasks: { $sum: 1 },
+                pendingTasks: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+                inProgressTasks: { $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] } },
+                completedTasks: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+                onHoldTasks: { $sum: { $cond: [{ $eq: ["$status", "on-hold"] }, 1, 0] } },
+                cancelledTasks: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
+                
+                mainTasks: { $sum: { $cond: [{ $eq: ["$type", "task"] }, 1, 0] } },
+                subTasks: { $sum: { $cond: [{ $eq: ["$type", "sub-task"] }, 1, 0] } },
+                
+                lowPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "low"] }, 1, 0] } },
+                mediumPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "medium"] }, 1, 0] } },
+                highPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] } },
+                urgentPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "urgent"] }, 1, 0] } },
+                
+                totalEstimatedHours: { $sum: "$estimatedHours" },
+                totalActualHours: { $sum: "$actualHours" }
+              }
+            }
+          ]
+
+          const result = await Task.aggregate(pipeline)
+          return result[0] || {
+            totalTasks: 0,
+            pendingTasks: 0,
+            inProgressTasks: 0,
+            completedTasks: 0,
+            onHoldTasks: 0,
+            cancelledTasks: 0,
+            mainTasks: 0,
+            subTasks: 0,
+            lowPriorityTasks: 0,
+            mediumPriorityTasks: 0,
+            highPriorityTasks: 0,
+            urgentPriorityTasks: 0,
+            totalEstimatedHours: 0,
+            totalActualHours: 0
+          }
+        } catch (error: any) {
+          if (error.name === 'CastError' && error.path === 'departmentId') {
+            console.warn('Found corrupted departmentId data in stats query, filtering out invalid records')
+            const safeFilter = {
+              ...filter,
+              departmentId: { 
+                $regex: /^[0-9a-fA-F]{24}$/,
+                ...filter.departmentId ? { $eq: filter.departmentId } : {}
+              }
+            }
+            const safePipeline = [
+              { $match: safeFilter },
+              {
+                $group: {
+                  _id: null,
+                  totalTasks: { $sum: 1 },
+                  pendingTasks: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+                  inProgressTasks: { $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] } },
+                  completedTasks: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+                  onHoldTasks: { $sum: { $cond: [{ $eq: ["$status", "on-hold"] }, 1, 0] } },
+                  cancelledTasks: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
+                  
+                  mainTasks: { $sum: { $cond: [{ $eq: ["$type", "task"] }, 1, 0] } },
+                  subTasks: { $sum: { $cond: [{ $eq: ["$type", "sub-task"] }, 1, 0] } },
+                  
+                  lowPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "low"] }, 1, 0] } },
+                  mediumPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "medium"] }, 1, 0] } },
+                  highPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] } },
+                  urgentPriorityTasks: { $sum: { $cond: [{ $eq: ["$priority", "urgent"] }, 1, 0] } },
+                  
+                  totalEstimatedHours: { $sum: "$estimatedHours" },
+                  totalActualHours: { $sum: "$actualHours" }
+                }
+              }
+            ]
+            const result = await Task.aggregate(safePipeline)
+            return result[0] || {
+              totalTasks: 0,
+              pendingTasks: 0,
+              inProgressTasks: 0,
+              completedTasks: 0,
+              onHoldTasks: 0,
+              cancelledTasks: 0,
+              mainTasks: 0,
+              subTasks: 0,
+              lowPriorityTasks: 0,
+              mediumPriorityTasks: 0,
+              highPriorityTasks: 0,
+              urgentPriorityTasks: 0,
+              totalEstimatedHours: 0,
+              totalActualHours: 0
             }
           }
-        ]
-
-        const result = await Task.aggregate(pipeline)
-        return result[0] || {
-          totalTasks: 0,
-          pendingTasks: 0,
-          inProgressTasks: 0,
-          completedTasks: 0,
-          onHoldTasks: 0,
-          cancelledTasks: 0,
-          mainTasks: 0,
-          subTasks: 0,
-          lowPriorityTasks: 0,
-          mediumPriorityTasks: 0,
-          highPriorityTasks: 0,
-          urgentPriorityTasks: 0,
-          totalEstimatedHours: 0,
-          totalActualHours: 0
+          throw error
         }
       }, `tasks-stats-${JSON.stringify(filter)}`, 300000) // 5-minute cache for stats
     ])
@@ -199,7 +303,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Security & Authentication
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'create')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'tasks', 'create')
 
     const body = await request.json()
     
@@ -216,19 +320,26 @@ export async function POST(request: NextRequest) {
 
     // Create task with automatic connection management
     const task = await executeGenericDbQuery(async () => {
-      // Verify project exists and is approved
+      // Verify project exists (super admin can create tasks for any project)
       const project = await Project.findOne({
         _id: validatedData.projectId,
-        status: { $in: ['approved', 'active'] }
+        status: { $ne: 'inactive' }
       })
 
       if (!project) {
-        throw new Error('Project not found or not approved')
+        throw new Error('Project not found')
       }
 
-      // Verify department is assigned to the project
-      if (!project.departmentIds.some((deptId: any) => deptId.toString() === validatedData.departmentId)) {
-        throw new Error('Department is not assigned to this project')
+      // For non-super-admin users, verify project is approved and department is assigned
+      if (!isSuperAdmin) {
+        if (!['approved', 'active'].includes(project.status)) {
+          throw new Error('Project not found or not approved')
+        }
+
+        // Verify department is assigned to the project
+        if (!project.departmentIds.some((deptId: any) => deptId.toString() === validatedData.departmentId)) {
+          throw new Error('Department is not assigned to this project')
+        }
       }
 
       // For sub-tasks, verify parent task exists and belongs to same project/department
@@ -249,7 +360,7 @@ export async function POST(request: NextRequest) {
       if (validatedData.assigneeId) {
         const assignee = await User.findOne({
           _id: validatedData.assigneeId,
-          departmentId: validatedData.departmentId,
+          department: validatedData.departmentId,
           status: 'active'
         })
 
@@ -261,15 +372,15 @@ export async function POST(request: NextRequest) {
       // Permission checks
       const userDepartment = user.department?.name?.toLowerCase()
       const isSupport = ['support', 'admin'].includes(userDepartment)
-      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role)
+      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role?.name)
       
-      // Only support, department leads, and managers can create main tasks
-      if (validatedData.type === 'task' && !isSupport && !isLeadOrManager) {
+      // Super admin can create any tasks, support team, department leads, and managers can create main tasks
+      if (validatedData.type === 'task' && !isSuperAdmin && !isSupport && !isLeadOrManager) {
         throw new Error('Only support team and department leads can create main tasks')
       }
 
-      // Department leads can only create tasks in their department
-      if (!isSupport && user.departmentId?.toString() !== validatedData.departmentId) {
+      // Department leads can only create tasks in their department (super admin and support bypass this)
+      if (!isSuperAdmin && !isSupport && user.department?.toString() !== validatedData.departmentId) {
         throw new Error('You can only create tasks in your department')
       }
 
@@ -331,8 +442,8 @@ async function getTaskHierarchy(request: NextRequest, user: any) {
       }
 
       // Department-based filtering
-      if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-        if (!project.departmentIds.some((deptId: any) => deptId.toString() === user.departmentId)) {
+      if (user.department && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+        if (!project.departmentIds.some((deptId: any) => deptId.toString() === user.department)) {
           throw new Error('Access denied to this project')
         }
       }
@@ -342,8 +453,8 @@ async function getTaskHierarchy(request: NextRequest, user: any) {
       
       if (validatedParams.departmentId) {
         filter.departmentId = validatedParams.departmentId
-      } else if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-        filter.departmentId = user.departmentId
+      } else if (user.department && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+        filter.departmentId = user.department
       }
 
       // Get task hierarchy using the static method

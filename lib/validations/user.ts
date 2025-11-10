@@ -35,20 +35,31 @@ const emailSchema = z
 // Phone validation with international support
 const phoneSchema = z
   .string()
-  .regex(
-    /^[\+]?[0-9]{7,15}$/,
-    "Phone number must be 7-15 digits, optionally starting with +"
-  )
-  .transform((phone) => {
-    // Clean phone number: remove spaces, hyphens, parentheses
-    let cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
-    // Ensure + is only at the beginning
-    if (cleaned.includes('+') && !cleaned.startsWith('+')) {
-      cleaned = cleaned.replace(/\+/g, '')
+  .transform((val) => {
+    // 1️⃣ Remove all characters except digits and +
+    let cleaned = val.replace(/[^0-9+]/g, "");
+
+    // 2️⃣ If + is not at the start → remove it everywhere
+    if (cleaned.includes("+") && !cleaned.startsWith("+")) {
+      cleaned = cleaned.replace(/\+/g, "");
     }
-    return cleaned
+
+    // 3️⃣ If multiple +, keep only the first if at start
+    cleaned = cleaned.replace(/(?!^)\+/g, "");
+
+    return cleaned;
   })
-  .optional()
+  .refine((val) => {
+    // ❌ Disallow +0
+    if (/^\+0/.test(val)) return false;
+
+    // ✅ Allow + followed by 1–9, or digits only (can start with 0)
+    return /^(\+[1-9][0-9]{6,14}|[0-9]{7,15})$/.test(val);
+  }, {
+    message:
+      "Invalid phone number. Must be 7–15 digits, may start with + but not +0 or contain special characters.",
+  })
+  .optional();
 
 // Name validation with proper character support
 const nameSchema = z
@@ -75,7 +86,7 @@ const urlSchema = z
   .optional()
 
 // Status enums
-const userStatusSchema = z.enum(["active", "inactive", "suspended"])
+const userStatusSchema = z.enum(["active", "inactive", "deleted", "suspended"])
 const themeSchema = z.enum(["light", "dark", "system"])
 
 // =============================================================================

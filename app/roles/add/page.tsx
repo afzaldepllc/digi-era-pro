@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,16 +14,18 @@ import { ArrowLeft, AlertTriangle } from "lucide-react";
 import type { CreateRoleData } from "@/types";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
-import { useNavigationLoading } from "@/hooks/use-navigation-loading";
+import { handleAPIError } from "@/lib/utils/api-client";
 import { createRoleFormSchema, CreateRoleFormData } from "@/lib/validations/role";
+import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 
 export default function CreateRolePage() {
   const router = useRouter();
   const { toast } = useToast();
   const { createRole, actionLoading, error, clearError } = useRoles();
-  const { departments, fetchDepartments } = useDepartments();
+  const { departments, allDepartments, fetchDepartments } = useDepartments();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
 
   const form = useForm<CreateRoleFormData>({
     resolver: zodResolver(createRoleFormSchema),
@@ -37,10 +39,42 @@ export default function CreateRolePage() {
     },
   });
 
-  // Load departments
+  // Fetch available departments for filter
+  const fetchAvailableDepartments = useCallback(async () => {
+    try {
+      // Use allDepartments from the hook instead of fetching
+      const currentAllDepartments = allDepartments;
+      if (currentAllDepartments && currentAllDepartments.length > 0) {
+        const departmentOptions = currentAllDepartments.map((dept: any) => ({
+          value: dept._id,
+          label: dept.name,
+        })) || [];
+        setAvailableDepartments(departmentOptions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch departments for filter:', error);
+      handleAPIError(error, "Failed to load departments for filtering");
+    }
+  }, []); // Remove allDepartments from dependencies to prevent infinite re-runs
+
+  // Fetch roles and departments for filters on mount
   useEffect(() => {
-    fetchDepartments();
-  }, [fetchDepartments]);
+    if (availableDepartments.length === 0) {
+      fetchAvailableDepartments();
+    }
+  }, [fetchAvailableDepartments]);
+
+  // Update available departments when allDepartments changes
+  useEffect(() => {
+    if (allDepartments && allDepartments.length > 0) {
+      const departmentOptions = allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      })) || [];
+      setAvailableDepartments(departmentOptions);
+    }
+  }, [allDepartments]);
+
 
   // Auto-generate name from display name
   const watchDisplayName = form.watch('displayName');
@@ -69,7 +103,7 @@ export default function CreateRolePage() {
       };
 
 
-      const result = await createRole(roleData as any).unwrap();
+      const result = await createRole(roleData as any);
 
       toast({
         title: "Success",
@@ -84,11 +118,7 @@ export default function CreateRolePage() {
       }
     } catch (error: any) {
       console.log('error creating role:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create role",
-        variant: "destructive",
-      });
+      handleAPIError(error, "Failed to create role");
     } finally {
       setIsSubmitting(false);
     }
@@ -130,13 +160,14 @@ export default function CreateRolePage() {
           name: "department",
           label: "Department",
           type: "select" as const,
+          searchable: true,
           required: true,
           placeholder: "Select department",
           description: "Department this role belongs to",
-          options: departments.map(dept => ({
-            value: dept._id!,
-            label: dept.name,
-          })),
+          options: [
+            { value: 'all', label: 'All Departments' },
+            ...availableDepartments,
+          ],
           cols: 12,
           mdCols: 6,
           lgCols: 4,
@@ -145,6 +176,7 @@ export default function CreateRolePage() {
           name: "hierarchyLevel",
           label: "Hierarchy Level",
           type: "select" as const,
+          searchable: true,
           required: true,
           placeholder: "Select level",
           description: "Authority level (1-10)",

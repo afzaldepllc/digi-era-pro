@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DashboardCharts } from "@/components/dashboard/charts"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useSession } from "next-auth/react"
+import DataTable from "@/components/ui/data-table"
 
 export default function DashboardPage() {
   const { user, loading } = useAuthUser()
@@ -53,7 +54,6 @@ export default function DashboardPage() {
       color: "text-orange-600",
     },
   ]
-
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
@@ -64,11 +64,11 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center space-x-4">
           <Avatar className="h-12 w-12">
-            {(session?.user as any).avatar ? (
-              <AvatarImage src={(session?.user as any).avatar} alt={(session?.user as any).name || "User"} className="object-cover" />
+            {user?.avatar ? (
+              <AvatarImage src={user.avatar} alt={user.name || "User"} className="object-cover" />
             ) : (
               <AvatarFallback className="bg-primary text-white text-xl font-semibold">
-                {session?.user?.name
+                {user?.name
                   ?.split(" ")
                   .map((n) => n[0])
                   .join("")

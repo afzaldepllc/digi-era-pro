@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { 
+import {
   objectIdSchema,
   nameSchema,
   emailSchema,
@@ -19,7 +19,7 @@ export const CLIENT_CONSTANTS = {
   EMAIL: { MAX_LENGTH: 254 },
   PHONE: { PATTERN: /^[\+]?[0-9]{7,15}$/ },
   STATUS: {
-    VALUES: ['active', 'inactive', 'qualified', 'unqualified'] as const,
+    VALUES: ['active', 'inactive', 'deleted', 'qualified', 'unqualified'] as const,
     DEFAULT: 'qualified' as const,
     CLIENT_VALUES: ['qualified', 'unqualified'] as const, // Client-specific statuses
   },
@@ -66,36 +66,43 @@ export const baseClientObjectSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   phone: phoneSchema,
-  
+
   // User role and department fields
   role: objectIdSchema,
   department: objectIdSchema,
   position: z.string().trim().optional(),
-  
+
   // User status (extended for clients)
   status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
-  
+
   // Client-specific fields
   isClient: z.literal(true), // Always true for clients
   leadId: leadIdSchema,
   clientStatus: clientStatusSchema,
   company: clientCompanySchema,
+  industry: z.string().optional(),
+  companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
+  annualRevenue: z.string().optional(), // Keep as string for form
+  employeeCount: z.string().optional(), // Keep as string for form
   projectInterests: projectInterestsSchema,
-  
+
   // Optional user fields
   avatar: z.string().url().optional().or(z.literal("")),
   address: addressSchema,
   socialLinks: socialLinksSchema,
   preferences: preferencesSchema,
   metadata: metadataSchema,
-  
+
   // Security fields
   emailVerified: z.boolean().default(false),
   phoneVerified: z.boolean().default(false),
   twoFactorEnabled: z.boolean().default(false),
-  
+
   // Additional permissions
   permissions: z.array(z.string()).default([]),
+
+  // Notes
+  notes: z.string().max(2000).optional(),
 })
 
 // Base client schema with refinements
@@ -130,10 +137,10 @@ export const createClientSchema = baseClientObjectSchema.omit({
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
     )
     .optional(),
-    
+
   // Role will be set automatically to 'client' role
   role: objectIdSchema.optional(),
-  
+
   // Department can be inherited from lead creator or set to a default client department
   department: objectIdSchema.optional(),
   departmentId: objectIdSchema.optional(), // Alias for department
@@ -142,7 +149,6 @@ export const createClientSchema = baseClientObjectSchema.omit({
 // Update client schema
 export const updateClientSchema = baseClientObjectSchema.omit({
   isClient: true, // Cannot change client flag
-  email: true, // Cannot change email
 }).partial().extend({
   // Allow password updates (optional)
   password: z.string()
@@ -155,7 +161,7 @@ export const updateClientSchema = baseClientObjectSchema.omit({
     .optional(),
 }).strict().refine((data: any) => {
   // At least one field must be provided for update
-  const values = Object.values(data).filter(value => 
+  const values = Object.values(data).filter(value =>
     value !== undefined && value !== null && value !== ''
   )
   return values.length > 0
@@ -173,7 +179,7 @@ export const clientStatusUpdateSchema = z.object({
   if (data.clientStatus === 'unqualified' && !data.reason) {
     return false
   }
-  
+
   // Status alignment validation
   if (data.clientStatus === 'qualified' && !['active', 'qualified'].includes(data.status)) {
     return false
@@ -181,7 +187,7 @@ export const clientStatusUpdateSchema = z.object({
   if (data.clientStatus === 'unqualified' && data.status !== 'unqualified') {
     return false
   }
-  
+
   return true
 }, {
   message: 'Invalid status combination or missing unqualification reason',
@@ -213,17 +219,17 @@ export const clientQuerySchema = z.object({
   page: z.coerce.number().int().min(CLIENT_CONSTANTS.PAGINATION.MIN_PAGE).default(CLIENT_CONSTANTS.PAGINATION.DEFAULT_PAGE),
   limit: z.coerce.number().int().min(1).max(CLIENT_CONSTANTS.PAGINATION.MAX_LIMIT).default(CLIENT_CONSTANTS.PAGINATION.DEFAULT_LIMIT),
   search: z.string().optional().transform(val => val?.trim() || ''),
-  
+
   // Client-specific filters
   clientStatus: z.enum(['qualified', 'unqualified', '']).optional(),
   status: z.enum(['active', 'inactive', 'qualified', 'unqualified', '']).optional(),
   hasLead: z.coerce.boolean().optional(), // Filter clients with/without lead association
   company: z.string().optional().transform(val => val?.trim() || ''),
-  
+
   // Sort options
   sortBy: z.enum(CLIENT_CONSTANTS.SORT.ALLOWED_FIELDS).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  
+
   // Date filters for client creation
   qualifiedAfter: z.coerce.date().optional(),
   qualifiedBefore: z.coerce.date().optional(),
@@ -348,7 +354,61 @@ export const createClientFormSchema = z.object({
   // Company Information
   company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
   industry: z.string().optional(),
-  companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
+  companySize: z.enum(['', 'startup', 'small', 'medium', 'large', 'enterprise']).optional(),
+  annualRevenue: z.string().optional(), // Keep as string for form
+  employeeCount: z.string().optional(), // Keep as string for form
+
+  // Client Status
+  clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
+  status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
+
+  // Project Interests
+  projectInterests: z.string().optional(), // Comma-separated string for form input
+
+  // Address Information
+  address: z.object({
+    street: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
+    country: z.string().optional(),
+  }).optional(),
+
+  // Social Links
+  socialLinks: z.object({
+    linkedin: z.string().url().optional().or(z.literal("")),
+    twitter: z.string().url().optional().or(z.literal("")),
+    github: z.string().url().optional().or(z.literal("")),
+  }).optional(),
+
+  // Preferences
+  preferences: z.object({
+    theme: z.enum(['light', 'dark', 'system']).default('system'),
+    language: z.string().default('en'),
+    timezone: z.string().default('UTC'),
+    notifications: z.object({
+      email: z.boolean().default(true),
+      push: z.boolean().default(false),
+      sms: z.boolean().default(false),
+    }).default({ email: true, push: false, sms: false }),
+  }).optional(),
+
+  // Notes
+  notes: z.string().max(2000).optional(),
+}).strict()
+
+// Update form schema (string inputs for form handling)
+export const updateClientFormSchema = z.object({
+  // Basic Information
+  name: z.string().min(CLIENT_CONSTANTS.NAME.MIN_LENGTH).max(CLIENT_CONSTANTS.NAME.MAX_LENGTH),
+  email: emailSchema,
+  phone: z.string().optional(),
+  position: z.string().optional(),
+
+  // Company Information
+  company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
+  industry: z.string().optional(),
+  companySize: z.enum(['', 'startup', 'small', 'medium', 'large', 'enterprise']).optional(),
   annualRevenue: z.string().optional(), // Keep as string for form
   employeeCount: z.string().optional(), // Keep as string for form
 
@@ -393,61 +453,6 @@ export const createClientFormSchema = z.object({
 
 // Export types
 export type CreateClientFormData = z.infer<typeof createClientFormSchema>
-
-// Update form schema (string inputs for form handling, all fields optional)
-export const updateClientFormSchema = z.object({
-  // Basic Information
-  name: z.string().min(CLIENT_CONSTANTS.NAME.MIN_LENGTH).max(CLIENT_CONSTANTS.NAME.MAX_LENGTH).optional(),
-  phone: z.string().optional(),
-  position: z.string().optional(),
-
-  // Company Information
-  company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH).optional(),
-  industry: z.string().optional(),
-  companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
-  annualRevenue: z.string().optional(), // Keep as string for form
-  employeeCount: z.string().optional(), // Keep as string for form
-
-  // Client Status
-  clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT).optional(),
-  status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT).optional(),
-
-  // Project Interests
-  projectInterests: z.string().optional(), // Comma-separated string for form input
-
-  // Address Information
-  address: z.object({
-    street: z.string().optional(),
-    city: z.string().optional(),
-    state: z.string().optional(),
-    zipCode: z.string().optional(),
-    country: z.string().optional(),
-  }).optional(),
-
-  // Social Links
-  socialLinks: z.object({
-    linkedin: z.string().url().optional().or(z.literal("")),
-    twitter: z.string().url().optional().or(z.literal("")),
-    github: z.string().url().optional().or(z.literal("")),
-  }).optional(),
-
-  // Preferences
-  preferences: z.object({
-    theme: z.enum(['light', 'dark', 'system']).default('system').optional(),
-    language: z.string().default('en').optional(),
-    timezone: z.string().default('UTC').optional(),
-    notifications: z.object({
-      email: z.boolean().default(true),
-      push: z.boolean().default(true),
-      sms: z.boolean().default(false),
-    }).default({ email: true, push: true, sms: false }).optional(),
-  }).optional(),
-
-  // Notes
-  notes: z.string().max(2000).optional(),
-}).strict()
-
-// Export types
 export type UpdateClientFormData = z.infer<typeof updateClientFormSchema>
 
 // Lead synchronization types

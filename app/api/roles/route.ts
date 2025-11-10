@@ -11,11 +11,11 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import mongoose, { type Document } from "mongoose"
 import { getClientInfo } from "@/lib/security/error-handler"
 import { createAPIErrorResponse, createAPISuccessResponse } from "@/lib/utils/api-responses"
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 
 
-// Simple in-memory cache for better performance
-const cache = new Map()
+// Cache TTL for role queries
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 
@@ -32,7 +32,7 @@ function createErrorResponse(message: string, status: number, details?: any) {
 export async function GET(request: NextRequest) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'read')
 
     // Parse and validate query parameters
     const { searchParams } = new URL(request.url)
@@ -49,124 +49,135 @@ export async function GET(request: NextRequest) {
 
     const { page, limit, search, department, hierarchyLevel, isSystemRole, status, sortBy, sortOrder } = validatedData
 
-    // Extract user info for superadmin check
-    const isSuperAdmin = user.role === 'super_admin';
+    // isSuperAdmin already available from middleware
 
     // Generate user-specific cache key to prevent cross-user contamination
     const userCacheIdentifier = isSuperAdmin ? 'superadmin' : `user_${user._id || user.id}_${user.role?.name || 'no_role'}`
     const cacheKey = `roles:${userCacheIdentifier}:${page}:${limit}:${search}:${department}:${hierarchyLevel}:${isSystemRole}:${status}:${sortBy}:${sortOrder}`
 
-    // Check cache
-    const cached = cache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json({
-        success: true,
-        ...cached.data,
-        message: 'Roles retrieved successfully (cached)'
-      })
-    }
-
-    // Build query - Only add status filter if it's explicitly provided
-    const query: any = {}
-
-    // Only filter by status if it's explicitly provided
-    if (status) {
-      query.status = status
-    }
-
-    // Search implementation
-    if (search) {
-      const sanitizedSearch = SecurityUtils.sanitizeString(search)
-
-      if (sanitizedSearch.length >= 2) {
-        query.$text = { $search: sanitizedSearch }
-      } else {
-        query.$or = [
-          { name: { $regex: sanitizedSearch, $options: 'i' } },
-          { displayName: { $regex: sanitizedSearch, $options: 'i' } }
-        ]
+    // Execute database query with optimized connection and caching
+    const result = await executeGenericDbQuery(async () => {
+      // Ensure models are registered (fix for populate issues)
+      if (!mongoose.models.Department) {
+        require('@/models/Department')
       }
-    }
 
-    // Apply filters
-    if (department) {
-      if (mongoose.Types.ObjectId.isValid(department)) {
-        query.department = new mongoose.Types.ObjectId(department)
-      }
-    }
-    if (hierarchyLevel !== undefined) {
-      query.hierarchyLevel = hierarchyLevel
-    }
-    if (isSystemRole !== undefined) {
-      query.isSystemRole = isSystemRole
-    }
+      // Build query with soft delete filter
+      let query: any = {}
 
-    // Sort configuration
-    const sort: any = {}
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1
+      // Apply soft delete filter - exclude deleted records unless super admin
+      query = addSoftDeleteFilter(query, isSuperAdmin)
 
-    // Execute parallel queries
-    const [roles, total, departmentStats] = await Promise.all([
-      Role.find(query)
-        .populate('departmentDetails', 'name description')
-        .populate('userCount')
-        .select('name displayName description department permissions hierarchyLevel isSystemRole maxUsers validityPeriod status createdAt updatedAt')
-        .sort(sort)
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean()
-        .exec(),
-      Role.countDocuments(query).exec(),
-      Role.aggregate([
-        { $match: status ? { status: status } : {} },
-        {
-          $group: {
-            _id: '$department',
-            roleCount: { $sum: 1 },
-            avgHierarchyLevel: { $avg: '$hierarchyLevel' }
-          }
-        },
-        {
-          $lookup: {
-            from: 'departments',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'departmentInfo'
-          }
-        },
-        { $unwind: '$departmentInfo' },
-        {
-          $project: {
-            departmentId: '$_id',
-            departmentName: '$departmentInfo.name',
-            roleCount: 1,
-            avgHierarchyLevel: { $round: ['$avgHierarchyLevel', 2] }
-          }
+      // Only filter by status if it's explicitly provided, combining with soft delete filter
+      if (status) {
+        if (isSuperAdmin) {
+          query.status = status
+        } else {
+          // For non-super admins, combine status filter with soft delete exclusion
+          query.status = { $and: [{ $ne: 'deleted' }, { $eq: status }] }
         }
-      ])
-    ])
-
-    const responseData = {
-      roles: roles,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      stats: {
-        totalRoles: total,
-        systemRoles: roles.filter((role: any) => role.isSystemRole).length,
-        departmentRoles: roles.filter((role: any) => !role.isSystemRole).length,
-        departmentStats
       }
-    }
 
-    // Cache result
-    cache.set(cacheKey, {
-      data: responseData,
-      timestamp: Date.now()
-    })
+      // Search implementation
+      if (search) {
+        const sanitizedSearch = SecurityUtils.sanitizeString(search)
+
+        if (sanitizedSearch.length >= 2) {
+          query.$text = { $search: sanitizedSearch }
+        } else {
+          query.$or = [
+            { name: { $regex: sanitizedSearch, $options: 'i' } },
+            { displayName: { $regex: sanitizedSearch, $options: 'i' } }
+          ]
+        }
+      }
+
+      // Apply filters
+      if (department) {
+        if (mongoose.Types.ObjectId.isValid(department)) {
+          query.department = new mongoose.Types.ObjectId(department)
+        }
+      }
+      if (hierarchyLevel !== undefined) {
+        query.hierarchyLevel = hierarchyLevel
+      }
+      if (isSystemRole !== undefined) {
+        query.isSystemRole = isSystemRole
+      }
+
+      // Sort configuration
+      const sort: any = {}
+      sort[sortBy] = sortOrder === 'asc' ? 1 : -1
+
+      // Execute parallel queries
+      const [roles, total, departmentStats] = await Promise.all([
+        Role.find(query)
+          .populate('departmentDetails', 'name description')
+          .populate('userCount')
+          .select('name displayName description department permissions hierarchyLevel isSystemRole maxUsers validityPeriod status createdAt updatedAt')
+          .sort(sort)
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean()
+          .exec(),
+
+        Role.countDocuments(query).exec(),
+
+        Role.aggregate([
+          { $match: addSoftDeleteFilter(status ? { status: status } : {}, isSuperAdmin) },
+          {
+            $group: {
+              _id: '$department',
+              roleCount: { $sum: 1 },
+              avgHierarchyLevel: { $avg: '$hierarchyLevel' },
+              activeRoles: {
+                $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
+              },
+              inactiveRoles: {
+                $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] }
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: 'departments',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'departmentInfo'
+            }
+          },
+          { $unwind: '$departmentInfo' },
+          {
+            $project: {
+              departmentId: '$_id',
+              departmentName: '$departmentInfo.name',
+              roleCount: 1,
+              avgHierarchyLevel: { $round: ['$avgHierarchyLevel', 2] },
+              activeRoles: 1,
+              inactiveRoles: 1
+            }
+          }
+        ])
+      ])
+
+      return {
+        roles,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        },
+        stats: {
+          totalRoles: total,
+          systemRoles: roles.filter((r: any) => r.isSystemRole).length,
+          departmentRoles: roles.filter((r: any) => !r.isSystemRole).length,
+          activeRoles: roles.filter((r: any) => r.status === 'active').length,
+          inactiveRoles: roles.filter((r: any) => r.status === 'inactive').length,
+          departmentStats
+        }
+      }
+    }, cacheKey)
 
     // Log successful access
     console.log('Roles list accessed:', {
@@ -174,16 +185,12 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       search: search || 'none',
-      resultCount: roles.length,
+      resultCount: result.roles.length,
       filters: { department, hierarchyLevel, isSystemRole },
       ip: getClientInfo(request).ipAddress
     })
 
-    return NextResponse.json({
-      success: true,
-      data: responseData,
-      message: 'Roles retrieved successfully'
-    })
+    return createAPISuccessResponse(result, 'Roles retrieved successfully')
 
   } catch (error: any) {
     console.error('Error in GET /api/roles:', {
@@ -192,13 +199,6 @@ export async function GET(request: NextRequest) {
       name: error.name,
       timestamp: new Date().toISOString()
     })
-
-    // Clear relevant cache entries on error to avoid serving stale data
-    for (const key of cache.keys()) {
-      if (key.startsWith('roles:')) {
-        cache.delete(key)
-      }
-    }
 
     // Handle middleware errors (like permission denied)
     if (error instanceof Response) {
@@ -271,12 +271,17 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("Department not found", 404)
     }
 
-    // Check if role name already exists in the same department
+    // Prevent creating roles with deleted status
+    if (validatedData.status === 'deleted') {
+      return createErrorResponse("Cannot create roles with deleted status", 400)
+    }
+
+    // Check if role name already exists in the same department (exclude deleted roles)
     const existingRole = await executeGenericDbQuery(async () => {
       return await Role.findOne({
         name: validatedData.name,
         department: validatedData.department,
-        status: 'active'
+        status: { $ne: 'deleted' }
       }).lean()
     }) as (IRole & Document) | null
 
@@ -304,32 +309,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const role = new Role(roleData)
-    await role.save()
-
-    // Populate department details for response
-    await role.populate('departmentDetails', 'name description')
-
-    // Clear role-related cache entries
-    for (const key of cache.keys()) {
-      if (key.startsWith('roles:')) {
-        cache.delete(key)
-      }
-    }
+    const createdRole = await executeGenericDbQuery(async () => {
+      const role = new Role(roleData)
+      await role.save()
+      return await role.populate('departmentDetails', 'name description')
+    }, `role-create-${validatedData.name}-${validatedData.department}`)
 
     // Log successful role creation
     console.log('Role created successfully:', {
       createdBy: userEmail,
-      roleId: role._id,
-      roleName: role.name,
+      roleId: createdRole._id,
+      roleName: createdRole.name,
       department: department.name,
-      hierarchyLevel: role.hierarchyLevel,
+      hierarchyLevel: createdRole.hierarchyLevel,
       ip: getClientInfo(request).ipAddress
     })
 
     return NextResponse.json({
       success: true,
-      data: { role },
+      data: { role: createdRole },
       message: 'Role created successfully'
     }, { status: 201 })
 

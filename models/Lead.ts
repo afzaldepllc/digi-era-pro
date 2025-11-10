@@ -43,7 +43,7 @@ export interface ILead extends Document {
   estimatedHours?: number
 
   // Lead Management
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   createdBy: mongoose.Types.ObjectId // Reference to User (sales agent)
   assignedTo?: mongoose.Types.ObjectId // Current assignee
   clientId?: mongoose.Types.ObjectId // Reference to User (populated after qualification)
@@ -107,7 +107,7 @@ const LeadSchema = new Schema<ILead>(
       required: [true, "Lead name is required"],
       trim: true,
       maxlength: [100, "Name cannot exceed 100 characters"],
-      index: true,
+      // index: true,
     },
     email: {
       type: String,
@@ -116,16 +116,24 @@ const LeadSchema = new Schema<ILead>(
       trim: true,
       unique: true,
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
-      index: true,
     },
     phone: {
       type: String,
       trim: true,
       validate: {
-        validator: function(v: string) {
-          return !v || /^[\+]?[1-9][\d]{0,15}$/.test(v);
+        validator: function (v: string) {
+          // Allow empty phone (optional field)
+          if (!v || v.trim() === '') return true;
+          // Clean phone number: remove spaces, hyphens, parentheses, dots
+          let cleaned = v.replace(/[\s\-\(\)\.]/g, '');
+          // Remove + if it's not at the start
+          if (cleaned.includes('+') && !cleaned.startsWith('+')) {
+            cleaned = cleaned.replace(/\+/g, '');
+          }
+          // Validate: optional +, then 7-15 digits
+          return /^[\+]?[0-9]{7,15}$/.test(cleaned);
         },
-        message: "Please enter a valid phone number"
+        message: "Phone number must be 7-15 digits, optionally starting with +"
       }
     },
     company: {
@@ -176,7 +184,7 @@ const LeadSchema = new Schema<ILead>(
       required: [true, "Project name is required"],
       trim: true,
       maxlength: [200, "Project name cannot exceed 200 characters"],
-      index: true,
+      // index: true,
     },
     projectDescription: {
       type: String,
@@ -233,27 +241,27 @@ const LeadSchema = new Schema<ILead>(
     status: {
       type: String,
       enum: {
-        values: ['active', 'inactive', 'qualified', 'unqualified'],
+        values: ['active', 'inactive', 'deleted', 'qualified', 'unqualified'],
         message: 'Status must be one of: active, inactive, qualified, unqualified'
       },
       default: 'active',
-      index: true,
+      // index: true,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, "Created by is required"],
-      index: true,
+      // index: true,
     },
     assignedTo: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      index: true,
+      // index: true,
     },
     clientId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      index: true,
+      // index: true,
       default: null,
     },
 
@@ -262,7 +270,7 @@ const LeadSchema = new Schema<ILead>(
       type: String,
       enum: ['website', 'referral', 'cold_call', 'email', 'social_media', 'event', 'partner', 'advertising', 'other'],
       default: 'website',
-      index: true,
+      // index: true,
     },
     sourceDetails: {
       type: String,
@@ -278,7 +286,7 @@ const LeadSchema = new Schema<ILead>(
       type: String,
       enum: ['low', 'medium', 'high', 'urgent'],
       default: 'medium',
-      index: true,
+      // index: true,
     },
 
     // Communication & Notes
@@ -289,11 +297,11 @@ const LeadSchema = new Schema<ILead>(
     },
     lastContactDate: {
       type: Date,
-      index: true,
+      // index: true,
     },
     nextFollowUpDate: {
       type: Date,
-      index: true,
+      // index: true,
     },
     contactHistory: [{
       date: { type: Date, required: true },
@@ -306,7 +314,7 @@ const LeadSchema = new Schema<ILead>(
     // Qualification Details
     qualifiedAt: {
       type: Date,
-      index: true,
+      // index: true,
     },
     qualifiedBy: {
       type: Schema.Types.ObjectId,
@@ -376,11 +384,10 @@ LeadSchema.index({ status: 1, createdAt: -1 }) // Status with date sorting
 LeadSchema.index({ status: 1, priority: 1 }) // Status with priority filtering
 LeadSchema.index({ createdBy: 1, status: 1 }) // Sales agent leads with status
 LeadSchema.index({ status: 1, nextFollowUpDate: 1 }) // Follow-up scheduling
-LeadSchema.index({ email: 1 }, { unique: true }) // Unique email constraint
 
 // Text search index for name, email, company, and project name
-LeadSchema.index({ 
-  name: 'text', 
+LeadSchema.index({
+  name: 'text',
   email: 'text',
   company: 'text',
   projectName: 'text'
@@ -424,7 +431,7 @@ LeadSchema.virtual('qualifiedByDetails', {
 })
 
 // Pre-save validation and business logic
-LeadSchema.pre('save', async function(next) {
+LeadSchema.pre('save', async function (next) {
   try {
     // Note: User validation and department permissions are handled by API middleware
     // No need to validate user existence here as it can cause issues with authentication systems
@@ -466,7 +473,7 @@ LeadSchema.pre('save', async function(next) {
 })
 
 // Post middleware to store original document for comparison
-LeadSchema.pre('save', function(next) {
+LeadSchema.pre('save', function (next) {
   if (!this.isNew) {
     this._original = this.toObject()
   }
@@ -474,7 +481,7 @@ LeadSchema.pre('save', function(next) {
 })
 
 // Instance methods
-LeadSchema.methods.canTransitionTo = function(newStatus: string): { allowed: boolean; reason?: string } {
+LeadSchema.methods.canTransitionTo = function (newStatus: string): { allowed: boolean; reason?: string } {
   const currentStatus = this.status
 
   // Define allowed transitions
@@ -486,7 +493,7 @@ LeadSchema.methods.canTransitionTo = function(newStatus: string): { allowed: boo
   }
 
   const allowedStatuses = transitions[currentStatus] || []
-  
+
   if (!allowedStatuses.includes(newStatus)) {
     return {
       allowed: false,
@@ -497,7 +504,7 @@ LeadSchema.methods.canTransitionTo = function(newStatus: string): { allowed: boo
   return { allowed: true }
 }
 
-LeadSchema.methods.qualify = async function(qualifiedBy: string) {
+LeadSchema.methods.qualify = async function (qualifiedBy: string) {
   const transition = this.canTransitionTo('qualified')
   if (!transition.allowed) {
     throw new Error(transition.reason)
@@ -506,20 +513,20 @@ LeadSchema.methods.qualify = async function(qualifiedBy: string) {
   this.status = 'qualified'
   this.qualifiedBy = qualifiedBy
   this.qualifiedAt = new Date()
-  
+
   return await this.save()
 }
 
-LeadSchema.methods.unqualify = async function(reason: string, unqualifiedBy?: string) {
+LeadSchema.methods.unqualify = async function (reason: string, unqualifiedBy?: string) {
   this.status = 'unqualified'
   this.unqualifiedReason = reason
   this.unqualifiedAt = new Date()
-  
+
   return await this.save()
 }
 
 // Static methods for analytics and reporting
-LeadSchema.statics.getLeadStats = async function(filter = {}) {
+LeadSchema.statics.getLeadStats = async function (filter = {}) {
   const stats = await this.aggregate([
     { $match: filter },
     {
@@ -545,7 +552,7 @@ LeadSchema.statics.getLeadStats = async function(filter = {}) {
   stats.forEach((stat: any) => {
     result.totalLeads += stat.count
     result.totalBudget += stat.totalBudget || 0
-    
+
     switch (stat._id) {
       case 'active':
         result.activeLeads = stat.count
@@ -567,9 +574,9 @@ LeadSchema.statics.getLeadStats = async function(filter = {}) {
   return result
 }
 
-LeadSchema.statics.getConversionRate = async function(dateRange?: { start: Date; end: Date }) {
+LeadSchema.statics.getConversionRate = async function (dateRange?: { start: Date; end: Date }) {
   const matchStage: any = {}
-  
+
   if (dateRange) {
     matchStage.createdAt = {
       $gte: dateRange.start,

@@ -4,6 +4,7 @@ import User from "@/models/User"
 import Lead from "@/models/Lead"
 import { updateClientSchema, clientIdSchema, clientStatusUpdateSchema } from "@/lib/validations/client"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -13,16 +14,19 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'read')
-    
+
     const resolvedParams = await params
     const validatedParams = clientIdSchema.parse({ id: resolvedParams.id })
     console.log("clientId18", validatedParams.id);
     // Fetch client with caching
     const client = await executeGenericDbQuery(async () => {
-      const foundClient = await User.findOne({
+      // Apply soft delete filter - only super admins can see deleted clients
+      const filter = addSoftDeleteFilter({
         _id: validatedParams.id,
-        // isClient: true   // need to fix later
-      })
+        isClient: true
+      }, isSuperAdmin)
+
+      const foundClient = await User.findOne(filter)
         .populate('role', 'name permissions')
         .populate('department', 'name')
         .populate('leadId', 'name projectName status createdAt createdBy')
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       if (!isSuperAdmin) {
         const currentUser = await User.findById(user._id).populate('department', 'name')
         const deptName = (currentUser?.department as any)?.name?.toLowerCase()
-        
+
         // Sales and support can see all clients, others may have restrictions
         if (!['sales', 'support'].includes(deptName || '')) {
           // Add department-specific access rules here if needed
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
 
       return foundClient
-    }, `client-${validatedParams.id}`, 60000) // 1-minute cache
+    }, `client-${validatedParams.id}-${isSuperAdmin ? 'admin' : 'user'}`, 60000) // 1-minute cache
 
     return NextResponse.json({
       success: true,
@@ -90,7 +94,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'update')
-    
+
     const resolvedParams = await params
     const validatedParams = clientIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
@@ -102,23 +106,33 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const validatedData = updateClientSchema.parse(body)
 
+    // Prevent setting status to 'deleted' through update (use DELETE endpoint)
+    if (validatedData.status === 'deleted') {
+      return NextResponse.json({
+        success: false,
+        error: 'Cannot set status to deleted through update. Use DELETE endpoint instead.'
+      }, { status: 400 })
+    }
+
     // Update client with automatic connection management
     const updatedClient = await executeGenericDbQuery(async () => {
-      // Find the existing client
-      const existingClient = await User.findOne({
+      // Find the existing client (apply soft delete filter - prevent updates on deleted records unless super admin)
+      const filter = addSoftDeleteFilter({
         _id: validatedParams.id,
         isClient: true
-      })
-      
+      }, isSuperAdmin)
+
+      const existingClient = await User.findOne(filter)
+
       if (!existingClient) {
-        throw new Error('Client not found')
+        throw new Error('Client not found or has been deleted')
       }
 
       // Check permissions
       if (!isSuperAdmin) {
         const currentUser = await User.findById(user._id).populate('department', 'name')
         const deptName = (currentUser?.department as any)?.name?.toLowerCase()
-        
+
         // Sales and support can update clients, others may have restrictions
         if (!['sales', 'support'].includes(deptName || '')) {
           throw new Error('Access denied. Only sales and support can update clients.')
@@ -135,7 +149,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
       // Update other fields
       Object.assign(existingClient, validatedData)
-      
+
       return await existingClient.save()
     })
 
@@ -196,48 +210,53 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'clients', 'delete')
 
-    const validatedParams = clientIdSchema.parse({ id: (params as any).id })
+    const resolvedParams = await params
+    const validatedParams = clientIdSchema.parse({ id: resolvedParams.id })
 
-    // Soft delete the client (set status to inactive)
-    const deletedClient = await executeGenericDbQuery(async () => {
-      const existingClient = await User.findOne({
+    // Check if client exists (exclude already deleted clients)
+    const existingClient = await executeGenericDbQuery(async () => {
+      const filter = addSoftDeleteFilter({
         _id: validatedParams.id,
         isClient: true
-      })
-      
-      if (!existingClient) {
-        throw new Error('Client not found')
-      }
-
-      // Check permissions
-      if (!isSuperAdmin) {
-        const currentUser = await User.findById(user._id).populate('department', 'name')
-        const deptName = (currentUser?.department as any)?.name?.toLowerCase()
-        
-        // Only support can delete clients (business rule)
-        if (deptName !== 'support') {
-          throw new Error('Access denied. Only support department can delete clients.')
-        }
-      }
-
-      // Cannot delete clients with active projects (you might want to check this)
-      // Add project check here when projects module is implemented
-
-      // Soft delete by setting status to inactive
-      existingClient.status = 'inactive'
-      existingClient.clientStatus = 'unqualified'
-      
-      return await existingClient.save()
+      }, false) // Don't include deleted for validation
+      return await User.findOne(filter)
     })
 
-    // Clear relevant cache patterns after deletion
-    clearCache('clients')
-    clearCache(`client-${validatedParams.id}`)
+    if (!existingClient) {
+      return NextResponse.json({
+        success: false,
+        error: 'Client not found or already deleted'
+      }, { status: 404 })
+    }
+
+    // Check permissions
+    if (!isSuperAdmin) {
+      const currentUser = await User.findById(user._id).populate('department', 'name')
+      const deptName = (currentUser?.department as any)?.name?.toLowerCase()
+
+      // Only support can delete clients (business rule)
+      if (deptName !== 'support') {
+        return NextResponse.json({
+          success: false,
+          error: 'Access denied. Only support department can delete clients.'
+        }, { status: 403 })
+      }
+    }
+
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('user', validatedParams.id, userEmail)
+
+    if (!deleteResult.success) {
+      return NextResponse.json({
+        success: false,
+        error: deleteResult.message
+      }, { status: 400 })
+    }
 
     return NextResponse.json({
       success: true,
-      data: deletedClient,
-      message: 'Client deleted successfully'
+      message: deleteResult.message,
+      data: deleteResult.data
     })
 
   } catch (error: any) {
@@ -249,20 +268,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         error: 'Invalid client ID format',
         details: error.errors
       }, { status: 400 })
-    }
-
-    if (error.message === 'Client not found') {
-      return NextResponse.json({
-        success: false,
-        error: 'Client not found'
-      }, { status: 404 })
-    }
-
-    if (error.message.includes('Access denied')) {
-      return NextResponse.json({
-        success: false,
-        error: error.message
-      }, { status: 403 })
     }
 
     return NextResponse.json({
@@ -277,15 +282,15 @@ async function handleClientStatusUpdate(clientId: string, statusData: any, user:
   try {
     // Build status update object
     const updateData: any = {}
-    
+
     if (statusData.clientStatus) {
       updateData.clientStatus = statusData.clientStatus
     }
-    
+
     if (statusData.status) {
       updateData.status = statusData.status
     }
-    
+
     if (statusData.reason) {
       updateData.reason = statusData.reason
     }
@@ -293,20 +298,23 @@ async function handleClientStatusUpdate(clientId: string, statusData: any, user:
     const validatedStatusData = clientStatusUpdateSchema.parse(updateData)
 
     const result = await executeGenericDbQuery(async () => {
-      const existingClient = await User.findOne({
+      // Apply soft delete filter to prevent status updates on deleted clients
+      const filter = addSoftDeleteFilter({
         _id: clientId,
         isClient: true
-      }).populate('leadId')
-      
+      }, isSuperAdmin)
+
+      const existingClient = await User.findOne(filter).populate('leadId')
+
       if (!existingClient) {
-        throw new Error('Client not found')
+        throw new Error('Client not found or has been deleted')
       }
 
       // Check permissions
       if (!isSuperAdmin) {
         const currentUser = await User.findById(user._id).populate('department', 'name')
         const deptName = (currentUser?.department as any)?.name?.toLowerCase()
-        
+
         if (!['sales', 'support'].includes(deptName || '')) {
           throw new Error('Access denied. Only sales and support can update client status.')
         }
@@ -340,7 +348,7 @@ async function handleClientStatusUpdate(clientId: string, statusData: any, user:
         if (validatedStatusData.status) {
           existingClient.status = validatedStatusData.status
         }
-        
+
         await existingClient.save()
       }
 

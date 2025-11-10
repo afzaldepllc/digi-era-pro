@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getSession, signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { signIn, useSession } from "next-auth/react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Eye, EyeOff, Loader2, AlertCircle, Clock } from "lucide-react"
+import { Eye, EyeOff, Loader2, AlertCircle, Clock, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,18 +19,20 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [isRateLimited, setIsRateLimited] = useState(false)
-  const [retryAfter, setRetryAfter] = useState(0)
   const [countdown, setCountdown] = useState(0)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { data: session, status } = useSession()
+
+  // Check for timeout reason in URL
+  const logoutReason = searchParams?.get('reason')
 
   useEffect(() => {
     // Redirect if already logged in
-    getSession().then((session) => {
-      if (session) {
-        router.push("/dashboard")
-      }
-    })
-  }, [router])
+    if (status === 'authenticated' && session) {
+      router.push("/dashboard")
+    }
+  }, [session, status, router])
 
   const {
     register,
@@ -90,12 +92,10 @@ export default function LoginPage() {
         return
       }
 
-      // Get session to verify login
-      const session = await getSession()
-      if (session) {
-        router.push("/dashboard")
-        router.refresh()
-      }
+      // Success - NextAuth will handle session creation
+      // Redirect will happen automatically through session change
+      router.push("/dashboard")
+      router.refresh()
     } catch (error: any) {
       console.error("Login error:", error)
 
@@ -119,6 +119,16 @@ export default function LoginPage() {
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">
+            {/* Show session timeout message if redirected due to timeout */}
+            {logoutReason === 'timeout' && !error && (
+              <Alert variant="default" className="border-orange-200">
+                <Info className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-orange-800">
+                  Your session expired due to inactivity. Please sign in again to continue.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {error && (
               <Alert variant={isRateLimited ? "destructive" : "destructive"}>
                 <AlertCircle className="h-4 w-4" />

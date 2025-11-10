@@ -1,3 +1,5 @@
+import mongoose from 'mongoose'
+import { connectToDatabase } from '../migrations/migrationUtils'
 import Project from '../../models/Project'
 import Lead from '../../models/Lead'
 import User from '../../models/User'
@@ -261,6 +263,14 @@ export const projectSeeds: IProjectSeed[] = [
 
 export default async function seedProjects(): Promise<void> {
   try {
+    // Ensure database connection (reuse existing or create new)
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔌 Connecting to database...')
+      await connectToDatabase()
+    } else {
+      console.log('✅ Using existing database connection')
+    }
+
     console.log('🌱 Starting project seeding...')
 
     // Clear existing projects
@@ -307,24 +317,9 @@ export default async function seedProjects(): Promise<void> {
       const projectManager = projectManagers[i % projectManagers.length]
       const teamLead = teamLeads[i % teamLeads.length]
 
-      // Assign relevant departments based on project type
-      const assignedDepartments = []
-      if (projectData.projectType?.includes('Web')) {
-        const webDept = departments.find(d => d.name.toLowerCase().includes('web'))
-        if (webDept) assignedDepartments.push(webDept._id)
-      }
-      if (projectData.projectType?.includes('Mobile')) {
-        const graphicsDept = departments.find(d => d.name.toLowerCase().includes('graphics'))
-        if (graphicsDept) assignedDepartments.push(graphicsDept._id)
-      }
-      if (assignedDepartments.length === 0 && departments.length > 0) {
-        assignedDepartments.push(departments[0]._id)
-      }
-
       const project = new Project({
         ...projectData,
         clientId: client._id,
-        departmentIds: assignedDepartments,
         createdBy: projectManager?._id || lead.createdBy,
         approvedBy: projectData.status === 'approved' || projectData.status === 'active' ? teamLead?._id : undefined,
         approvedAt: projectData.status === 'approved' || projectData.status === 'active' ? new Date() : undefined

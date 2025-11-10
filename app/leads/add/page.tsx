@@ -4,20 +4,17 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAppDispatch } from "@/hooks/redux";
-import { createLead } from "@/store/slices/leadSlice";
 import PageHeader from "@/components/ui/page-header";
 import GenericForm from "@/components/ui/generic-form";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigationLoading } from "@/hooks/use-navigation-loading";
-import { CreateLeadFormData, createLeadFormSchema } from '@/lib/validations/lead';
+import { useLeads } from "@/hooks/use-leads";
+import { CreateLeadFormData, createLeadFormSchema } from "@/lib/validations/lead";
 export default function AddLeadPage() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const { createLead, actionLoading } = useLeads();
 
   const form = useForm<CreateLeadFormData>({
     resolver: zodResolver(createLeadFormSchema),
@@ -57,7 +54,6 @@ export default function AddLeadPage() {
   });
 
   const handleSubmit = async (data: CreateLeadFormData) => {
-    setLoading(true);
     try {
       // Transform form data to API format
       const cleanedData = {
@@ -83,13 +79,13 @@ export default function AddLeadPage() {
         estimatedHours: data.estimatedHours ? Number(data.estimatedHours) : undefined,
         projectTimeline: data.projectTimeline?.trim() || undefined,
         projectDescription: data.projectDescription?.trim() || undefined,
-        technologies: data.technologies?.split(',').map(tech => tech.trim()).filter(tech => tech.length > 0) || [],
-        projectRequirements: data.projectRequirements?.split(',').map(req => req.trim()).filter(req => req.length > 0) || [],
-        deliverables: data.deliverables?.split(',').map(del => del.trim()).filter(del => del.length > 0) || [],
+        technologies: data.technologies?.split(',').map((tech: string) => tech.trim()).filter((tech: string) => tech.length > 0) || [],
+        projectRequirements: data.projectRequirements?.split(',').map((req: string) => req.trim()).filter((req: string) => req.length > 0) || [],
+        deliverables: data.deliverables?.split(',').map((del: string) => del.trim()).filter((del: string) => del.length > 0) || [],
 
         // Arrays and other fields
-        tags: data.tags?.filter(tag => tag.trim().length > 0) || [],
-        milestones: data.milestones?.map(milestone => ({
+        tags: data.tags?.filter((tag: string) => tag.trim().length > 0) || [],
+        milestones: data.milestones?.map((milestone: { title: string; description?: string; dueDate?: Date | string; completed?: boolean }) => ({
           ...milestone,
           title: milestone.title?.trim() || '',
           description: milestone.description?.trim() || undefined,
@@ -101,7 +97,7 @@ export default function AddLeadPage() {
         hotLead: false,
       };
 
-      await dispatch(createLead(cleanedData)).unwrap();
+      await createLead(cleanedData);
 
       toast({
         title: "Success",
@@ -110,20 +106,33 @@ export default function AddLeadPage() {
 
       router.push("/leads");
     } catch (error: any) {
+      console.error('Create lead error:', error)
+
+      // Handle structured API errors
+      let errorMessage = "Failed to create lead"
+      let errorDetails = ""
+
+      if (error?.error) {
+        errorMessage = error.error
+        if (error.details && Array.isArray(error.details)) {
+          errorDetails = error.details.join(', ')
+        } else if (error.details) {
+          errorDetails = typeof error.details === 'string' ? error.details : JSON.stringify(error.details)
+        }
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+
       toast({
         title: "Error",
-        description: error || "Failed to create lead",
+        description: errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const { isNavigating, handleNavigation } = useNavigationLoading();
-
   const handleCancel = () => {
-    handleNavigation("/leads");
+    router.push("/leads");
   };
 
   const formFields = [
@@ -157,17 +166,15 @@ export default function AddLeadPage() {
           placeholder: "+1 (555) 123-4567",
           description: "Phone number with country code",
           cols: 12,
-          mdCols: 6,
+          mdCols: 12,
         },
-        {
-          name: "position",
-          label: "Job Title",
-          type: "text" as const,
-          placeholder: "CEO, CTO, Manager, etc.",
-          description: "Contact's job title or position",
-          cols: 12,
-          mdCols: 6,
-        },
+      ]
+    },
+    {
+      subform_title: "Company Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
         {
           name: "company",
           label: "Company Name",
@@ -187,18 +194,28 @@ export default function AddLeadPage() {
           mdCols: 6,
         },
         {
+          name: "position",
+          label: "Job Title",
+          type: "text" as const,
+          placeholder: "CEO, CTO, Manager, etc.",
+          description: "Contact's job title or position",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
           name: "industry",
           label: "Industry",
           type: "text" as const,
           placeholder: "Technology, Healthcare, Finance, etc.",
           description: "Industry or sector the company operates in",
           cols: 12,
-          mdCols: 4,
+          mdCols: 6,
         },
         {
           name: "companySize",
           label: "Company Size",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "startup", label: "Startup (1-10 employees)" },
             { value: "small", label: "Small (11-50 employees)" },
@@ -228,22 +245,18 @@ export default function AddLeadPage() {
           cols: 12,
           mdCols: 4,
         },
-        {
-          name: "status",
-          label: "Status",
-          type: "select" as const,
-          required: true,
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-          ],
-          cols: 12,
-          mdCols: 3,
-        },
+      ]
+    },
+    {
+      subform_title: "Source & Follow-up",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
         {
           name: "source",
           label: "Lead Source",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "website", label: "Website" },
@@ -260,9 +273,23 @@ export default function AddLeadPage() {
           mdCols: 3,
         },
         {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          cols: 12,
+          mdCols: 3,
+        },
+        {
           name: "priority",
           label: "Priority",
           type: "select" as const,
+          searchable: true,
           required: true,
           options: [
             { value: "low", label: "Low" },
@@ -294,6 +321,8 @@ export default function AddLeadPage() {
     },
     {
       subform_title: "Project Information",
+      collapse: true,
+      defaultOpen: false,
       fields: [
         {
           name: "projectName",
@@ -309,6 +338,7 @@ export default function AddLeadPage() {
           name: "projectType",
           label: "Project Type",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "web", label: "Web Development" },
             { value: "mobile", label: "Mobile App" },
@@ -325,6 +355,7 @@ export default function AddLeadPage() {
           name: "complexity",
           label: "Complexity",
           type: "select" as const,
+          searchable: true,
           options: [
             { value: "simple", label: "Simple" },
             { value: "medium", label: "Medium" },
@@ -410,10 +441,10 @@ export default function AddLeadPage() {
           <Button
             variant="outline"
             onClick={handleCancel}
-            disabled={isNavigating}
+            disabled={actionLoading}
           >
-            <ArrowLeft className={`h-4 w-4 mr-2 ${isNavigating ? 'animate-spin' : ''}`} />
-            {isNavigating ? 'Going back...' : 'Back to Leads'}
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Leads
           </Button>
         }
       />
@@ -424,7 +455,7 @@ export default function AddLeadPage() {
           fields={formFields}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          loading={loading}
+          loading={actionLoading}
           submitText="Create Lead"
           cancelText="Cancel"
         />

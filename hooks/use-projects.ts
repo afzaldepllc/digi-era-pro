@@ -1,20 +1,28 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useQueryClient } from "@tanstack/react-query"
 import { useAppSelector, useAppDispatch } from './redux'
 import {
-  fetchProjects,
-  fetchProjectById,
-  createProject,
-  updateProject,
-  categorizeProject,
-  approveProject,
-  deleteProject,
+  setProjects,
+  setSelectedProject,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
   setFilters,
   setSort,
   setPagination,
-  setSelectedProject,
-  clearError,
+  setStats,
   resetState,
 } from '@/store/slices/projectSlice'
+import {
+  useGenericQuery,
+  useGenericQueryById,
+  useGenericCreate,
+  useGenericUpdate,
+  useGenericDelete,
+  type UseGenericQueryOptions,
+} from './use-generic-query'
+import { apiRequest, handleAPIError } from '@/lib/utils/api-client'
 import type {
   FetchProjectsParams,
   CreateProjectData,
@@ -39,38 +47,79 @@ export function useProjects() {
     stats,
   } = useAppSelector((state) => state.projects)
 
-  // CRUD operations
+  // Define options for generic hooks
+  const projectOptions: UseGenericQueryOptions<any> = {
+    entityName: 'projects',
+    baseUrl: '/api/projects',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setProjects(entities)),
+      setEntity: (entity) => dispatch(setSelectedProject(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
+
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  // Use generic hooks
+  const { data: fetchedProjects, isLoading: queryLoading, refetch: refetchProjects } = useGenericQuery(
+    projectOptions,
+    queryParams,
+    true
+  )
+
+  const createMutation = useGenericCreate(projectOptions)
+  const updateMutation = useGenericUpdate(projectOptions)
+  const deleteMutation = useGenericDelete(projectOptions)
+
+  const queryClient = useQueryClient()
+
+  // Special operations that require direct API calls
+  const handleApproveProject = useCallback(async (id: string) => {
+    try {
+      await apiRequest(`${projectOptions.baseUrl}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ operation: 'approve' })
+      })
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: [projectOptions.entityName] })
+      queryClient.invalidateQueries({ queryKey: [projectOptions.entityName, id] })
+    } catch (error) {
+      handleAPIError(error, `Failed to approve project`)
+      throw error
+    }
+  }, [projectOptions.baseUrl, projectOptions.entityName, queryClient])
+
+  // Fetch operations - Stable function that doesn't change on re-renders
   const handleFetchProjects = useCallback((params?: FetchProjectsParams) => {
-    return dispatch(fetchProjects(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      ...filters,
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
+    refetchProjects()
+  }, [refetchProjects])
 
-  const handleFetchProjectById = useCallback((id: string) => {
-    return dispatch(fetchProjectById(id))
-  }, [dispatch])
-
+  // CRUD operations
   const handleCreateProject = useCallback((projectData: CreateProjectFormData) => {
-    return dispatch(createProject(projectData))
-  }, [dispatch])
+    return createMutation.mutateAsync(projectData)
+  }, [createMutation])
 
   const handleUpdateProject = useCallback((id: string, data: UpdateProjectData) => {
-    return dispatch(updateProject({ id, data }))
-  }, [dispatch])
-
-  const handleCategorizeProject = useCallback((id: string, departmentIds: string[]) => {
-    return dispatch(categorizeProject({ id, departmentIds }))
-  }, [dispatch])
-
-  const handleApproveProject = useCallback((id: string) => {
-    return dispatch(approveProject(id))
-  }, [dispatch])
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
 
   const handleDeleteProject = useCallback((projectId: string) => {
-    return dispatch(deleteProject(projectId))
-  }, [dispatch])
+    return deleteMutation.mutateAsync(projectId)
+  }, [deleteMutation])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<ProjectFilters>) => {
@@ -166,9 +215,9 @@ export function useProjects() {
 
   return {
     // State
-    projects,
+    projects: fetchedProjects || projects,
     selectedProject,
-    loading,
+    loading: queryLoading || loading,
     actionLoading,
     error,
     filters,
@@ -178,12 +227,10 @@ export function useProjects() {
 
     // CRUD operations
     fetchProjects: handleFetchProjects,
-    fetchProjectById: handleFetchProjectById,
     createProject: handleCreateProject,
     updateProject: handleUpdateProject,
-    categorizeProject: handleCategorizeProject,
-    approveProject: handleApproveProject,
     deleteProject: handleDeleteProject,
+    handleApproveProject,
 
     // Filter and sort operations
     setFilters: handleSetFilters,

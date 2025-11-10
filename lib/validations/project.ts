@@ -284,18 +284,23 @@ export const baseProjectFormSchema = z.object({
 
   // Enhanced professional CRM fields (form versions with string inputs)
   budgetBreakdown: z.object({
-    labor: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    materials: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    equipment: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    development: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    design: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    testing: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    deployment: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    maintenance: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
     contingency: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    profitMargin: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
   }).optional(),
 
   stakeholders: z.object({
-    clientContact: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    projectManager: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    teamLead: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    keyStakeholders: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    projectManager: objectIdSchema.optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    teamMembers: z.array(objectIdSchema).optional().default([]),
+    clientContacts: z.array(objectIdSchema).optional().default([]),
+    roles: z.array(z.object({
+      userId: objectIdSchema,
+      role: z.string().min(1).max(PROJECT_CONSTANTS.STAKEHOLDERS.ROLE.MAX_LENGTH),
+      responsibilities: z.array(z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.RESPONSIBILITY.MAX_LENGTH)).optional().default([]),
+    })).optional().default([]),
   }).optional(),
 
   milestones: z.array(z.object({
@@ -379,11 +384,34 @@ export const updateProjectSchema = baseProjectSchema
 export const createProjectFormSchema = baseProjectFormSchema.strict()
 
 export const updateProjectFormSchema = baseProjectFormSchema
+  .omit({ milestones: true, phases: true, risks: true, deliverables: true }) // Remove milestones, phases, risks, and deliverables - handled in dedicated tabs
   .partial()
   .strict()
-  .refine(data => Object.values(data).some(value => 
-    value !== undefined && value !== null && value !== ''
-  ), { message: 'At least one field must be provided for update' })
+  .refine(data => {
+    // Simplified check - if any top-level field has a truthy value
+    const hasUpdate = Object.entries(data).some(([key, value]) => {
+      // Skip completely empty values
+      if (value === undefined || value === null || value === '') return false;
+      
+      // For objects, check if they have any meaningful content
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        return Object.values(value).some(v => v !== undefined && v !== null && v !== '');
+      }
+      
+      // For arrays, check if not empty
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      
+      return true;
+    });
+    
+    console.log('🔍 Validation refine check:', { hasUpdate, data: Object.keys(data) });
+    return hasUpdate;
+  }, { 
+    message: 'At least one field must be provided for update',
+    path: ['_form']
+  })
 
 // Department categorization schema
 export const categorizeDepartmentsSchema = z.object({

@@ -8,7 +8,6 @@ export default function Loading() {
         title="Users Management"
         subtitle="Loading users..."
       />
-      <CardLoader cards={4} columns={4} height="h-32" />
       <TableLoader showViewToggle={true} showRowsPerPage={true} />
     </div>
   )

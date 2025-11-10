@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth-config"
 import connectDB from '@/lib/mongodb'
 import User from '@/models/User'
+import { QueryFilters } from './query-filters'
 
 // Types
 export interface Permission {
@@ -117,6 +118,15 @@ export class ServerPermissionManager {
           success: false,
           error: 'User not found',
           statusCode: 403
+        }
+      }
+
+      // Check if user is super admin based on database user
+      if (QueryFilters.isSuperAdmin(dbUser)) {
+        return {
+          success: true,
+          user: dbUser,
+          session
         }
       }
 

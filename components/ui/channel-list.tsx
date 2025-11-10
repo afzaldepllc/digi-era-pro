@@ -104,7 +104,7 @@ export function ChannelList({
     return null
   }
 
-  const formatLastMessageTime = (date: Date) => {
+  const formatLastMessageTime = (date: string) => {
     return formatDistanceToNow(new Date(date), { addSuffix: true })
   }
 
@@ -162,7 +162,7 @@ export function ChannelList({
               </Avatar>
               {/* Online indicator */}
               {avatar.isOnline && (
-                <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-background animate-pulse" />
+                <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
               )}
             </>
           ) : (

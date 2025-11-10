@@ -35,30 +35,6 @@ export const SessionUtils = {
   },
 
   /**
-   * Clear browser cache (attempt various methods)
-   */
-  async clearBrowserCache(): Promise<void> {
-    if (typeof window === 'undefined') return
-
-    try {
-      // Clear service worker caches if available
-      if ('caches' in window) {
-        const cacheNames = await caches.keys()
-        await Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
-        )
-      }
-
-      // Force reload without cache
-      if ('location' in window) {
-        window.location.reload()
-      }
-    } catch (error) {
-      console.error('❌ Error clearing browser cache:', error)
-    }
-  },
-
-  /**
    * Validate current session and clear invalid data
    */
   validateAndCleanSession(): boolean {
@@ -93,43 +69,6 @@ export const SessionUtils = {
     }
   },
 
-  /**
-   * Complete logout process with all cleanup
-   */
-  async performCompleteLogout(redirectUrl = '/auth/login'): Promise<void> {
-    try {
-      // 1. Clear all browser storage
-      this.clearAllAuthData()
-
-      // 2. Call logout API
-      try {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        })
-      } catch (apiError) {
-        console.warn('⚠️ Logout API call failed:', apiError)
-      }
-
-      // 3. Clear caches
-      await this.clearBrowserCache()
-
-      // 4. Redirect
-      if (typeof window !== 'undefined') {
-        window.location.href = redirectUrl
-      }
-
-    } catch (error) {
-      console.error('❌ Error during complete logout:', error)
-      // Force redirect even if cleanup fails
-      if (typeof window !== 'undefined') {
-        window.location.href = redirectUrl
-      }
-    }
-  },
 
   /**
    * Initialize session validation on app start

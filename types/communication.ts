@@ -56,6 +56,7 @@ export interface ITypingIndicator {
 export interface CommunicationFilters {
   channelId?: string
   isInternal?: boolean
+  departmentId?: string
   communicationType?: 'chat' | 'email' | 'note'
   priority?: 'low' | 'medium' | 'high'
   search?: string

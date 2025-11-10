@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ChatWindow } from "@/components/ui/chat-window"
@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
+import { useDepartments } from "@/hooks/use-departments"
 import { usePermissions } from "@/hooks/use-permissions"
 import { useUsers } from "@/hooks/use-users"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +41,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { UserDirectory } from "@/components/ui/user-directory"
+import { handleAPIError } from "@/lib/utils/api-client"
 
 export default function CommunicationsPage() {
   const router = useRouter()
@@ -48,6 +50,10 @@ export default function CommunicationsPage() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
   const { canCreate } = usePermissions()
   const lastChannelParam = useRef<string | null>(null)
+  
+  // Department integration for filtering
+  const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([])
+  const { allDepartments } = useDepartments()
 
   const {
     channels,
@@ -62,7 +68,9 @@ export default function CommunicationsPage() {
     fetchChannels,
     selectChannel,
     createChannel,
-    setError
+    setError,
+    setFilters,
+    filters
   } = useCommunications()
   
   // Handle URL params for direct channel access
@@ -101,6 +109,42 @@ export default function CommunicationsPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Fetch available departments for filter
+  const fetchAvailableDepartments = useCallback(async () => {
+    try {
+      // Use allDepartments from the hook instead of fetching
+      const currentAllDepartments = allDepartments
+      if (currentAllDepartments && currentAllDepartments.length > 0) {
+        const departmentOptions = currentAllDepartments.map((dept: any) => ({
+          value: dept._id,
+          label: dept.name,
+        })) || []
+        setAvailableDepartments(departmentOptions)
+      }
+    } catch (error) {
+      console.error('Failed to fetch departments for filter:', error)
+      handleAPIError(error, "Failed to load departments for filtering")
+    }
+  }, []) // Remove allDepartments from dependencies to prevent infinite re-runs
+
+  // Fetch departments for filters on mount
+  useEffect(() => {
+    if (availableDepartments.length === 0) {
+      fetchAvailableDepartments()
+    }
+  }, [fetchAvailableDepartments])
+
+  // Update available departments when allDepartments changes
+  useEffect(() => {
+    if (allDepartments && allDepartments.length > 0) {
+      const departmentOptions = allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      })) || []
+      setAvailableDepartments(departmentOptions)
+    }
+  }, [allDepartments])
+
   const handleChannelSelect = (channelId: string) => {
     selectChannel(channelId)
     setIsMobileMenuOpen(false) // Close mobile menu after selection
@@ -114,6 +158,14 @@ export default function CommunicationsPage() {
 
   const handleRefresh = () => {
     fetchChannels()
+  }
+
+  const handleDepartmentFilter = (departmentId: string) => {
+    if (departmentId === 'all') {
+      setFilters({ ...filters, departmentId: undefined })
+    } else {
+      setFilters({ ...filters, departmentId })
+    }
   }
 
   const [channelName, setChannelName] = useState("")

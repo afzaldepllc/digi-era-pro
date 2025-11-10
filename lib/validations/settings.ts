@@ -1,8 +1,11 @@
 import { z } from "zod"
+import { VALID_THEME_VARIANTS } from "@/lib/constants/theme-variants"
 
-// Theme variant validation
-export const themeVariantSchema = z.enum(['default', 'ocean', 'forest', 'sunset', 'coral', 'amber'], {
-  errorMap: () => ({ message: "Invalid theme variant. Must be one of: default, ocean, forest, sunset, coral, amber" })
+// Theme variant validation using centralized theme variants
+export const themeVariantSchema = z.enum(VALID_THEME_VARIANTS as [string, ...string[]], {
+  errorMap: () => ({ 
+    message: `Invalid theme variant. Must be one of: ${VALID_THEME_VARIANTS.join(', ')}`
+  })
 })
 
 // Setting validation schemas
@@ -48,7 +51,10 @@ export const updateSettingSchema = z.object({
 })
 
 export const updateThemeSchema = z.object({
-  theme: themeVariantSchema
+  theme_variant: themeVariantSchema.optional(),
+  theme: themeVariantSchema.optional()
+}).refine(data => data.theme_variant || data.theme, {
+  message: "Either theme_variant or theme must be provided"
 })
 
 // Settings query validation

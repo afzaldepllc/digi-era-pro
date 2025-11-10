@@ -4,16 +4,11 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Filter, X, RotateCcw, Loader2 } from "lucide-react";
+import { Filter, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SearchableSelect } from "./generic-form";
 
 export interface FilterField {
   key: string;
@@ -21,11 +16,12 @@ export interface FilterField {
   type: 'text' | 'select' | 'date' | 'number';
   placeholder?: string;
   options?: { value: string; label: string }[];
-  cols?: number; // Grid columns out of 12 for mobile (default)
-  smCols?: number; // Small screens (640px+)
-  mdCols?: number; // Medium screens (768px+)
-  lgCols?: number; // Large screens (1024px+)
-  xlCols?: number; // Extra large screens (1280px+)
+  cols?: number;
+  smCols?: number;
+  mdCols?: number;
+  lgCols?: number;
+  xlCols?: number;
+  searchable?: boolean;
 }
 
 export interface FilterConfig {
@@ -35,56 +31,80 @@ export interface FilterConfig {
 
 interface GenericFilterProps {
   config: FilterConfig;
-  values: Record<string, any>;
-  onFilterChange: (filters: Record<string, any>) => void;
+  values: Record<string, any>; // These are the applied filters
+  onFilterChange: (filters: Record<string, any>) => void; // Called when Search button is clicked
   onReset?: () => void;
   className?: string;
   collapsible?: boolean;
   title?: string;
-  loading?: boolean; // Add loading state for search
-  onSearchChange?: (searchTerm: string) => void; // For debounced search
+  loading?: boolean;
+  clearText?: string;
 }
 
 const GenericFilter: React.FC<GenericFilterProps> = ({
   config,
-  values,
+  values: appliedFilters, // Rename for clarity
   onFilterChange,
   onReset,
   className,
   collapsible = true,
   title = "Filters",
   loading = false,
-  onSearchChange,
+  clearText = "Clear Filters",
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Local state for form values (not applied until Search is clicked)
+  const [formValues, setFormValues] = useState<Record<string, any>>(
+    appliedFilters || config.defaultValues || {}
+  );
+
   const handleFieldChange = (key: string, value: any) => {
-    const newFilters = { ...values, [key]: value };
-    onFilterChange(newFilters);
+    setFormValues(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSearch = () => {
+    // Apply the filters by calling onFilterChange with current form values
+    onFilterChange(formValues);
+    // Close panel if collapsible
+    if (collapsible) setIsExpanded(false);
   };
 
   const handleReset = () => {
     const resetValues = config.defaultValues || {};
+    setFormValues(resetValues);
     onFilterChange(resetValues);
-    if (onReset) {
-      onReset();
-    }
+    if (collapsible) setIsExpanded(false);
   };
 
-  const hasActiveFilters = Object.values(values).some(value => 
+  // Check if there are active applied filters (for badges)
+  const hasActiveFilters = Object.values(appliedFilters).some(value =>
     value !== '' && value !== null && value !== undefined && value !== 'all'
   );
 
+  // Check if form has been modified from applied filters
+  const hasChanges = JSON.stringify(formValues) !== JSON.stringify(appliedFilters);
+
+  // Active filter count for badges
+  // const activeCount = Object.values(appliedFilters).filter(v => v && v !== 'all').length;
+  const activeCount = Object.values(appliedFilters).filter(v => v && v !== 'all').length;
+
+  const baseToggleClasses = (extra?: string) => cn(
+    "flex items-center gap-2 transition-all duration-200",
+    "border-border hover:bg-accent hover:text-accent-foreground",
+    hasActiveFilters && "border-primary text-primary hover:border-primary/80",
+    extra
+  );
+
   const renderField = (field: FilterField) => {
-    const cols = field.cols || 12; // Default to full width on mobile
+    const cols = field.cols || 12;
     const smCols = field.smCols;
     const mdCols = field.mdCols;
     const lgCols = field.lgCols;
     const xlCols = field.xlCols;
 
-    // Build responsive classes
     const colClasses = [
-      `col-span-${Math.min(12, Math.max(1, cols))}`, // Base mobile class
+      `col-span-${Math.min(12, Math.max(1, cols))}`,
       smCols && `sm:col-span-${Math.min(12, Math.max(1, smCols))}`,
       mdCols && `md:col-span-${Math.min(12, Math.max(1, mdCols))}`,
       lgCols && `lg:col-span-${Math.min(12, Math.max(1, lgCols))}`,
@@ -93,9 +113,6 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
 
     switch (field.type) {
       case 'text':
-        // Check if this is a search field and we have search-specific handling
-        const isSearchField = field.key === 'search' && onSearchChange;
-        
         return (
           <div key={field.key} className={cn("space-y-2", colClasses)}>
             <Label htmlFor={field.key} className="text-sm font-medium text-foreground">
@@ -106,20 +123,12 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
                 id={field.key}
                 type="text"
                 placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
-                value={values[field.key] || ''}
-                onChange={(e) => {
-                  if (isSearchField) {
-                    onSearchChange!(e.target.value);
-                  } else {
-                    handleFieldChange(field.key, e.target.value);
-                  }
-                }}
+                value={formValues[field.key] || ''}
+                onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 className="bg-background border-border focus:ring-primary pr-8"
               />
-              {isSearchField && loading && (
-                <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
+              {field.key === 'search' && (
+                <Search className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               )}
             </div>
           </div>
@@ -131,25 +140,32 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
             <Label htmlFor={field.key} className="text-sm font-medium text-foreground">
               {field.label}
             </Label>
-            <Select
-              value={values[field.key] || ''}
-              onValueChange={(value) => handleFieldChange(field.key, value)}
-            >
-              <SelectTrigger className="bg-background border-border focus:ring-primary">
-                <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`} />
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border">
-                {field.options?.filter(option => option.value !== '' && option.value != null).map((option) => (
-                  <SelectItem 
-                    key={option.value} 
-                    value={option.value.toString()}
-                    className="focus:bg-accent focus:text-accent-foreground"
-                  >
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {field.searchable ? (
+              <SearchableSelect
+                value={formValues[field.key] || ''}
+                onValueChange={(value) => handleFieldChange(field.key, value)}
+                options={field.options || []}
+                placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`}
+                disabled={loading}
+                loading={false}
+              />
+            ) : (
+              <Select
+                value={formValues[field.key] || ''}
+                onValueChange={(value) => handleFieldChange(field.key, value)}
+              >
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {field.options?.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         );
 
@@ -162,7 +178,7 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
             <Input
               id={field.key}
               type="date"
-              value={values[field.key] || ''}
+              value={formValues[field.key] || ''}
               onChange={(e) => handleFieldChange(field.key, e.target.value)}
               className="bg-background border-border focus:ring-primary"
             />
@@ -179,7 +195,7 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
               id={field.key}
               type="number"
               placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
-              value={values[field.key] || ''}
+              value={formValues[field.key] || ''}
               onChange={(e) => handleFieldChange(field.key, e.target.value)}
               className="bg-background border-border focus:ring-primary"
             />
@@ -191,59 +207,55 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
     }
   };
 
-  if (!collapsible) {
+  if (collapsible) {
     return (
-      <Card className={cn("bg-card border-border", className)}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-          </div>
-          <div className="grid grid-cols-12 gap-4">
-            {config.fields.map(renderField)}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className={cn("space-y-3", className)}>
-      {/* Filter Toggle Button */}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={cn(
-            "flex items-center gap-2 transition-all duration-200",
-            "border-border hover:bg-accent hover:text-accent-foreground",
-            hasActiveFilters && "border-primary text-primary hover:border-primary/80"
-          )}
-        >
-          <Filter className={cn(
-            "h-4 w-4 transition-transform duration-200",
-            isExpanded && "rotate-180"
-          )} />
-          {title}
-          {hasActiveFilters && (
-            <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
-              {Object.values(values).filter(v => v && v !== 'all').length}
-            </span>
-          )}
-        </Button>
-      </div>
-
-      {/* Collapsible Filter Content */}
-      {isExpanded && (
-        <Card className="bg-card border-border shadow-sm">
-          <CardContent className="p-6">
+      <div className={cn("relative", className)}>
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
             <div className="grid grid-cols-12 gap-4">
               {config.fields.map(renderField)}
             </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSearch}
+                aria-label="Search Filters"
+                className={cn(
+                  "bg-primary text-primary-foreground hover:bg-primary/90",
+                  !hasChanges && "opacity-50"
+                )}
+                disabled={loading}
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Search Filters
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                aria-label="Clear Filters"
+                disabled={!hasActiveFilters}
+                className={baseToggleClasses()}
+              >
+                <X className="h-4 w-4 mr-2" />
+                {clearText}
+                {activeCount > 0 && (
+                  <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
+                    {activeCount}
+                  </span>
+                )}
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default GenericFilter;

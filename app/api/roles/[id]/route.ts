@@ -6,6 +6,7 @@ import { z } from "zod"
 import mongoose, { type Document } from "mongoose"
 import { updateRoleSchema } from "@/lib/validations/role"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 
 // Simple cache for individual role lookups
 const roleCache = new Map<string, { data: any, timestamp: number }>()
@@ -50,7 +51,7 @@ export async function GET(
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'read')
 
     const { id } = await params
 
@@ -60,7 +61,7 @@ export async function GET(
     }
 
     // Check user-specific cache first
-    const userCacheKey = `${id}_${user._id || user.id}_${user.role?.name || 'no_role'}`
+    const userCacheKey = `${id}_${user._id || user.id}_${user.role?.name || 'no_role'}_${isSuperAdmin ? 'admin' : 'user'}`
     const cached = roleCache.get(userCacheKey)
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return NextResponse.json({
@@ -70,7 +71,10 @@ export async function GET(
     }
 
     const roleData = await executeGenericDbQuery(async () => {
-      const role = await Role.findById(id)
+      // Apply soft delete filter - only super admins can see deleted roles
+      const filter = addSoftDeleteFilter({ _id: id }, isSuperAdmin)
+
+      const role = await Role.findOne(filter)
         .populate('departmentDetails', 'name description status')
         .populate('userCount')
         .select('-__v') // Exclude version field but include all other fields including permissions
@@ -81,9 +85,9 @@ export async function GET(
         throw new Error('Role not found')
       }
 
-      // Get additional role statistics
+      // Get additional role statistics (exclude deleted users)
       const [usersWithRole, activeUsersWithRole] = await Promise.all([
-        User.countDocuments({ role: role._id }),
+        User.countDocuments({ role: role._id, status: { $ne: 'deleted' } }),
         User.countDocuments({ role: role._id, status: 'active' })
       ])
 
@@ -96,7 +100,7 @@ export async function GET(
           utilizationRate: role.maxUsers ? Math.round((usersWithRole / role.maxUsers) * 100) : null
         }
       }
-    }, `role-${id}-${user._id || user.id}`, CACHE_TTL)
+    }, `role-${id}-${user._id || user.id}-${isSuperAdmin ? 'admin' : 'user'}`, CACHE_TTL)
 
     // Log access
     console.log('Role accessed:', {
@@ -125,7 +129,7 @@ export async function PUT(
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'update')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'update')
 
     const { id } = await params
 
@@ -146,17 +150,21 @@ export async function PUT(
 
     const updateData = validation.data
 
-
-    // Check if role exists
-    const existingRole = await executeGenericDbQuery(async () => {
-      return await Role.findById(id)
-    }) as IRole | null
-    if (!existingRole || existingRole.status !== 'active') {
-      return createErrorResponse('Role not found', 404)
+    // Prevent setting status to 'deleted' through update (use DELETE endpoint)
+    if (updateData.status === 'deleted') {
+      return createErrorResponse('Cannot set status to deleted through update. Use DELETE endpoint instead.', 400)
     }
 
-    // User info already extracted by middleware
-    const isSuperAdmin = user.role === 'super_admin';
+    // Check if role exists (apply soft delete filter - prevent updates on deleted records unless super admin)
+    const existingRole = await executeGenericDbQuery(async () => {
+      const filter = addSoftDeleteFilter({ _id: id }, isSuperAdmin)
+      return await Role.findOne(filter)
+    }) as IRole | null
+    if (!existingRole) {
+      return createErrorResponse('Role not found or has been deleted', 404)
+    }
+
+    // isSuperAdmin already available from middleware
 
     // CRITICAL: Protect superadmin role from being modified
     // Check if this role is assigned to super_admin
@@ -187,13 +195,13 @@ export async function PUT(
       return createErrorResponse('Only Super Administrators can modify high-level roles', 403)
     }
 
-    // Check for name conflicts if name is being updated
+    // Check for name conflicts if name is being updated (exclude deleted roles)
     if (updateData.name && updateData.name !== existingRole.name) {
       const nameConflict = await Role.findOne({
         name: updateData.name,
         department: existingRole.department,
         _id: { $ne: id },
-        status: 'active'
+        status: { $ne: 'deleted' }
       })
 
       if (nameConflict) {
@@ -201,9 +209,9 @@ export async function PUT(
       }
     }
 
-    // Check user limit constraints if maxUsers is being reduced
+    // Check user limit constraints if maxUsers is being reduced (exclude deleted users)
     if (updateData.maxUsers && updateData.maxUsers < (existingRole.maxUsers || Infinity)) {
-      const currentUserCount = await User.countDocuments({ role: id })
+      const currentUserCount = await User.countDocuments({ role: id, status: { $ne: 'deleted' } })
       if (currentUserCount > updateData.maxUsers) {
         return createErrorResponse(
           `Cannot reduce user limit below current user count (${currentUserCount})`,
@@ -213,27 +221,22 @@ export async function PUT(
     }
 
     // Update role
-    const updatedRole = await Role.findByIdAndUpdate(
-      id,
-      {
-        ...updateData,
-        'metadata.updatedBy': userEmail || 'unknown',
-        'metadata.updatedAt': new Date(),
-      },
-      {
-        new: true,
-        runValidators: true
-      }
-    )
-      .populate('departmentDetails', 'name description status')
-      .lean() as (IRole & Document) | null
-
-    // Clear role-related cache entries
-    for (const key of roleCache.keys()) {
-      if (key.startsWith(id + '_')) {
-        roleCache.delete(key)
-      }
-    }
+    const updatedRole = await executeGenericDbQuery(async () => {
+      return await Role.findByIdAndUpdate(
+        id,
+        {
+          ...updateData,
+          'metadata.updatedBy': userEmail || 'unknown',
+          'metadata.updatedAt': new Date(),
+        },
+        {
+          new: true,
+          runValidators: true
+        }
+      )
+        .populate('departmentDetails', 'name description status')
+        .lean()
+    }, `role-update-${id}`) as (IRole & Document) | null
 
     // Log successful update
     console.log('Role updated successfully:', {
@@ -262,18 +265,15 @@ export async function PUT(
   }
 }
 
-// DELETE /api/roles/[id] - Delete role (soft delete)
+// DELETE /api/roles/[id] - Soft delete role
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'roles', 'delete')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'delete')
 
-
-    // User info already extracted by middleware
-    const isSuperAdmin = user.role === 'super_admin';
     const { id } = await params
 
     // Validate Object ID
@@ -281,12 +281,13 @@ export async function DELETE(
       return createErrorResponse('Invalid role ID', 400)
     }
 
-    // Check if role exists
+    // Check if role exists (exclude already deleted roles)
     const existingRole = await executeGenericDbQuery(async () => {
-      return await Role.findById(id)
+      const filter = addSoftDeleteFilter({ _id: id }, false) // Don't include deleted for validation
+      return await Role.findOne(filter)
     }) as (IRole & Document) | null
-    if (!existingRole || existingRole.status !== 'active') {
-      return createErrorResponse('Role not found', 404)
+    if (!existingRole) {
+      return createErrorResponse('Role not found or already deleted', 404)
     }
 
     // Prevent deleting system roles
@@ -298,46 +299,23 @@ export async function DELETE(
     if (existingRole.name === 'super_admin') {
       return createErrorResponse('Super Administrator role is protected and cannot be deleted', 403)
     }
+
     // Prevent non-super admins from deleting high-level roles
     if (!isSuperAdmin && existingRole.hierarchyLevel >= 8) {
       return createErrorResponse('Only Super Administrators can delete high-level roles', 403)
     }
 
-    // Check if any users are assigned to this role
-    const usersWithRole = await User.countDocuments({ role: id, status: { $ne: 'inactive' } })
-    if (usersWithRole > 0) {
-      return createErrorResponse(
-        `Cannot delete role: ${usersWithRole} active users are assigned to this role`,
-        400,
-        { usersWithRole }
-      )
-    } 
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('role', id, userEmail)
 
-    // Soft delete - mark as inactive
-    await Role.findByIdAndUpdate(id, {
-      status: 'archived',
-      'metadata.deletedBy': userEmail || 'unknown',
-      'metadata.deletedAt': new Date(),
-    })
-
-    // Clear role-related cache entries
-    for (const key of roleCache.keys()) {
-      if (key.startsWith(id + '_')) {
-        roleCache.delete(key)
-      }
+    if (!deleteResult.success) {
+      return createErrorResponse(deleteResult.message, 400)
     }
-
-    // Log successful deletion
-    console.log('Role deleted successfully:', {
-      deletedBy: userEmail,
-      roleId: id,
-      roleName: existingRole.name,
-      ip: getClientInfo(request).ip
-    })
 
     return NextResponse.json({
       success: true,
-      message: 'Role deleted successfully'
+      message: deleteResult.message,
+      data: deleteResult.data
     })
 
   } catch (error: any) {

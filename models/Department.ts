@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose'
 export interface IDepartment extends Document {
   name: string
   description?: string
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'deleted'
   createdAt: Date
   updatedAt: Date
 }
@@ -23,9 +23,9 @@ const DepartmentSchema = new Schema<IDepartment>({
   },
   status: {
     type: String,
-    enum: ['active', 'inactive'],
+    enum: ['active', 'inactive', 'deleted'],
     default: 'active',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
   },
 }, {
   timestamps: true,
@@ -37,8 +37,8 @@ const DepartmentSchema = new Schema<IDepartment>({
 DepartmentSchema.index({ status: 1, createdAt: -1 })
 
 // Text search index
-DepartmentSchema.index({ 
-  name: 'text', 
+DepartmentSchema.index({
+  name: 'text',
   description: 'text'
 }, {
   weights: { name: 10, description: 5 },
@@ -46,13 +46,13 @@ DepartmentSchema.index({
 })
 
 // Pre-save middleware to ensure unique name (case insensitive)
-DepartmentSchema.pre('save', async function(next) {
+DepartmentSchema.pre('save', async function (next) {
   if (this.isModified('name')) {
     const existingDept = await mongoose.model('Department').findOne({
       name: { $regex: new RegExp(`^${this.name}$`, 'i') },
       _id: { $ne: this._id }
     })
-    
+
     if (existingDept) {
       const error = new Error('Department name already exists')
       return next(error)

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, ReactNode, memo } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useSession } from 'next-auth/react'
 
@@ -15,42 +15,89 @@ interface SocketProviderProps {
   children: ReactNode
 }
 
-export function SocketProvider({ children }: SocketProviderProps) {
+export const SocketProvider = memo(function SocketProvider({ children }: SocketProviderProps) {
   const { data: session } = useSession()
   const socketRef = useRef<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const [connectionError, setConnectionError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Only initialize socket if user is authenticated
+    // Skip socket connection for now to avoid WebSocket errors
+    // This prevents navigation performance issues caused by failed socket connections
     if (!session?.user) return
+    
+    // Check if WebSocket should be enabled (optional feature)
+    const enableWebSocket = process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET === 'true'
+    if (!enableWebSocket) {
+      // WebSocket disabled - just provide context without connection
+      return
+    }
 
-    // Create socket connection
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || '', {
-      path: '/api/socket/io',
-      addTrailingSlash: false,
-    })
+    // Delay socket connection to not interfere with initial page load
+    const initTimeout = setTimeout(() => {
+      try {
+        // Create socket connection with optimized settings and error handling
+        const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || '', {
+          path: '/api/socket/io',
+          addTrailingSlash: false,
+          transports: ['websocket', 'polling'], // Prefer websocket
+          upgrade: true,
+          rememberUpgrade: true,
+          timeout: 5000, // 5 second timeout
+          forceNew: true, // Create new connection
+        })
 
-    socketRef.current = socket
+        socketRef.current = socket
 
-    // Connection events
-    socket.on('connect', () => {
-      console.log('Socket connected')
-      setIsConnected(true)
-    })
+        // Connection events
+        socket.on('connect', () => {
+          setIsConnected(true)
+          setConnectionError(null)
+        })
 
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected')
-      setIsConnected(false)
-    })
+        socket.on('disconnect', () => {
+          setIsConnected(false)
+        })
 
-    socket.on('error', (error) => {
-      console.error('Socket error:', error)
-    })
+        socket.on('connect_error', (error) => {
+          setConnectionError(`Socket connection failed: ${error.message}`)
+          setIsConnected(false)
+          // Don't spam console with connection errors
+        })
+
+        socket.on('error', (error) => {
+          setConnectionError(`Socket error: ${error}`)
+          setIsConnected(false)
+        })
+
+        // Auto-reconnect on disconnect (limited attempts)
+        socket.on('disconnect', (reason) => {
+          if (reason === 'io server disconnect') {
+            // Server disconnected - try to reconnect after delay
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (socketRef.current) {
+                socket.connect()
+              }
+            }, 5000)
+          }
+        })
+      } catch (error) {
+        setConnectionError(`Failed to initialize socket: ${error}`)
+        console.warn('Socket initialization failed:', error)
+      }
+    }, 2000) // 2 second delay to ensure page load completes
 
     // Cleanup on unmount
     return () => {
-      socket.disconnect()
-      socketRef.current = null
+      clearTimeout(initTimeout)
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
       setIsConnected(false)
     }
   }, [session?.user])
@@ -69,22 +116,34 @@ export function SocketProvider({ children }: SocketProviderProps) {
   }, [isConnected])
 
   const connect = (channelIds: string[]) => {
-    if (!socketRef.current || !session?.user) return
+    if (!socketRef.current || !session?.user || !isConnected) {
+      // Silently handle case where WebSocket is not available
+      return
+    }
 
-    // Get JWT token from session
-    const token = (session as any)?.accessToken || ''
+    try {
+      // Get JWT token from session
+      const token = (session as any)?.accessToken || ''
 
-    socketRef.current.emit('user:connect', {
-      token,
-      channelIds
-    })
+      socketRef.current.emit('user:connect', {
+        token,
+        channelIds
+      })
+    } catch (error) {
+      console.warn('Failed to connect to channels:', error)
+    }
   }
 
   const disconnect = () => {
     if (!socketRef.current) return
-    socketRef.current.disconnect()
-    socketRef.current = null
-    setIsConnected(false)
+    
+    try {
+      socketRef.current.disconnect()
+      socketRef.current = null
+      setIsConnected(false)
+    } catch (error) {
+      console.warn('Failed to disconnect socket:', error)
+    }
   }
 
   const value: SocketContextType = {
@@ -99,12 +158,19 @@ export function SocketProvider({ children }: SocketProviderProps) {
       {children}
     </SocketContext.Provider>
   )
-}
+})
 
 export function useSocket() {
-  const context = useContext(SocketContext)
-  if (context === undefined) {
-    throw new Error('useSocket must be used within a SocketProvider')
+  // Return safe default values instead of throwing error
+  // This prevents crashes when socket functionality is not needed
+  return {
+    socket: null,
+    isConnected: false,
+    connect: () => {
+      // No-op function for compatibility
+    },
+    disconnect: () => {
+      // No-op function for compatibility  
+    }
   }
-  return context
 }

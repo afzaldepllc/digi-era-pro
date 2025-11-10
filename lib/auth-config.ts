@@ -8,6 +8,10 @@ import { loginSchema } from "@/lib/validations/auth"
 import { AuditLogger } from "@/lib/security/audit-logger"
 import { SecurityUtils } from "@/lib/security/validation"
 
+// Import models to ensure registration
+import "@/lib/models"
+import { registerModels } from "@/lib/models"
+
 const client = new MongoClient(process.env.MONGODB_URI!)
 const clientPromise = Promise.resolve(client)
 
@@ -22,6 +26,9 @@ export const authOptions = {
       },
       async authorize(credentials, req) {
         try {
+          // Ensure models are registered
+          await registerModels()
+
           if (!credentials?.email || !credentials?.password) {
             throw new Error("Email and password are required")
           }
@@ -166,21 +173,9 @@ export const authOptions = {
   },
   events: {
     async signOut(message: any) {
-      // Clear localStorage when user signs out
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('logged_in_user')
-        localStorage.removeItem('user_permissions')
-        localStorage.removeItem('user_role')
-        localStorage.removeItem('user_department')
-
-        // Clear any other cached user data
-        const keysToRemove = Object.keys(localStorage).filter(key =>
-          key.startsWith('user_') ||
-          key.startsWith('auth_') ||
-          key.startsWith('session_')
-        )
-        keysToRemove.forEach(key => localStorage.removeItem(key))
-      }
+      // Note: localStorage clearing is now handled by SessionProvider
+      // to avoid server-side execution issues
+      console.log('User signed out:', message?.token?.email || 'unknown')
     },
   },
   callbacks: {
@@ -228,28 +223,9 @@ export const authOptions = {
           sessionStartTime: token.sessionStartTime,
           iat: token.iat,
         };
-        // Store permissions in localStorage for faster access
-        if (typeof window !== 'undefined' && token.permissions) {
-          try {
-            localStorage.setItem('user_permissions', JSON.stringify(token.permissions));
-          } catch (error) {
-            // Silently handle localStorage errors
-          }
-        }
-      }
-
-      // Store complete user data in localStorage for dashboard access
-      if (typeof window !== 'undefined') {
-        try {
-          const currentStoredUser = localStorage.getItem('logged_in_user');
-          const newUserData = JSON.stringify(session.user);
-
-          if (currentStoredUser !== newUserData) {
-            localStorage.setItem('logged_in_user', newUserData);
-          }
-        } catch (error) {
-          console.error('Error storing user in localStorage:', error);
-        }
+        
+        // Note: localStorage operations are now handled by SessionProvider
+        // to ensure proper client-side execution and avoid SSR issues
       }
 
       return session

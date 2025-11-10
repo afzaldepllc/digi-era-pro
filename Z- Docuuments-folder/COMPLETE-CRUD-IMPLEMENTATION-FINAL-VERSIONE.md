@@ -5,17 +5,20 @@ This comprehensive guide documents the complete CRUD implementation pattern used
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [File Structure](#file-structure)
-3. [Database Layer](#database-layer)
-4. [Validation Layer](#validation-layer)
-5. [API Layer](#api-layer)
-6. [State Management](#state-management)
-7. [Frontend Components](#frontend-components)
-8. [Security & Middleware](#security--middleware)
-9. [Database Connection System](#database-connection-system)
-10. [Best Practices](#best-practices)
-11. [Recent Updates & Fixes](#recent-updates--fixes)
-12. [Implementation Checklist](#implementation-checklist)
+2. [Error Handling System](#error-handling-system)
+3. [API Client System](#api-client-system)
+4. [File Structure](#file-structure)
+5. [Database Layer](#database-layer)
+6. [Validation Layer](#validation-layer)
+7. [API Layer](#api-layer)
+8. [State Management](#state-management)
+9. [Frontend Components](#frontend-components)
+10. [Caching System](#caching-system)
+11. [Security & Middleware](#security--middleware)
+12. [Database Connection System](#database-connection-system)
+13. [Best Practices](#best-practices)
+14. [Recent Updates & Fixes](#recent-updates--fixes)
+15. [Implementation Checklist](#implementation-checklist)
 
 ---
 
@@ -26,15 +29,16 @@ The CRUD implementation follows a multi-layered architecture:
 ```
 Frontend (React/Next.js)
 ├── UI Components (Pages, Forms, Tables)
-├── Custom Hooks (useDepartments)
-├── State Management (Redux Toolkit)
-└── API Calls (RTK Query/Fetch)
+├── Generic Hooks (useGenericQuery, useGenericCreate, etc.)
+├── State Management (TanStack Query + Minimal Redux)
+└── API Calls (Centralized API Client)
 
 API Layer (Next.js API Routes)
 ├── Route Handlers (GET, POST, PUT, DELETE)
 ├── Middleware Integration
 ├── Validation (Zod Schemas)
-└── Error Handling
+├── Error Handling (Centralized)
+└── Caching (executeGenericDbQuery)
 
 Database Layer
 ├── Mongoose Models
@@ -45,30 +49,75 @@ Database Layer
 
 ---
 
+## Error Handling System
+
+### Core Files:
+- `lib/utils/error-handler.ts` - Generic error parsing and handling
+- `lib/utils/api-client.ts` - API client with error handling integration
+
+### Key Features:
+- **Validation Error Handling**: Automatically parses Zod validation errors from backend
+- **Generic Error Parsing**: Handles different error formats (API errors, network errors, etc.)
+- **User-Friendly Messages**: Converts technical errors to user-readable messages
+- **Toast Integration**: Automatic error display with appropriate toast variants
+
+### Usage:
+```typescript
+import { handleAPIError } from '@/lib/utils/api-client'
+
+// In components
+try {
+  await someAsyncOperation()
+} catch (error) {
+  handleAPIError(error, 'Operation failed')
+}
+```
+
+---
+
+## API Client System
+
+### Features:
+- **Centralized API Calls**: All API requests go through a single client
+- **Automatic Error Handling**: Consistent error processing
+- **Request/Response Interception**: Can add auth headers, logging, etc.
+- **Type Safety**: Full TypeScript support
+
+### Generic API Methods:
+```typescript
+import { apiRequest } from '@/lib/utils/api-client'
+
+const response = await apiRequest('/api/departments')
+const data = await apiRequest.post('/api/departments', payload)
+```
+
+---
+
 ## File Structure
 
 ### Core Files Required for Each CRUD Module
 
 ```
 📁 models/
-  └── Department.ts                    # Mongoose model & schema
+  └── Entity.ts                        # Mongoose model & schema
 
 📁 lib/validations/
-  └── department.ts                    # Zod validation schemas
+  └── entity.ts                        # Zod validation schemas
 
 📁 app/api/
-  ├── departments/
+  ├── entities/
   │   ├── route.ts                     # List (GET) & Create (POST)
   │   └── [id]/
   │       └── route.ts                 # Get by ID, Update, Delete
 
 📁 store/slices/
-  └── departmentSlice.ts               # Redux state management
+  └── entitySlice.ts                   # Minimal Redux slice for client state
 
 📁 hooks/
-  └── use-departments.ts               # Custom hook for CRUD operations
+  ├── use-generic-query.ts             # Generic CRUD hooks (TanStack Query)
+  └── use-entities.ts                  # Entity-specific wrapper hook
 
-📁 app/departments/
+📁 app/entities/
   ├── page.tsx                         # List/Index page
   ├── add/
   │   └── page.tsx                     # Create form page
@@ -77,6 +126,19 @@ Database Layer
 
 📁 types/
   └── index.ts                         # TypeScript type definitions
+```
+
+### Shared Generic Files
+
+```
+📁 hooks/
+  └── use-generic-query.ts             # Reusable for all entities
+
+📁 lib/utils/
+  ├── api-client.ts                    # Centralized API requests
+  └── error-handler.ts                 # Error handling utilities
+
+📁 lib/mongodb.ts                      # Database connection & caching
 ```
 
 ---
@@ -703,317 +765,102 @@ clearCache('departments')
 
 ## State Management
 
-### 5. Redux Slice (`store/slices/departmentSlice.ts`)
+### 5. Generic Query Hooks with TanStack Query
 
+The application uses generic hooks from `@/hooks/use-generic-query` for all CRUD operations. These hooks integrate TanStack Query with Redux for optimal caching and state management.
+
+#### Generic Hook Pattern:
 ```typescript
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { Department, DepartmentFilters, DepartmentSort, CreateDepartmentData, UpdateDepartmentData, FetchDepartmentsParams } from '@/types'
+import { useGenericQuery, useGenericCreate, useGenericUpdate, useGenericDelete } from '@/hooks/use-generic-query'
 
-// Async Thunks
-export const fetchDepartments = createAsyncThunk(
-  'departments/fetchDepartments',
-  async (params: FetchDepartmentsParams = {}, { rejectWithValue }) => {
-    try {
-      const queryParams = new URLSearchParams()
-      
-      if (params.page) queryParams.append('page', params.page.toString())
-      if (params.limit) queryParams.append('limit', params.limit.toString())
-      
-      const searchValue = params.filters?.search || ''
-      queryParams.append('search', searchValue)
-      
-      const statusValue = params.filters?.status || ''
-      queryParams.append('status', statusValue)
-      
-      if (params.sort) {
-        queryParams.append('sortBy', params.sort.field)
-        queryParams.append('sortOrder', params.sort.direction)
-      }
-
-      const response = await fetch(`/api/departments?${queryParams.toString()}`)
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch departments')
-      }
-      
-      return await response.json()
-    } catch (error: any) {
-      return rejectWithValue(error.message)
-    }
+// For fetching lists
+const { data: entities, isLoading, error, refetch } = useGenericQuery<Entity>({
+  entityName: 'entities',
+  baseUrl: '/api/entities',
+  reduxDispatchers: {
+    setEntities: (entities) => dispatch(setEntities(entities)),
+    setPagination: (pagination) => dispatch(setPagination(pagination)),
+    setLoading: (loading) => dispatch(setLoading(loading)),
+    setError: (error) => dispatch(setError(error))
   }
-)
+}, params)
 
-export const createDepartment = createAsyncThunk(
-  'departments/createDepartment',
-  async (departmentData: CreateDepartmentData, { rejectWithValue }) => {
-    try {
-      const response = await fetch('/api/departments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(departmentData),
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create department')
-      }
-      
-      return await response.json()
-    } catch (error: any) {
-      return rejectWithValue(error.message)
-    }
-  }
-)
-
-// State interface
-interface DepartmentState {
-  departments: Department[]
-  selectedDepartment: Department | null
-  loading: boolean
-  actionLoading: boolean
-  error: string | null
-  filters: DepartmentFilters
-  sort: DepartmentSort
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    pages: number
-  }
-  stats: {
-    totalDepartments: number
-    activeDepartments: number
-    inactiveDepartments: number
-  } | null
-}
-
-const initialState: DepartmentState = {
-  departments: [],
-  selectedDepartment: null,
-  loading: false,
-  actionLoading: false,
-  error: null,
-  filters: {},
-  sort: { field: 'createdAt', direction: 'desc' },
-  pagination: { page: 1, limit: 10, total: 0, pages: 0 },
-  stats: null,
-}
-
-const departmentSlice = createSlice({
-  name: "departments",
-  initialState,
-  reducers: {
-    setFilters: (state, action: PayloadAction<DepartmentFilters>) => {
-      state.filters = action.payload
-      state.pagination.page = 1 // Reset to first page when filtering
-    },
-    setSort: (state, action: PayloadAction<DepartmentSort>) => {
-      state.sort = action.payload
-    },
-    setPagination: (state, action: PayloadAction<Partial<DepartmentState["pagination"]>>) => {
-      state.pagination = { ...state.pagination, ...action.payload }
-    },
-    setSelectedDepartment: (state, action: PayloadAction<Department | null>) => {
-      state.selectedDepartment = action.payload
-    },
-    clearError: (state) => {
-      state.error = null
-    },
-    resetState: (state) => {
-      return initialState
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch Departments
-    builder
-      .addCase(fetchDepartments.pending, (state) => {
-        state.loading = true
-        state.error = null
-      })
-      .addCase(fetchDepartments.fulfilled, (state, action) => {
-        state.loading = false
-        const responseData = action.payload.data || action.payload
-        state.departments = responseData.departments || []
-        
-        if (responseData.pagination) {
-          state.pagination = { ...state.pagination, ...responseData.pagination }
-        }
-        
-        if (responseData.stats) {
-          state.stats = responseData.stats
-        }
-      })
-      .addCase(fetchDepartments.rejected, (state, action) => {
-        state.loading = false
-        state.error = action.payload as string
-      })
-
-    // Create Department
-    builder
-      .addCase(createDepartment.pending, (state) => {
-        state.actionLoading = true
-        state.error = null
-      })
-      .addCase(createDepartment.fulfilled, (state, action) => {
-        state.actionLoading = false
-        const responseData = action.payload.data || action.payload
-        const newDepartment = responseData.department || responseData
-        state.departments.unshift(newDepartment)
-        state.pagination.total += 1
-        
-        // Update stats
-        if (state.stats) {
-          state.stats.totalDepartments += 1
-          if (newDepartment.status === 'active') {
-            state.stats.activeDepartments += 1
-          } else {
-            state.stats.inactiveDepartments += 1
-          }
-        }
-      })
-      .addCase(createDepartment.rejected, (state, action) => {
-        state.actionLoading = false
-        state.error = action.payload as string
-      })
-  },
-})
-
-export const { 
-  setFilters, 
-  setSort, 
-  setPagination, 
-  setSelectedDepartment, 
-  clearError, 
-  resetState 
-} = departmentSlice.actions
-
-export default departmentSlice.reducer
+// For mutations
+const createMutation = useGenericCreate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers: { ... } })
+const updateMutation = useGenericUpdate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers: { ... } })
+const deleteMutation = useGenericDelete<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers: { ... } })
 ```
 
-### 6. Custom Hook (`hooks/use-departments.ts`)
+#### Key Features:
+- **Automatic Caching**: TanStack Query handles caching, background refetching
+- **Redux Integration**: Syncs with Redux for global state management
+- **Error Handling**: Consistent error processing with `handleAPIError`
+- **Loading States**: Separate loading states for queries and mutations
+
+#### API Data Extraction:
+```typescript
+// In the hooks, API responses are handled as:
+const apiData = response || response.data
+// This accommodates APIs that return data directly or wrapped in { data: ... }
+```
+
+### 6. Minimal Redux Slice (`store/slices/entitySlice.ts`)
 
 ```typescript
-import { useCallback } from 'react'
-import { useAppSelector, useAppDispatch } from './redux'
-import {
-  fetchDepartments,
-  createDepartment,
-  updateDepartment,
-  deleteDepartment,
-  setFilters,
-  setSort,
-  setPagination,
-  setSelectedDepartment,
-  clearError,
-  resetState,
-} from '@/store/slices/departmentSlice'
-import type {
-  FetchDepartmentsParams,
-  CreateDepartmentData,
-  UpdateDepartmentData,
-  DepartmentFilters,
-  DepartmentSort,
-} from '@/types'
+import { createSlice } from '@reduxjs/toolkit'
 
-export function useDepartments() {
+const entitySlice = createSlice({
+  name: 'entities',
+  initialState: {
+    entities: [],
+    selectedEntity: null,
+    loading: false,
+    actionLoading: false,
+    error: null,
+    pagination: { page: 1, limit: 10, total: 0, pages: 0 }
+  },
+  reducers: {
+    setEntities: (state, action) => { state.entities = action.payload },
+    setEntity: (state, action) => { state.selectedEntity = action.payload },
+    setPagination: (state, action) => { state.pagination = action.payload },
+    setLoading: (state, action) => { state.loading = action.payload },
+    setActionLoading: (state, action) => { state.actionLoading = action.payload },
+    setError: (state, action) => { state.error = action.payload },
+    clearError: (state) => { state.error = null }
+  }
+})
+
+export const { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } = entitySlice.actions
+export default entitySlice.reducer
+```
+
+### 7. Custom Hook using Generic Hooks (`hooks/use-entities.ts`)
+
+```typescript
+import { useGenericQuery, useGenericCreate, useGenericUpdate, useGenericDelete } from '@/hooks/use-generic-query'
+import { useAppDispatch } from '@/hooks/redux'
+import { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } from '@/store/slices/entitySlice'
+
+export function useEntities(params: FetchParams = {}) {
   const dispatch = useAppDispatch()
 
-  const {
-    departments,
-    selectedDepartment,
-    loading,
-    actionLoading,
-    error,
-    filters,
-    sort,
-    pagination,
-  } = useAppSelector((state) => state.departments)
+  const reduxDispatchers = {
+    setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError
+  }
 
-  // CRUD operations
-  const handleFetchDepartments = useCallback((params?: FetchDepartmentsParams) => {
-    return dispatch(fetchDepartments(params || {
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort
-    }))
-  }, [dispatch, pagination.page, pagination.limit, JSON.stringify(filters), JSON.stringify(sort)])
-
-  const handleCreateDepartment = useCallback((departmentData: CreateDepartmentData) => {
-    return dispatch(createDepartment(departmentData))
-  }, [dispatch])
-
-  const handleUpdateDepartment = useCallback((id: string, data: UpdateDepartmentData) => {
-    return dispatch(updateDepartment({ id, data }))
-  }, [dispatch])
-
-  const handleDeleteDepartment = useCallback((departmentId: string) => {
-    return dispatch(deleteDepartment(departmentId))
-  }, [dispatch])
-
-  // Filter and sort operations
-  const handleSetFilters = useCallback((newFilters: Partial<DepartmentFilters>) => {
-    dispatch(setFilters(newFilters))
-  }, [dispatch])
-
-  const handleSetSort = useCallback((newSort: DepartmentSort) => {
-    dispatch(setSort(newSort))
-  }, [dispatch])
-
-  const handleSetPagination = useCallback((newPagination: { page?: number; limit?: number }) => {
-    dispatch(setPagination(newPagination))
-  }, [dispatch])
-
-  // Utility operations
-  const handleClearError = useCallback(() => {
-    dispatch(clearError())
-  }, [dispatch])
-
-  const refreshDepartments = useCallback(() => {
-    return handleFetchDepartments()
-  }, [handleFetchDepartments])
-
-  // Computed values
-  const hasDepartments = departments.length > 0
-  const isFirstPage = pagination.page === 1
-  const isLastPage = pagination.page >= pagination.pages
-  const totalPages = pagination.pages
-  const totalItems = pagination.total
+  const query = useGenericQuery<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers }, params)
+  const createMutation = useGenericCreate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+  const updateMutation = useGenericUpdate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+  const deleteMutation = useGenericDelete<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
 
   return {
-    // State
-    departments,
-    selectedDepartment,
-    loading,
-    actionLoading,
-    error,
-    filters,
-    sort,
-    pagination,
-
-    // Actions
-    fetchDepartments: handleFetchDepartments,
-    createDepartment: handleCreateDepartment,
-    updateDepartment: handleUpdateDepartment,
-    deleteDepartment: handleDeleteDepartment,
-
-    // Filters and pagination
-    setFilters: handleSetFilters,
-    setSort: handleSetSort,
-    setPagination: handleSetPagination,
-    setSelectedDepartment: handleSetSelectedDepartment,
-
-    // Utilities
-    clearError: handleClearError,
-    refreshDepartments,
-
-    // Computed values
-    hasDepartments,
-    isFirstPage,
-    isLastPage,
-    totalPages,
-    totalItems,
+    entities: query.data,
+    isLoading: query.isLoading,
+    error: query.error,
+    createEntity: createMutation.mutateAsync,
+    updateEntity: updateMutation.mutateAsync,
+    deleteEntity: deleteMutation.mutateAsync,
+    refetch: query.refetch
   }
 }
 ```
@@ -1022,32 +869,72 @@ export function useDepartments() {
 
 ## Frontend Components
 
-### 7. List Page (`app/departments/page.tsx`)
+### 8. List Page (`app/entities/page.tsx`)
 
-```typescript
-"use client";
+```tsx
+"use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { useAppSelector } from "@/hooks/redux";
-import { usePermissions } from "@/hooks/use-permissions";
-import { useDebounceSearch } from "@/hooks/use-debounced-search";
-import { Department, DepartmentFilters, FilterConfig } from "@/types";
-import PageHeader from "@/components/ui/page-header";
-import DataTable, { ColumnDef } from "@/components/ui/data-table";
-import GenericFilter from "@/components/ui/generic-filter";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
-import { Building2, AlertTriangle } from "lucide-react";
-import Swal from "sweetalert2";
-import { handleAPIError } from "@/lib/utils/api-client";
-import { useDepartments } from "@/hooks/use-departments";
+import { useEffect } from 'react'
+import { useEntities } from '@/hooks/use-entities'
+import { handleAPIError } from '@/lib/utils/api-client'
 
-export default function DepartmentsPage() {
-  const router = useRouter();
-  const { toast } = useToast();
-  const { canCreate, canDelete } = usePermissions();
+export default function EntitiesPage() {
+  const { entities, isLoading, error, refetch } = useEntities()
+
+  useEffect(() => {
+    if (error) {
+      handleAPIError(error, 'Failed to load entities')
+    }
+  }, [error])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error loading entities</div>
+
+  return (
+    <div>
+      {entities?.map(entity => (
+        <div key={entity._id}>{entity.name}</div>
+      ))}
+    </div>
+  )
+}
+```
+
+### 9. Create Form (`app/entities/add/page.tsx`)
+
+```tsx
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEntities } from '@/hooks/use-entities'
+import { createEntitySchema, CreateEntityData } from '@/lib/validations/entity'
+import { handleAPIError } from '@/lib/utils/api-client'
+
+export default function AddEntityPage() {
+  const { createEntity } = useEntities()
+  const router = useRouter()
+
+  const form = useForm<CreateEntityData>({
+    resolver: zodResolver(createEntitySchema),
+    defaultValues: { name: '', description: '', status: 'active' }
+  })
+
+  const onSubmit = async (data: CreateEntityData) => {
+    try {
+      await createEntity(data)
+      toast({ title: 'Success', description: 'Entity created successfully' })
+      router.push('/entities')
+    } catch (error) {
+      handleAPIError(error, 'Failed to create entity')
+    }
+  }
+
+  // Render form...
+}
+```
 
   // Local state
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
@@ -1093,6 +980,7 @@ export default function DepartmentsPage() {
         key: 'status',
         label: 'Status',
         type: 'select',
+searchable: true,
         placeholder: 'All Statuses',
         cols: 12,
         mdCols: 6,
@@ -1189,6 +1077,11 @@ export default function DepartmentsPage() {
 
   const handleDeleteDepartment = useCallback(async (department: Department) => {
     const result = await Swal.fire({
+       customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
       title: `Delete ${department.name}?`,
       text: "Are you sure you want to delete this department?",
       icon: "error",
@@ -1213,15 +1106,43 @@ export default function DepartmentsPage() {
     }
   }, [deleteDepartment, toast]);
 
-  // Fetch departments effect
+  // Keep filters in a ref for debounced search
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+
+  // Memoized values to prevent unnecessary re-renders
+  const memoizedFilters = useMemo(() => ({ ...filters }), [filters.search, filters.status])
+  const memoizedSort = useMemo(() => ({ ...sort }), [sort.field, sort.direction])
+  const memoizedPagination = useMemo(() => ({ ...pagination }), [pagination.page, pagination.limit])
+
+  // Smart fetching - only when parameters change
+  const prevParamsRef = useRef<string>('')
   useEffect(() => {
-    fetchDepartments({
-      page: pagination.page,
-      limit: pagination.limit,
-      filters,
-      sort,
-    });
-  }, [pagination.page, pagination.limit, filters, sort]);
+    const paramsKey = JSON.stringify({
+      ...memoizedFilters,
+      ...memoizedSort,
+      ...memoizedPagination
+    })
+
+    if (paramsKey !== prevParamsRef.current) {
+      prevParamsRef.current = paramsKey
+      const fetchParams = {
+        page: memoizedPagination.page,
+        limit: memoizedPagination.limit,
+        filters: memoizedFilters,
+        sort: memoizedSort,
+      }
+      fetchDepartments(fetchParams)
+    }
+  }, [memoizedFilters, memoizedSort, memoizedPagination, fetchDepartments])
+
+  // Error handling
+  useEffect(() => {
+    if (error) {
+      handleAPIError(error, 'Failed to load departments')
+      clearError()
+    }
+  }, [error, clearError])
 
   return (
     <div className="space-y-6">
@@ -1361,6 +1282,7 @@ export default function AddDepartmentPage() {
       name: "status",
       label: "Status",
       type: "select" as const,
+          searchable: true,
       required: true,
       options: [
         { value: "active", label: "Active" },
@@ -1417,6 +1339,65 @@ export default function AddDepartmentPage() {
 
 ---
 
+## Caching System
+
+### Frontend Caching with TanStack Query:
+TanStack Query provides automatic caching, background refetching, and synchronization for all CRUD operations.
+
+#### Key Features:
+- **Automatic Cache Management**: No manual cache handling needed
+- **Background Refetching**: Data stays fresh automatically
+- **Optimistic Updates**: UI updates immediately on mutations
+- **Cache Invalidation**: Automatic invalidation on successful mutations
+
+#### Usage:
+```typescript
+// Queries are automatically cached
+const { data, isLoading } = useGenericQuery<Entity>(options, params)
+
+// Mutations invalidate related queries automatically
+const createMutation = useGenericCreate<Entity>(options)
+```
+
+### Backend Caching:
+```typescript
+// lib/utils/db-cache.ts - Still used for database-level caching
+export async function executeGenericDbQuery<T>(
+  queryFn: () => Promise<T>,
+  cacheKey?: string,
+  ttl: number = 60000
+): Promise<T> {
+  // Database-level caching logic...
+}
+```
+ */
+export function clearCache(pattern: string): void {
+  for (const key of dbCache.keys()) {
+    if (key.includes(pattern)) {
+      dbCache.delete(key)
+    }
+  }
+}
+
+/**
+ * Clear all cache entries
+ */
+export function clearAllCache(): void {
+  dbCache.clear()
+}
+```
+
+### Usage in API Routes:
+```typescript
+// In API routes
+const result = await executeGenericDbQuery(async () => {
+  // Database operations here
+  return await Model.find(query).populate('relations')
+}, `cache-key-${params}`, CACHE_TTL)
+```
+
+---
+
 ## Security & Middleware
 
 ### 9. Route Middleware (`lib/middleware/route-middleware.ts`)
@@ -1463,25 +1444,47 @@ const { session, user, userEmail } = await genericApiRoutesMiddleware(request, '
 
 ## Best Practices
 
-### 1. **Database Design**
-- Use indexes for frequently queried fields
-- Implement soft deletes with status fields
-- Add text search indexes for search functionality
-- Use compound indexes for complex queries
-- Implement schema validation at database level
+### 1. **Error Handling System**
+- **Use `handleAPIError()`**: Always use the centralized error handler for consistent error display
+- **Flexible Error Types**: Use `any` type for error parameters to handle different error formats
+- **Toast Integration**: Errors automatically display user-friendly messages via toast notifications
+- **Validation Error Parsing**: Zod validation errors are automatically parsed and displayed
 
-### 2. **Database Connection & Caching**
-- Always use the `executeGenericDbQuery()` wrapper instead of manual `connectDB()` calls
+### 2. **API Client System**
+- **Centralized Requests**: All API calls go through `apiRequest()` for consistency
+- **Automatic Error Handling**: Built-in error processing and user feedback
+- **Type Safety**: Full TypeScript support with proper error typing
+- **Request Interception**: Easy to add auth headers, logging, or other middleware
+
+### 3. **Generic Query Hooks with TanStack Query**
+- **Use Generic Hooks**: Leverage `useGenericQuery`, `useGenericCreate`, etc. for all CRUD operations
+- **Automatic Caching**: TanStack Query handles caching, background refetching automatically
+- **Redux Integration**: Sync server state with Redux for global state management
+- **API Data Extraction**: Handle responses with `response || response.data` pattern
+
+### 4. **Database Connection & Caching**
+- Always use the `executeGenericDbQuery()` wrapper for database operations
 - Use descriptive cache keys that include relevant parameters
-- Implement appropriate TTL based on data volatility:
-  - **Fast-changing data** (user sessions, real-time stats): 30 seconds - 2 minutes
-  - **Medium-changing data** (departments, roles): 1-5 minutes  
-  - **Slow-changing data** (settings, permissions): 5-30 minutes
-- Always clear relevant cache patterns after mutations using `clearCache()`
-- Use `filter` instead of `executeGenericDbQuery` for MongoDB executeGenericDbQuery objects to avoid variable shadowing
-- Handle errors with `throw new Error()` inside executeGenericDbQuery functions, not response returns
+- Implement appropriate TTL based on data volatility
+- Clear relevant cache patterns after mutations using `clearCache()`
+- Handle errors with `throw new Error()` inside executeGenericDbQuery functions
 
-### 3. **API Design**
+### 5. **Smart Fetching Pattern**
+- **Automatic with TanStack Query**: Queries automatically refetch when needed
+- **Parameter-based Queries**: Pass parameters to generic hooks for automatic dependency tracking
+- **Background Updates**: Data stays fresh without manual intervention
+
+### 6. **Minimal Redux State Management**
+- **Client State Only**: Use Redux for UI state (filters, selected items, etc.)
+- **Server State in TanStack Query**: Let TanStack Query manage server state
+- **Simple Slices**: Create minimal slices with basic reducers for Redux integration
+
+### 7. **Custom Hooks**
+- **Generic Hook Integration**: Wrap generic hooks for entity-specific logic
+- **Redux Dispatchers**: Pass Redux actions to generic hooks for state sync
+- **Stable Functions**: Generic hooks provide stable function references automatically
+
+### 8. **API Design**
 - Always validate input with Zod schemas
 - Use consistent response formats
 - Implement proper HTTP status codes
@@ -1489,28 +1492,20 @@ const { session, user, userEmail } = await genericApiRoutesMiddleware(request, '
 - Use middleware for cross-cutting concerns
 - Wrap all database operations in `executeGenericDbQuery()` functions
 
-### 4. **State Management**
-- Use Redux Toolkit for complex state
-- Implement optimistic updates where appropriate
-- Handle loading states consistently
-- Provide error recovery mechanisms
-- Leverage server-side caching to reduce client-side cache complexity
+### 9. **Component Architecture**
+- **Smart Fetching**: Implement parameter-based fetching to prevent unnecessary API calls
+- **Error Boundaries**: Use `handleAPIError` for consistent error handling
+- **Loading States**: Proper loading state management
+- **Form Validation**: Integrate Zod schemas with React Hook Form
 
-### 5. **Frontend Architecture**
-- Use custom hooks for business logic
-- Implement debounced search
-- Add proper loading states
-- Handle errors gracefully
-- Use TypeScript for type safety
-
-### 6. **Security**
+### 10. **Security**
 - Always authenticate and authorize API requests
 - Validate all inputs on both client and server
 - Use rate limiting to prevent abuse
 - Implement proper error handling
 - Log security-relevant events
 
-### 7. **Performance**
+### 11. **Performance**
 - Use pagination for large datasets
 - Implement search and filtering
 - Use database indexes effectively
@@ -1524,87 +1519,330 @@ const { session, user, userEmail } = await genericApiRoutesMiddleware(request, '
 
 When creating a new CRUD module, follow this checklist:
 
+### Generic Setup
+- [ ] Use generic hooks from `@/hooks/use-generic-query` for all CRUD operations
+- [ ] Create minimal Redux slice with basic reducers
+- [ ] Wrap generic hooks in entity-specific custom hook
+- [ ] Handle API responses with `response || response.data` pattern
+
 ### Database Layer
 - [ ] Create Mongoose model with proper validation
 - [ ] Add appropriate indexes for performance
 - [ ] Implement soft delete with status field
 - [ ] Add text search indexes if needed
-- [ ] Create database migration if required
 
 ### Validation Layer
 - [ ] Define Zod schemas for all operations
 - [ ] Create constants for validation rules
 - [ ] Implement input sanitization
-- [ ] Add custom validation logic
-- [ ] Export TypeScript types
 
 ### API Layer
-- [ ] Create list endpoint (GET /api/resource) using `executeGenericDbQuery()` wrapper
-- [ ] Create individual resource endpoints (GET/PUT/DELETE /api/resource/[id]) with caching
-- [ ] Create creation endpoint (POST /api/resource) with cache invalidation
-- [ ] Import `executeGenericDbQuery` and `clearCache` from `@/lib/mongodb`
-- [ ] Use `filter` variable names instead of `executeGenericDbQuery` to avoid shadowing
-- [ ] Integrate security middleware
-- [ ] Add comprehensive error handling with throw statements inside executeGenericDbQuery functions
-- [ ] Implement appropriate cache TTL for different operation types
+- [ ] Create endpoints using `executeGenericDbQuery()` wrapper
+- [ ] Implement appropriate cache TTL
 - [ ] Add cache clearing patterns after mutations
+- [ ] Integrate security middleware
 
 ### State Management
-- [ ] Create Redux slice with async thunks
-- [ ] Implement all CRUD operations
-- [ ] Add filters, sorting, and pagination
-- [ ] Handle loading and error states
-- [ ] Create custom hook wrapper
+- [ ] Create minimal Redux slice with basic reducers
+- [ ] Use generic hooks for server state management
+- [ ] Sync with Redux for global state
 
 ### Frontend Components
-- [ ] Create list/index page with DataTable
-- [ ] Create add/create form page
-- [ ] Create edit form page
-- [ ] Implement search and filtering
+- [ ] Use generic hooks in components
+- [ ] Implement error handling with `handleAPIError`
+- [ ] Create list and form pages
 - [ ] Add permission-based UI controls
 
-### Security & Testing
-- [ ] Verify all endpoints are protected
-- [ ] Test input validation
+### Testing
+- [ ] Test all CRUD operations
 - [ ] Test error scenarios
 - [ ] Verify permission enforcement
-- [ ] Test rate limiting
 
-### Documentation
-- [ ] Document API endpoints
-- [ ] Add code comments
-- [ ] Update type definitions
-- [ ] Create usage examples
-- [ ] Update this guide if needed
+---
+
+## Implementation Steps for New CRUD
+
+### Step 1: Create Database Model
+```typescript
+// models/Entity.ts
+import mongoose from 'mongoose'
+
+export interface IEntity extends Document {
+  name: string
+  description?: string
+  status: 'active' | 'inactive'
+  createdAt: Date
+  updatedAt: Date
+}
+
+const EntitySchema = new Schema<IEntity>({
+  name: { type: String, required: true, unique: true },
+  description: { type: String },
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' }
+}, { timestamps: true })
+
+// Add indexes and middleware
+EntitySchema.index({ status: 1, createdAt: -1 })
+EntitySchema.index({ name: 'text', description: 'text' })
+
+export default mongoose.models.Entity || mongoose.model<IEntity>('Entity', EntitySchema)
+```
+
+### Step 2: Create Validation Schemas
+```typescript
+// lib/validations/entity.ts
+export const ENTITY_CONSTANTS = {
+  NAME: { MIN_LENGTH: 2, MAX_LENGTH: 100 },
+  DESCRIPTION: { MAX_LENGTH: 500 },
+  STATUS: { VALUES: ['active', 'inactive'] as const, DEFAULT: 'active' as const }
+} as const
+
+export const baseEntitySchema = z.object({
+  name: z.string().min(ENTITY_CONSTANTS.NAME.MIN_LENGTH).max(ENTITY_CONSTANTS.NAME.MAX_LENGTH),
+  description: z.string().max(ENTITY_CONSTANTS.DESCRIPTION.MAX_LENGTH).optional(),
+  status: z.enum(ENTITY_CONSTANTS.STATUS.VALUES).default(ENTITY_CONSTANTS.STATUS.DEFAULT)
+})
+
+export const createEntitySchema = baseEntitySchema.strict()
+export const updateEntitySchema = baseEntitySchema.partial().strict().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'At least one field must be provided for update' }
+)
+```
+
+### Step 3: Create API Routes
+```typescript
+// app/api/entities/route.ts
+export async function GET(request: NextRequest) {
+  try {
+    const { session, user } = await genericApiRoutesMiddleware(request, 'entities', 'read')
+    const { page, limit, search, status, sortBy, sortOrder } = // parse query params
+    
+    const result = await executeGenericDbQuery(async () => {
+      const filter: any = { status: 'active' }
+      if (search) filter.$text = { $search: search }
+      if (status) filter.status = status
+      
+      const sort: any = {}
+      sort[sortBy] = sortOrder === 'asc' ? 1 : -1
+      
+      const [entities, total] = await Promise.all([
+        Entity.find(filter).sort(sort).skip((page - 1) * limit).limit(limit),
+        Entity.countDocuments(filter)
+      ])
+      
+      return { entities, total, page, limit }
+    }, `entities-list-${page}-${limit}-${search}-${status}-${sortBy}-${sortOrder}`)
+    
+    return createAPISuccessResponse(result, 'Entities retrieved successfully')
+  } catch (error: any) {
+    return createAPIErrorResponse("Failed to fetch entities", 500, "FETCH_ERROR")
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { session, user } = await genericApiRoutesMiddleware(request, 'entities', 'create')
+    const body = await request.json()
+    
+    const validation = createEntitySchema.safeParse(body)
+    if (!validation.success) {
+      return createAPIErrorResponse("Validation failed", 400, "VALIDATION_ERROR", {
+        errors: validation.error.errors
+      })
+    }
+    
+    const createdEntity = await executeGenericDbQuery(async () => {
+      const entity = new Entity(validation.data)
+      return await entity.save()
+    }, `entity-create-${validation.data.name}`)
+    
+    clearCache('entities-list')
+    return createAPISuccessResponse({ entity: createdEntity }, 'Entity created successfully', 201)
+  } catch (error: any) {
+    return createAPIErrorResponse("Failed to create entity", 500, "CREATE_ERROR")
+  }
+}
+```
+
+### Step 4: Create Minimal Redux Slice
+```typescript
+// store/slices/entitySlice.ts
+import { createSlice } from '@reduxjs/toolkit'
+
+const entitySlice = createSlice({
+  name: 'entities',
+  initialState: {
+    entities: [],
+    selectedEntity: null,
+    loading: false,
+    actionLoading: false,
+    error: null,
+    pagination: { page: 1, limit: 10, total: 0, pages: 0 }
+  },
+  reducers: {
+    setEntities: (state, action) => { state.entities = action.payload },
+    setEntity: (state, action) => { state.selectedEntity = action.payload },
+    setPagination: (state, action) => { state.pagination = action.payload },
+    setLoading: (state, action) => { state.loading = action.payload },
+    setActionLoading: (state, action) => { state.actionLoading = action.payload },
+    setError: (state, action) => { state.error = action.payload },
+    clearError: (state) => { state.error = null }
+  }
+})
+
+export const { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } = entitySlice.actions
+export default entitySlice.reducer
+```
+
+### Step 5: Create Custom Hook using Generic Hooks
+```typescript
+// hooks/use-entities.ts
+import { useGenericQuery, useGenericCreate, useGenericUpdate, useGenericDelete } from '@/hooks/use-generic-query'
+import { useAppDispatch } from '@/hooks/redux'
+import { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } from '@/store/slices/entitySlice'
+
+export function useEntities(params: FetchParams = {}) {
+  const dispatch = useAppDispatch()
+
+  const reduxDispatchers = {
+    setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError
+  }
+
+  const query = useGenericQuery<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers }, params)
+  const createMutation = useGenericCreate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+  const updateMutation = useGenericUpdate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+  const deleteMutation = useGenericDelete<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+
+  return {
+    entities: query.data,
+    isLoading: query.isLoading,
+    error: query.error,
+    createEntity: createMutation.mutateAsync,
+    updateEntity: updateMutation.mutateAsync,
+    deleteEntity: deleteMutation.mutateAsync,
+    refetch: query.refetch
+  }
+}
+```
+
+### Step 6: Create Page Components
+```tsx
+// app/entities/page.tsx
+export default function EntitiesPage() {
+  const { entities, isLoading, error, refetch } = useEntities()
+
+  useEffect(() => {
+    if (error) {
+      handleAPIError(error, 'Failed to load entities')
+    }
+  }, [error])
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error loading entities</div>
+
+  return (
+    <div>
+      {entities?.map(entity => (
+        <div key={entity._id}>{entity.name}</div>
+      ))}
+    </div>
+  )
+}
+```
 
 ---
 
 ## Recent Updates & Fixes
 
-### Lead Model Enhancements
-- **Email Uniqueness**: Changed from custom pre-save hook to schema-level `unique: true` constraint for better MongoDB performance
-- **Status Standardization**: Updated status enums to use lowercase ('qualified', 'unqualified') for consistency
-- **Seeder Updates**: Added more diverse client data and real-world project examples for better testing
+### Generic CRUD Implementation
+- **TanStack Query Integration**: Replaced custom Redux thunks with TanStack Query for server state management
+- **Generic Hooks**: Implemented reusable `useGenericQuery`, `useGenericCreate`, etc. for all entities
+- **API Response Handling**: Updated to handle `response || response.data` for flexible API responses
+- **Minimal Redux**: Simplified Redux slices to focus on client/UI state only
+- **Automatic Caching**: TanStack Query provides automatic caching and invalidation
 
-### API Route Fixes
-- **Role Model Registration**: Added explicit Role model imports in client routes to prevent "Schema not registered" errors
-- **Validation Schema Updates**: Added `departmentId` as alias for `department` field in client creation schemas
-- **Error Handling**: Improved validation error messages and field mapping
+### Error Handling System Implementation
+- **Centralized Error Handler**: Implemented `handleAPIError()` for consistent error display across all components
+- **Toast Integration**: Automatic error display with user-friendly messages
+- **Validation Error Parsing**: Zod validation errors automatically parsed and displayed
+
+### API Client System
+- **Centralized API Requests**: All API calls now go through `apiRequest()` for consistency
+- **Automatic Error Processing**: Built-in error handling and user feedback
+- **Type Safety**: Full TypeScript support with proper error typing
 
 ### Database Connection System
-- **Model Registration**: Enhanced automatic model registration through centralized imports
-- **Cache Optimization**: Improved cache key generation and invalidation patterns
-- **Connection Reliability**: Better error handling for MongoDB connection states
+- **executeGenericDbQuery Wrapper**: All database operations wrapped for automatic caching
+- **Smart Cache Invalidation**: Pattern-based cache clearing after mutations
+- **Performance Optimization**: Reduced database load and faster response times
 
 ---
 
-This guide provides a comprehensive blueprint for implementing secure, scalable CRUD operations in the DepLLC CRM system. By following these patterns and practices, you ensure consistency, security, and maintainability across all modules.
+This guide provides a comprehensive blueprint for implementing secure, scalable CRUD operations in the DepLLC CRM system using TanStack Query and generic hooks. By following these patterns and practices, you ensure consistency, security, and maintainability across all modules.
 
-The enhanced database connection system with the `executeGenericDbQuery()` wrapper provides:
-- **Automatic connection management** - No manual database connection handling needed
-- **Intelligent caching** - Configurable TTL-based caching for improved performance
-- **Smart cache invalidation** - Pattern-based cache clearing after data mutations
-- **Error handling consistency** - Standardized error propagation using throw statements
-- **Performance optimization** - Reduced database load and faster response times
+The generic CRUD implementation with TanStack Query provides:
+- **Automatic Caching**: No manual cache management needed
+- **Background Refetching**: Data stays fresh automatically
+- **Optimistic Updates**: UI updates immediately on mutations
+- **Error Handling**: Consistent error processing with `handleAPIError`
+- **Type Safety**: Full TypeScript support with generic hooks
+- **Performance**: Reduced API calls and improved user experience
 
-The department module serves as the reference implementation, demonstrating how all the pieces work together to create a robust, production-ready CRUD system with enterprise-level security, performance characteristics, and modern database connection management.
+The department module serves as the reference implementation, demonstrating how the generic hooks work together with Redux to create a robust, production-ready CRUD system with enterprise-level security and performance characteristics.
+
+## Recent Updates & Fixes
+
+### Users CRUD Migration (October 2025)
+- **Migration Completed**: Successfully migrated Users CRUD to TanStack Query generic approach, following the Department blueprint.
+- **Key Changes**:
+  - Updated `use-users.ts` to use `useGenericQuery`, `useGenericQueryById`, `useGenericCreate`, `useGenericUpdate`, `useGenericDelete`.
+  - Simplified `userSlice.ts` to handle only UI state (filters, pagination, selected user).
+  - Updated components (`users/page.tsx`, `users/edit/[id]/page.tsx`, `users/add/page.tsx`) to leverage TanStack Query's automatic fetching and caching.
+  - Integrated flexible API response handling (`response || response.data`) for consistent data extraction.
+  - Added memoization for query params to prevent infinite re-renders.
+  - Fixed loading states to combine TanStack Query and Redux states.
+
+### Errors Faced & Solutions
+
+1. **API Parameter Formatting Issues**:
+   - **Error**: API calls failed due to incorrect parameter transformation (e.g., `sortBy`/`sortOrder` vs. `sort.field`/`sort.direction`).
+   - **Solution**: Updated `useGenericQuery` to properly transform params: `apiParams.sortBy = params.sort.field; apiParams.sortOrder = params.sort.direction;`.
+
+2. **Infinite Re-renders**:
+   - **Error**: Components re-rendered infinitely due to non-memoized query keys and params.
+   - **Solution**: Used `useMemo` for query keys and params in `useGenericQuery` and custom hooks. Disabled stale time for fresh data.
+
+3. **Loading State Inconsistencies**:
+   - **Error**: Loading states didn't reflect actual data fetching, causing UI issues.
+   - **Solution**: Combined TanStack Query loading states (`isLoading`, `userByIdLoading`) with Redux states. Updated components to use combined loading.
+
+4. **Role Fetching Errors in Add/Edit Pages**:
+   - **Error**: `fetchRolesByDepartment` failed with "undefined" or incorrect response handling.
+   - **Solution**: Added ObjectId validation before API calls. Updated response handling to check for arrays or success/data structures. Used `form.setValue` after roles load to ensure role selection.
+
+5. **User Data Not Loading in Edit Page**:
+   - **Error**: Form fields remained empty; `selectedUser` not set properly.
+   - **Solution**: Ensured `useGenericQueryById` correctly extracts entity from API response. Added logging and error handling. Used combined loading to prevent premature rendering.
+
+6. **React Warning: Uncontrolled to Controlled Input**:
+   - **Error**: Warning about input changing from uncontrolled to controlled.
+   - **Solution**: Provided valid default values for all form fields to ensure controlled state from start.
+
+7. **Department/Role Not Selected in Edit Form**:
+   - **Error**: Saved department and role not displayed in edit form.
+   - **Solution**: Set form values after roles are fetched using `form.setValue`. Ensured roles API returns data in expected format.
+
+### Best Practices from Migration
+- Always memoize query params and keys to prevent infinite loops.
+- Use combined loading states for accurate UI feedback.
+- Validate API responses and handle different formats flexibly.
+- Test form population and selection after data loading.
+- Integrate error handling with existing `handleAPIError` system.
+- Ensure stable callbacks and avoid unnecessary re-renders.
+
+
+
+
+
+
