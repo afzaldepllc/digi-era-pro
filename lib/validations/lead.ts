@@ -28,11 +28,10 @@ export const LEAD_CONSTANTS = {
     TIMELINE: { MAX_LENGTH: 100 },
     BUDGET: { MIN: 0, MAX: 999999999 },
     REQUIREMENTS: { MAX_LENGTH: 500 },
+    CUSTOMER_SERVICES: { MAX_LENGTH: 500 },
     TECHNOLOGIES: { MAX_LENGTH: 100 },
     TYPE: { VALUES: ['web', 'mobile', 'desktop', 'api', 'consulting', 'other'] as const },
     COMPLEXITY: { VALUES: ['simple', 'medium', 'complex'] as const },
-    DELIVERABLES: { MAX_LENGTH: 500 },
-    MILESTONES: { TITLE_MAX: 200, DESC_MAX: 500 },
     ESTIMATED_HOURS: { MIN: 0 }
   },
   NOTES: { MAX_LENGTH: 2000 },
@@ -197,6 +196,15 @@ const projectRequirementsSchema = z
   )
   .max(10, "Cannot have more than 10 requirements")
   .optional()
+// Project customerServices validation
+const customerServicesSchema = z
+  .array(
+    z.string()
+      .max(LEAD_CONSTANTS.PROJECT.CUSTOMER_SERVICES.MAX_LENGTH, `Each customer service must not exceed ${LEAD_CONSTANTS.PROJECT.CUSTOMER_SERVICES.MAX_LENGTH} characters`)
+      .transform((req) => req.trim())
+  )
+  .max(10, "Cannot have more than 10 customer services")
+  .optional()
 
 // Additional client info schemas
 const positionSchema = z
@@ -258,26 +266,6 @@ const complexitySchema = z
   .enum(LEAD_CONSTANTS.PROJECT.COMPLEXITY.VALUES)
   .optional()
 
-const deliverablesSchema = z
-  .array(
-    z.string()
-      .max(LEAD_CONSTANTS.PROJECT.DELIVERABLES.MAX_LENGTH, `Each deliverable must not exceed ${LEAD_CONSTANTS.PROJECT.DELIVERABLES.MAX_LENGTH} characters`)
-      .transform((del) => del.trim())
-  )
-  .max(20, "Cannot have more than 20 deliverables")
-  .optional()
-
-const milestonesSchema = z
-  .array(
-    z.object({
-      title: z.string().min(1).max(LEAD_CONSTANTS.PROJECT.MILESTONES.TITLE_MAX).transform(t => t.trim()),
-      description: z.string().max(LEAD_CONSTANTS.PROJECT.MILESTONES.DESC_MAX).transform(d => d.trim()).optional(),
-      dueDate: z.string().transform(d => d ? new Date(d) : undefined).optional(),
-      completed: z.boolean().default(false),
-    })
-  )
-  .max(50, "Cannot have more than 50 milestones")
-  .optional()
 
 const estimatedHoursSchema = z
   .number()
@@ -419,13 +407,12 @@ export const baseLeadSchema = z.object({
   projectBudget: projectBudgetSchema,
   projectTimeline: projectTimelineSchema,
   projectRequirements: projectRequirementsSchema,
+  customerServices: customerServicesSchema,
   technologies: technologiesSchema,
   projectType: projectTypeSchema,
   complexity: complexitySchema,
 
   // Project Scope & Details
-  deliverables: deliverablesSchema,
-  milestones: milestonesSchema,
   estimatedHours: estimatedHoursSchema,
 
   // Lead Management
@@ -477,13 +464,12 @@ export const createLeadSchema = z.object({
   projectBudget: projectBudgetSchema,
   projectTimeline: projectTimelineSchema,
   projectRequirements: projectRequirementsSchema,
+  customerServices: customerServicesSchema,
   technologies: technologiesSchema,
   projectType: projectTypeSchema,
   complexity: complexitySchema,
 
   // Project Scope & Details
-  deliverables: deliverablesSchema,
-  milestones: milestonesSchema,
   estimatedHours: estimatedHoursSchema,
 
   // Lead Management - createdBy is INTENTIONALLY OMITTED (set by API)
@@ -525,7 +511,7 @@ export const createLeadFormSchema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   position: z.string().optional(),
-  website: z.string().optional(),
+  website: z.string().regex(LEAD_CONSTANTS.WEBSITE.PATTERN, "It must be a valid URL").optional(),
   address: z.object({
     street: z.string().optional(),
     city: z.string().optional(),
@@ -545,19 +531,13 @@ export const createLeadFormSchema = z.object({
   projectDescription: z.string().optional(),
   projectBudget: z.string().optional(), // Keep as string for form inputs
   projectTimeline: z.string().optional(),
-  projectRequirements: z.string().optional(), // Changed to string for form input
-  technologies: z.string().optional(), // Changed to string for form input
+  projectRequirements: z.array(z.string()).optional(), // Array of requirements
+  customerServices: z.array(z.string()).optional(), // Array of customer services
+  technologies: z.array(z.string()).optional(), // Array of technologies
   projectType: z.enum(LEAD_CONSTANTS.PROJECT.TYPE.VALUES).optional(),
   complexity: z.enum(LEAD_CONSTANTS.PROJECT.COMPLEXITY.VALUES).optional(),
 
   // Project Scope & Details
-  deliverables: z.string().optional(), // Changed to string for form input
-  milestones: z.array(z.object({
-    title: z.string().min(1).max(LEAD_CONSTANTS.PROJECT.MILESTONES.TITLE_MAX),
-    description: z.string().optional(),
-    dueDate: z.string().optional(),
-    completed: z.boolean().default(false),
-  })).optional(),
   estimatedHours: z.string().optional(), // Keep as string for form
 
   // Lead Management
@@ -585,7 +565,23 @@ export const updateLeadFormSchema = z.object({
   phone: z.string().optional(),
   position: z.string().optional(),
   company: z.string().optional(),
-  website: z.string().optional(),
+  website: z.string()
+    .optional()
+    .transform(val => {
+      if (!val || val.trim() === "") return undefined;
+      return val.trim();
+    })
+    .refine(
+      val => val === undefined || LEAD_CONSTANTS.WEBSITE.PATTERN.test(val),
+      "It must be a valid URL"
+    ),
+  address: z.object({
+    street: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
+    country: z.string().optional(),
+  }).optional(),
   industry: z.string().optional(),
   companySize: z.enum(LEAD_CONSTANTS.COMPANY_SIZE.VALUES).optional(),
   annualRevenue: z.string().optional(),
@@ -596,6 +592,7 @@ export const updateLeadFormSchema = z.object({
   nextFollowUpDate: z.string().optional(),
   notes: z.string().optional(),
 
+
   // Project Information Section
   projectName: z.string().min(LEAD_CONSTANTS.PROJECT.NAME.MIN_LENGTH).max(LEAD_CONSTANTS.PROJECT.NAME.MAX_LENGTH).optional(),
   projectType: z.enum(LEAD_CONSTANTS.PROJECT.TYPE.VALUES).optional(),
@@ -604,9 +601,9 @@ export const updateLeadFormSchema = z.object({
   estimatedHours: z.string().optional(),
   projectTimeline: z.string().optional(),
   projectDescription: z.string().optional(),
-  technologies: z.string().optional(),
-  projectRequirements: z.string().optional(),
-  deliverables: z.string().optional(),
+  technologies: z.array(z.string()).optional(),
+  projectRequirements: z.array(z.string()).optional(),
+  customerServices: z.array(z.string()).optional(),
 
   // Qualification fields
   unqualifiedAt: z.date().optional(),
@@ -615,7 +612,10 @@ export const updateLeadFormSchema = z.object({
 }).strict()
 
 // Update lead schema (partial fields allowed)
-export const updateLeadSchema = baseLeadSchema.partial().strict()
+export const updateLeadSchema = baseLeadSchema.partial().extend({
+  // Allow isDeleted field only when restoring (setting to false)
+  isDeleted: z.literal(false).optional(),
+}).strict()
   .refine(data => {
     // At least one field must be provided for update
     const values = Object.values(data).filter(value =>

@@ -36,13 +36,14 @@ export async function GET(request: NextRequest) {
         enableLogging: true
       }
     )
-
+    console.log("super admin 39:", isSuperAdmin);
     // Check if user is admin or super admin (hierarchy level >= 9)
-    const userHierarchyLevel = user.role?.hierarchyLevel || 0
-    if (!isSuperAdmin && userHierarchyLevel < 9) {
+    // const userHierarchyLevel = user.role?.hierarchyLevel || 0
+    // if (!isSuperAdmin && userHierarchyLevel < 9) {
+    if (!isSuperAdmin) {
       console.log('Settings access denied:', {
         userEmail,
-        userHierarchyLevel,
+        // userHierarchyLevel,
         isSuperAdmin,
         roleName: user.role?.name
       })
@@ -129,11 +130,12 @@ export async function PUT(request: NextRequest) {
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
-    const userHierarchyLevel = user.role?.hierarchyLevel || 0
-    if (!isSuperAdmin && userHierarchyLevel < 9) {
+      // const userHierarchyLevel = user.role?.hierarchyLevel || 0
+      // if (!isSuperAdmin && userHierarchyLevel < 9) {
+    if (!isSuperAdmin) {
       console.log('Settings update denied:', {
         userEmail,
-        userHierarchyLevel,
+        // userHierarchyLevel,
         isSuperAdmin,
         roleName: user.role?.name
       })
@@ -269,8 +271,8 @@ export async function POST(request: NextRequest) {
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
-    const userHierarchyLevel = user.role?.hierarchyLevel || 0
-    if (!isSuperAdmin && userHierarchyLevel < 9) {
+    // const userHierarchyLevel = user.role?.hierarchyLevel || 0
+    if (!isSuperAdmin) {
       return createErrorResponse("Access denied. Admin privileges required.", 403)
     }
 

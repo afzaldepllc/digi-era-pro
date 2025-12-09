@@ -61,10 +61,10 @@ export class ServerPermissionManager {
         }
       }
 
-      const userEmail = session.user.email
+      const userEmail = session.user.email;
       
       // Check if user is super admin
-      const isSuperAdmin = userEmail === (options.superAdminEmail || 'superadmin@gmail.com')
+      const isSuperAdmin = QueryFilters.isSuperAdmin(session.user)
       
       if (isSuperAdmin) {
         return {
@@ -203,10 +203,10 @@ export class ServerPermissionManager {
     permissions: Permission[],
     resource: string,
     action: string,
-    userEmail?: string
+    sessionUserRole?: string
   ): boolean {
     // Super admin check
-    if (userEmail === 'superadmin@gmail.com') {
+    if (sessionUserRole === 'super_admin') {
       return true
     }
 

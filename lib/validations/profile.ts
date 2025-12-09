@@ -78,19 +78,12 @@ const socialLinksSchema = z.object({
   github: urlSchema,
 })
 
-// Notifications schema
-const notificationsSchema = z.object({
-  email: z.boolean().default(true),
-  push: z.boolean().default(true),
-  sms: z.boolean().default(false),
-})
 
 // Preferences schema
 const preferencesSchema = z.object({
   theme: themeSchema.default("system"),
   language: z.string().min(2, "Language must be at least 2 characters").default("en"),
   timezone: z.string().min(3, "Timezone must be at least 3 characters").default("UTC"),
-  notifications: notificationsSchema,
 })
 
 // =============================================================================
@@ -138,11 +131,6 @@ export const updateProfileSchema = baseProfileSchema.partial().extend({
       theme: cleanData.preferences.theme || "system",
       language: cleanData.preferences.language || "en",
       timezone: cleanData.preferences.timezone || "UTC",
-      notifications: {
-        email: cleanData.preferences.notifications?.email ?? true,
-        push: cleanData.preferences.notifications?.push ?? true,
-        sms: cleanData.preferences.notifications?.sms ?? false,
-      },
     }
   }
   
@@ -179,9 +167,6 @@ export const profileFormSchema = z.object({
   theme: themeSchema.optional(),
   language: z.string().optional(),
   timezone: z.string().optional(),
-  emailNotifications: z.boolean().optional(),
-  pushNotifications: z.boolean().optional(),
-  smsNotifications: z.boolean().optional(),
 }).transform((data) => {
   // Transform flat form data to nested structure
   return {
@@ -205,11 +190,6 @@ export const profileFormSchema = z.object({
       theme: data.theme || "system",
       language: data.language || "en",
       timezone: data.timezone || "UTC",
-      notifications: {
-        email: data.emailNotifications ?? true,
-        push: data.pushNotifications ?? true,
-        sms: data.smsNotifications ?? false,
-      },
     },
   }
 })

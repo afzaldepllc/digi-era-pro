@@ -332,8 +332,8 @@ export function usePermissions() {
   const hasPermission = useCallback((resource: string, action: string) => {
     if (status !== 'authenticated') return false
     
-    const userEmail = session?.user?.email
-    if (userEmail === 'superadmin@gmail.com') return true
+    const  sessionUserRole= session?.user?.role.name
+    if (sessionUserRole === 'super_admin') return true
     
     return permissions.some(permission =>
       permission.resource === resource &&

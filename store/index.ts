@@ -16,11 +16,7 @@ import phaseSlice from "./slices/phaseSlice"
 import milestoneSlice from "./slices/milestoneSlice"
 import analyticsSlice from "./slices/analyticsSlice"
 
-const persistConfig = {
-  key: "root",
-  storage,
-  whitelist: ["auth"], // Only persist auth slice
-}
+
 
 const rootReducer = combineReducers({
   auth: authSlice,
@@ -38,19 +34,11 @@ const rootReducer = combineReducers({
   analytics: analyticsSlice,
 })
 
-const persistedReducer = persistReducer(persistConfig, rootReducer)
 
 export const store = configureStore({
-  reducer: persistedReducer,
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        ignoredActions: ["persist/PERSIST", "persist/REHYDRATE"],
-      },
-    }),
+  reducer: rootReducer,
 })
 
-export const persistor = persistStore(store)
 
 // export type RootState = ReturnType<typeof store.getState>
 export type RootState = ReturnType<typeof rootReducer>

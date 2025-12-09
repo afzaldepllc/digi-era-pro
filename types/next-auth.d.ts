@@ -11,6 +11,8 @@ declare module "next-auth" {
       permissions: any[]
       sessionStartTime: number
       iat?: number
+      requiresTwoFactor?: boolean
+      twoFactorVerified?: boolean
     }
   }
 
@@ -23,6 +25,8 @@ declare module "next-auth" {
     department: string
     avatar?: string
     permissions: any[]
+    requiresTwoFactor?: boolean
+    twoFactorVerified?: boolean
   }
 }
 
@@ -34,5 +38,7 @@ declare module "next-auth/jwt" {
     avatar?: string
     permissions: any[]
     sessionStartTime: number
+    requiresTwoFactor?: boolean
+    twoFactorVerified?: boolean
   }
 }

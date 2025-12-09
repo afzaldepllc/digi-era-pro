@@ -18,6 +18,7 @@ import {
   UserCheck,
   UserX,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import type { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
 import type { Role, User } from "@/types";
@@ -25,16 +26,19 @@ import type { UserFilters, UserSort } from "@/store/slices/userSlice";
 import { useDepartments } from "@/hooks/use-departments";
 import { useRoles } from "@/hooks/use-roles";
 import { useUsers } from "@/hooks/use-users";
+import { useNavigation } from "@/components/providers/navigation-provider";
+import GenericReportExporter from "@/components/shared/GenericReportExporter";
 
 
 
 export default function UsersPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { navigateTo, isNavigating } = useNavigation()
 
   // Permission checks
   const { allDepartments } = useDepartments();
-  const { roles, fetchRoles } = useRoles();
+  const { roles, allRoles, fetchRoles } = useRoles();
   const {
     users: hookUsers,
     selectedUser: hookSelectedUser,
@@ -42,6 +46,7 @@ export default function UsersPage() {
     actionLoading: hookActionLoading,
     error: hookError,
     deleteUser,
+    restoreUser,
     setFilters,
     setSort,
     setPagination,
@@ -68,7 +73,7 @@ export default function UsersPage() {
   // Local UI state
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  const [availableRoles, setAvailableRoles] = useState<Array<{ value: string, label: string }>>(roles);
+  const [availableRoles, setAvailableRoles] = useState<Array<{ value: string, label: string }>>(allRoles);
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
   const [activeTab, setActiveTab] = useState('overview');
   console.log("users list 76", users);
@@ -115,6 +120,7 @@ export default function UsersPage() {
           { value: 'active', label: 'Active' },
           { value: 'inactive', label: 'Inactive' },
           { value: 'suspended', label: 'Suspended' },
+          { value: 'deleted', label: 'Deleted' },
         ],
       },
       {
@@ -190,23 +196,6 @@ export default function UsersPage() {
     setPagination({ limit, page: 1 });
   }, [setPagination]);
 
-  // Fetch available roles for filter
-  // const fetchAvailableRoles = useCallback(async () => {
-  //   try {
-  //     const response = await fetchRoles({ page: 1, limit: 100 });
-  //     if (response?.roles) {
-  //       const roleOptions = response?.roles?.map((role: any) => ({
-  //         value: role._id,
-  //         label: role.displayName || role.name,
-  //       })) || [];
-  //       setAvailableRoles(roleOptions);
-  //     }
-  //   } catch (error) {
-  //     console.error('Failed to fetch roles for filter:', error);
-  //     handleAPIError(error, "Failed to load roles for filtering");
-  //   }
-  // }, [fetchRoles]);
-
   // Fetch available departments for filter
   const fetchAvailableDepartments = useCallback(async () => {
     try {
@@ -225,14 +214,6 @@ export default function UsersPage() {
     }
   }, []); // Remove allDepartments from dependencies to prevent infinite re-runs
 
-  // Fetch roles and departments for filters on mount
-  // useEffect(() => {
-  //   fetchAvailableRoles();
-  //   if (availableDepartments.length === 0) {
-  //     fetchAvailableDepartments();
-  //   }
-  // }, [fetchAvailableRoles, fetchAvailableDepartments]);
-
 
   // Update available departments when allDepartments changes
   useEffect(() => {
@@ -245,6 +226,17 @@ export default function UsersPage() {
     }
   }, [allDepartments]);
 
+  // Update available roles when allRoles changes
+  useEffect(() => {
+    if (allRoles && allRoles.length > 0) {
+      const roleOptions = allRoles.map((role: any) => ({
+        value: role._id,
+        label: role.displayName || role.name,
+      })) || [];
+      setAvailableRoles(roleOptions);
+    }
+  }, [allRoles]);
+
   // User actions
   const handleViewUser = useCallback((user: User) => {
     setSelectedUser(user);
@@ -252,8 +244,8 @@ export default function UsersPage() {
   }, [setSelectedUser]);
 
   const handleEditUser = useCallback((user: User) => {
-    router.push(`/users/edit/${user._id}`);
-  }, [router]);
+    navigateTo(`/users/edit/${user._id}`);
+  }, [navigateTo]);
 
   const handleDeleteUser = useCallback(async (user: User) => {
     const result = await Swal.fire({
@@ -293,6 +285,9 @@ export default function UsersPage() {
       try {
         await deleteUser(user._id as string);
 
+        // Refetch users to update the list with the new status
+        await fetchUsers();
+
         // Show success message
         Swal.fire({
           customClass: {
@@ -331,6 +326,87 @@ export default function UsersPage() {
     }
 
   }, [deleteUser, toast]);
+
+
+  const handleRestoreUser = useCallback(async (user: User) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${user.name}?`,
+      text: "Are you sure you want to restore this user?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      // Show simple loading with SweetAlert's built-in loader
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the user.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreUser(user._id as string);
+
+        // Refetch users to update the list with the new status
+        await fetchUsers();
+
+        // Show success message
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "User has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "User restored successfully.",
+          variant: "default",
+        });
+      } catch (error: any) {
+        // Show error message
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: error.error,
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+
+        handleAPIError(error, "Failed to restore user. Please try again.");
+      }
+    }
+
+  }, [restoreUser, toast]);
 
 
   // Table columns configuration
@@ -409,6 +485,7 @@ export default function UsersPage() {
           active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           inactive: 'bg-muted text-muted-foreground border-border',
           suspended: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
+          deleted: 'text-muted bg-red-600 border-white-200',
         };
 
         return (
@@ -501,10 +578,10 @@ export default function UsersPage() {
       color: "text-gray-600"
     },
     {
-      title: "Suspended",
-      value: stats.suspendedUsers,
-      icon: <AlertTriangle className="w-4 h-4" />,
-      color: "text-red-600"
+      title: "Deleted",
+      value: (stats as any).deletedUsers || 0,
+      icon: <Trash2 className="w-4 h-4" />,
+      color: "text-red-800"
     },
   ] : [];
 
@@ -513,7 +590,7 @@ export default function UsersPage() {
       <PageHeader
         title="Users"
         subtitle="Manage system users and their permissions"
-        onAddClick={() => router.push('/users/add')}
+        onAddClick={() => navigateTo('/users/add')}
         showFilterButton={true}
         hasActiveFilters={Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')}
 
@@ -532,6 +609,27 @@ export default function UsersPage() {
           fetchUsers(); // ✅ This will refetch the data
         }}
         isRefreshing={loading}
+        actions={
+          <GenericReportExporter
+            moduleName="users"
+            data={users}
+            onExportComplete={(result) => {
+              if (result.success) {
+                toast({
+                  title: "Success",
+                  description: result.message,
+                  variant: "default",
+                });
+              } else {
+                toast({
+                  title: "Error",
+                  description: result.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        }
       >
         {
           isFilterExpanded && (
@@ -544,7 +642,6 @@ export default function UsersPage() {
           )
         }
       </PageHeader>
-
 
       {/* Filters and Table */}
       <DataTable
@@ -563,6 +660,7 @@ export default function UsersPage() {
         resourceName="users"
         onView={handleViewUser}
         onDelete={handleDeleteUser}
+        onRestore={handleRestoreUser}
         enablePermissionChecking={true}
         statsCards={statsCards} // Add this prop
       />

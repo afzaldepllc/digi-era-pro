@@ -66,28 +66,10 @@ export interface TaskAnalytics {
   averageProgress: number;
 }
 
-export interface PhaseAnalytics {
-  totalPhases: number;
-  activePhases: number;
-  completedPhases: number;
-  plannedPhases: number;
-  averageProgress: number;
-}
-
-export interface MilestoneAnalytics {
-  totalMilestones: number;
-  completedMilestones: number;
-  inProgressMilestones: number;
-  pendingMilestones: number;
-  overdueMilestones: number;
-  averageProgress: number;
-}
 
 export interface AnalyticsResponse {
   overview: ProjectAnalytics;
   tasks: TaskAnalytics;
-  phases: PhaseAnalytics;
-  milestones: MilestoneAnalytics;
   meta: {
     dateRange: string;
     startDate: string;

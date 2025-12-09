@@ -5,6 +5,7 @@ import Lead from "@/models/Lead"
 import { updateClientSchema, clientIdSchema, clientStatusUpdateSchema } from "@/lib/validations/client"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .populate('leadId', 'name projectName status createdAt createdBy')
         .select('-password -resetPasswordToken -resetPasswordExpire')
         .lean()
+      console.log("client filter used:", JSON.stringify(filter, null, 2));
       console.log("foundClient30", foundClient);
       if (!foundClient) {
         throw new Error('Client not found')
@@ -122,10 +124,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         isClient: true
       }, isSuperAdmin)
 
+      console.log("client filter for update:", JSON.stringify(filter, null, 2));
       const existingClient = await User.findOne(filter)
 
       if (!existingClient) {
         throw new Error('Client not found or has been deleted')
+      }
+
+      // Check if client is deleted
+      if (!isSuperAdmin && (existingClient.status === 'deleted' || existingClient.isDeleted === true)) {
+        throw new Error('Cannot update Deleted entity')
       }
 
       // Check permissions
@@ -175,6 +183,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Error updating client:', error)
+
+    if (error.message === 'Cannot update Deleted entity') {
+      return NextResponse.json({
+        success: false,
+        error: error.message
+      }, { status: 400 })
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({

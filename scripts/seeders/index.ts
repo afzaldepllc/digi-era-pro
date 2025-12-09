@@ -4,7 +4,6 @@ import seedSystemRoles from './systemRolesSeeder'
 import seedUsers from './userSeeder'
 import seedLeads from './leadSeeder'
 import seedProjects from './projectSeeder'
-import seedTasks from './taskSeeder'
 
 
 async function runSeeders() {
@@ -103,4 +102,7 @@ async function runSeeders() {
 
 export { runSeeders }
 
-runSeeders()
+// Only run if this file is executed directly (not imported)
+if (require.main === module) {
+  runSeeders()
+}

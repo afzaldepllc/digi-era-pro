@@ -17,11 +17,13 @@ import { useDepartments } from "@/hooks/use-departments";
 import { useRoles } from "@/hooks/use-roles";
 import { createUserSchema, type CreateUserData } from "@/lib/validations/user";
 import type { Role, Department } from "@/types";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function AddUserPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { navigateTo } = useNavigation()
 
   const [fetchingRoles, setFetchingRoles] = useState(false);
 
@@ -52,6 +54,14 @@ export default function AddUserPage() {
       position: "",
       status: "active",
       bio: "",
+      // Address Information
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "",
+      },
     },
   });
 
@@ -82,7 +92,6 @@ export default function AddUserPage() {
     setFetchingRoles(true);
     try {
       const departmentRole = await fetchRolesByDepartment(departmentId);
-      console.log("Roles fetch result: 85", departmentRole);
       if (departmentRole) {
         let roles = departmentRole;
         // Handle different response formats
@@ -128,13 +137,26 @@ export default function AddUserPage() {
   const handleSubmit = async (data: CreateUserData) => {
     setLoading(true);
     try {
-      console.log("Submitting user data: 131", data);
-      await createUser(data);
+      // Transform form data to API format with nested address structure
+      const cleanedData: CreateUserData = {
+        ...data,
+        // Address
+        address: data.address ? {
+          street: data.address.street?.trim() || undefined,
+          city: data.address.city?.trim() || undefined,
+          state: data.address.state?.trim() || undefined,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          country: data.address.country?.trim() || undefined,
+        } : undefined,
+      };
+      
+      console.log("Submitting user data: 131", cleanedData);
+      await createUser(cleanedData);
       toast({
         title: "Success",
         description: "User created successfully",
       });
-      router.push("/users");
+      navigateTo("/users");
     } catch (error: any) {
       const parsedError = parseAPIError(error);
       console.log('parsedError', error);
@@ -184,7 +206,22 @@ export default function AddUserPage() {
           placeholder: "Enter full name",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
+          lgCols: 6,
+        },
+         {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+            { value: "suspended", label: "Suspended" },
+          ],
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
         },
         {
           name: "email",
@@ -194,7 +231,7 @@ export default function AddUserPage() {
           placeholder: "Enter email address",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
+          lgCols: 6,
         },
         {
           name: "password",
@@ -204,26 +241,11 @@ export default function AddUserPage() {
           placeholder: "Enter password (min 8 chars with uppercase, lowercase, number)",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
+          lgCols: 6,
         },
       ]
     },
-    {
-      subform_title: "Contact Information",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "phone",
-          label: "Phone Number",
-          type: "text" as const,
-          placeholder: "Enter phone number (e.g., +1234567890 or 1234567890)",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-      ]
-    },
+    
     {
       subform_title: "Role & Department",
       collapse: true,
@@ -272,28 +294,74 @@ export default function AddUserPage() {
           lgCols: 4,
         },
         {
-          name: "status",
-          label: "Status",
-          type: "select" as const,
-          searchable: true,
-          required: true,
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-            { value: "suspended", label: "Suspended" },
-          ],
+          name: "bio",
+          label: "Bio",
+          type: "rich-text" as const,
+          placeholder: "Enter user bio (optional)",
+          cols: 12,
+          mdCols: 12,
+          lgCols: 12,
+        },
+      ]
+    },
+    {
+      subform_title: "Contact Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "phone",
+          label: "Phone Number",
+          type: "text" as const,
+          placeholder: "Enter phone number",
           cols: 12,
           mdCols: 6,
           lgCols: 4,
         },
         {
-          name: "bio",
-          label: "Bio",
-          type: "textarea" as const,
-          placeholder: "Enter user bio (optional)",
+          name: "address.street",
+          label: "Street Address",
+          type: "text" as const,
+          placeholder: "Enter street address",
           cols: 12,
-          mdCols: 12,
-          lgCols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.city",
+          label: "City",
+          type: "text" as const,
+          placeholder: "Enter city",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.state",
+          label: "State/Province",
+          type: "text" as const,
+          placeholder: "Enter state or province",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.country",
+          label: "Country",
+          type: "text" as const,
+          placeholder: "Enter country",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.zipCode",
+          label: "ZIP/Postal Code",
+          type: "text" as const,
+          placeholder: "Enter ZIP or postal code",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
         },
       ]
     }

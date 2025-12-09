@@ -231,11 +231,6 @@ export function ProfileSettings() {
           theme: "system",
           language: "en",
           timezone: "UTC",
-          notifications: {
-            email: true,
-            push: true,
-            sms: false,
-          },
         },
       })
     }
@@ -900,55 +895,6 @@ export function ProfileSettings() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
-                  Notifications
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Email Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Receive notifications via email</p>
-                  </div>
-                  <Switch
-                    checked={profileForm.watch("preferences.notifications.email")}
-                    onCheckedChange={(checked) =>
-                      profileForm.setValue("preferences.notifications.email", checked)
-                    }
-                  />
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Push Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Receive push notifications in browser</p>
-                  </div>
-                  <Switch
-                    checked={profileForm.watch("preferences.notifications.push")}
-                    onCheckedChange={(checked) =>
-                      profileForm.setValue("preferences.notifications.push", checked)
-                    }
-                  />
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>SMS Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Receive notifications via SMS</p>
-                  </div>
-                  <Switch
-                    checked={profileForm.watch("preferences.notifications.sms")}
-                    onCheckedChange={(checked) =>
-                      profileForm.setValue("preferences.notifications.sms", checked)
-                    }
-                  />
                 </div>
               </CardContent>
             </Card>

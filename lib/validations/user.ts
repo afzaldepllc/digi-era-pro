@@ -109,20 +109,7 @@ const socialLinksSchema = z.object({
   github: urlSchema,
 }).optional()
 
-// Notification preferences
-const notificationSchema = z.object({
-  email: z.boolean().default(true),
-  push: z.boolean().default(true),
-  sms: z.boolean().default(false),
-})
 
-// User preferences schema
-const preferencesSchema = z.object({
-  theme: themeSchema.default("system"),
-  language: z.string().min(2).max(5).default("en"),
-  timezone: z.string().default("UTC"),
-  notifications: notificationSchema.default({}),
-}).optional()
 
 // Emergency contact schema
 const emergencyContactSchema = z.object({
@@ -155,7 +142,6 @@ const baseUserSchema = z.object({
   avatar: urlSchema,
   address: addressSchema,
   socialLinks: socialLinksSchema,
-  preferences: preferencesSchema,
   metadata: metadataSchema,
   emergencyContact: emergencyContactSchema,
   isClient: z.boolean().default(false).optional(),
@@ -181,7 +167,8 @@ export const createUserSchema = baseUserSchema.extend({
 // Update user schema (for PUT /api/users/[id])
 export const updateUserSchema = baseUserSchema.partial().extend({
   _id: objectIdSchema.optional(),
-  role: objectIdSchema.optional(),
+  role: z.union([z.literal(""), objectIdSchema]).optional().transform(val => val === "" ? undefined : val),
+  department: z.union([z.literal(""), objectIdSchema]).optional().transform(val => val === "" ? undefined : val),
   emailVerified: z.boolean().optional(),
   phoneVerified: z.boolean().optional(),
   twoFactorEnabled: z.boolean().optional(),
@@ -200,7 +187,7 @@ export const updateUserSchema = baseUserSchema.partial().extend({
 // FRONTEND FORM SCHEMAS (Flat structure for React Hook Form)
 // =============================================================================
 
-// Create user form schema (flat structure for frontend forms)
+// Create user form schema (with nested address structure for frontend forms)
 export const createUserFormSchema = z.object({
   // Basic info
   name: nameSchema,
@@ -212,9 +199,12 @@ export const createUserFormSchema = z.object({
   position: z.string().optional(),
   status: userStatusSchema.default("active"),
   bio: z.string().max(1000).optional(),
+  
+  // Address (nested structure)
+  address: addressSchema.optional(),
 })
 
-// Update user form schema (flat structure with all possible fields)
+// Update user form schema (with nested structures for frontend forms)
 export const updateUserFormSchema = z.object({
   // Basic info
   name: nameSchema.optional(),
@@ -226,80 +216,21 @@ export const updateUserFormSchema = z.object({
   status: userStatusSchema.optional(),
   bio: z.string().max(1000).optional(),
 
-  // Address fields (flat for forms)
-  street: z.string().max(200).optional(),
-  city: z.string().max(100).optional(),
-  state: z.string().max(100).optional(),
-  country: z.string().max(100).optional(),
-  zipCode: z.string().max(20).optional(),
+  // Address (nested structure)
+  address: addressSchema.optional(),
 
-  // Emergency contact (flat for forms)
-  emergencyName: z.string().max(100).optional(),
-  emergencyPhone: z.string().optional(),
-  emergencyRelationship: z.string().max(50).optional(),
+  // Emergency contact (nested structure)
+  emergencyContact: emergencyContactSchema.optional(),
 
-  // Preferences (flat for forms)
-  theme: themeSchema.optional(),
-  language: z.string().optional(),
-  timezone: z.string().optional(),
-  emailNotifications: z.boolean().optional(),
-  smsNotifications: z.boolean().optional(),
-  pushNotifications: z.boolean().optional(),
+  // Preferences (nested structure)
+  preferences: z.object({
+    theme: themeSchema.optional(),
+    language: z.string().optional(),
+    timezone: z.string().optional(),
+  }).optional(),
 }).transform((data) => {
-  // Transform flat form data to nested API structure
+  // Transform form data to API structure
   const transformed: any = { ...data }
-
-  // Handle address transformation
-  if (data.street || data.city || data.state || data.country || data.zipCode) {
-    transformed.address = {
-      street: data.street,
-      city: data.city,
-      state: data.state,
-      country: data.country,
-      zipCode: data.zipCode,
-    }
-    // Remove flat fields
-    delete transformed.street
-    delete transformed.city
-    delete transformed.state
-    delete transformed.country
-    delete transformed.zipCode
-  }
-
-  // Handle emergency contact transformation
-  if (data.emergencyName || data.emergencyPhone || data.emergencyRelationship) {
-    transformed.emergencyContact = {
-      name: data.emergencyName,
-      phone: data.emergencyPhone,
-      relationship: data.emergencyRelationship,
-    }
-    delete transformed.emergencyName
-    delete transformed.emergencyPhone
-    delete transformed.emergencyRelationship
-  }
-
-  // Handle preferences transformation
-  if (data.theme || data.language || data.timezone ||
-    data.emailNotifications !== undefined ||
-    data.smsNotifications !== undefined ||
-    data.pushNotifications !== undefined) {
-    transformed.preferences = {
-      theme: data.theme,
-      language: data.language,
-      timezone: data.timezone,
-      notifications: {
-        email: data.emailNotifications,
-        sms: data.smsNotifications,
-        push: data.pushNotifications,
-      },
-    }
-    delete transformed.theme
-    delete transformed.language
-    delete transformed.timezone
-    delete transformed.emailNotifications
-    delete transformed.smsNotifications
-    delete transformed.pushNotifications
-  }
 
   // Handle bio to metadata transformation
   if (data.bio) {
@@ -384,7 +315,6 @@ export {
   themeSchema,
   addressSchema,
   socialLinksSchema,
-  preferencesSchema,
   emergencyContactSchema,
   metadataSchema,
 }
@@ -416,40 +346,41 @@ export const transformFormToApi = (formData: any) => {
 
 // Transform backend API data to frontend form format
 export const transformApiToForm = (apiData: any) => {
-  const flattened: any = { ...apiData }
+  const transformed: any = { ...apiData }
 
-  // Flatten address
+  // Keep address nested
   if (apiData.address) {
-    flattened.street = apiData.address.street
-    flattened.city = apiData.address.city
-    flattened.state = apiData.address.state
-    flattened.country = apiData.address.country
-    flattened.zipCode = apiData.address.zipCode
+    transformed.address = {
+      street: apiData.address.street || "",
+      city: apiData.address.city || "",
+      state: apiData.address.state || "",
+      country: apiData.address.country || "",
+      zipCode: apiData.address.zipCode || "",
+    }
   }
 
-  // Flatten emergency contact
+  // Keep emergency contact nested
   if (apiData.emergencyContact) {
-    flattened.emergencyName = apiData.emergencyContact.name
-    flattened.emergencyPhone = apiData.emergencyContact.phone
-    flattened.emergencyRelationship = apiData.emergencyContact.relationship
+    transformed.emergencyContact = {
+      name: apiData.emergencyContact.name || "",
+      phone: apiData.emergencyContact.phone || "",
+      relationship: apiData.emergencyContact.relationship || "",
+    }
   }
 
-  // Flatten preferences
+  // Keep preferences nested
   if (apiData.preferences) {
-    flattened.theme = apiData.preferences.theme
-    flattened.language = apiData.preferences.language
-    flattened.timezone = apiData.preferences.timezone
-    if (apiData.preferences.notifications) {
-      flattened.emailNotifications = apiData.preferences.notifications.email
-      flattened.smsNotifications = apiData.preferences.notifications.sms
-      flattened.pushNotifications = apiData.preferences.notifications.push
+    transformed.preferences = {
+      theme: apiData.preferences.theme || "system",
+      language: apiData.preferences.language || "en",
+      timezone: apiData.preferences.timezone || "UTC",
     }
   }
 
   // Handle bio from metadata
   if (apiData.metadata?.notes) {
-    flattened.bio = apiData.metadata.notes
+    transformed.bio = apiData.metadata.notes
   }
 
-  return flattened
+  return transformed
 }

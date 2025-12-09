@@ -4,17 +4,19 @@ import User from "@/models/User"
 import mongoose from "mongoose"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
+
 
 const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 // Helper to create consistent error responses
-function createErrorResponse(message: string, status: number, details?: any) {
-  return NextResponse.json({
-    success: false,
-    error: message,
-    ...(details && { details })
-  }, { status })
-}
+// function createErrorResponse(message: string, status: number, details?: any) {
+//   return NextResponse.json({
+//     success: false,
+//     error: message,
+//     ...(details && { details })
+//   }, { status })
+// }
 
 // GET /api/users/[id] - Get single user by ID
 export async function GET(
@@ -79,6 +81,10 @@ export async function PUT(
 
     // Basic validation
     const allowedFields = ['name', 'email', 'role', 'phone', 'department', 'position', 'status'];
+    // Allow isDeleted field only when restoring (setting to false)
+    if (body.isDeleted === false) {
+      allowedFields.push('isDeleted');
+    }
     const updateData: any = {};
 
     for (const field of allowedFields) {
@@ -115,6 +121,11 @@ export async function PUT(
 
     if (!existingUser) {
       return createErrorResponse('User not found or has been deleted', 404)
+    }
+
+    // Check if user is deleted
+    if (!isSuperAdmin && (existingUser.status === 'deleted' || existingUser.isDeleted === true)) {
+      throw new Error('Cannot update Deleted entity')
     }
 
     const currentUserRole = currentUser.role as any
@@ -160,6 +171,11 @@ export async function PUT(
 
   } catch (error: any) {
     console.error('Error in PUT /api/users/[id]:', error)
+
+    if (error.message === 'Cannot update Deleted entity') {
+      return createErrorResponse(error.message, 400)
+    }
+
     return createErrorResponse('Internal server error', 500)
   }
 }
@@ -226,6 +242,7 @@ export async function DELETE(
 
     // Perform soft delete using the generic utility
     const deleteResult = await performSoftDelete('user', id, userEmail)
+    console.log('Soft delete result: 229', deleteResult)
 
     if (!deleteResult.success) {
       return createErrorResponse(deleteResult.message, 400)

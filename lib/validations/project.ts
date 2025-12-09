@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const PROJECT_CONSTANTS = {
   NAME: { MIN_LENGTH: 2, MAX_LENGTH: 200 },
   DESCRIPTION: { MAX_LENGTH: 1000 },
-  REQUIREMENTS: { MAX_LENGTH: 2000 },
+  REQUIREMENTS: { MAX_LENGTH: 200 },
   TIMELINE: { MAX_LENGTH: 500 },
   PROJECT_TYPE: { MAX_LENGTH: 100 },
   STATUS: { 
@@ -23,27 +23,6 @@ export const PROJECT_CONSTANTS = {
     MAINTENANCE: { MIN: 0 },
     CONTINGENCY: { MIN: 0 },
   },
-  STAKEHOLDERS: {
-    ROLE: { MAX_LENGTH: 100 },
-    RESPONSIBILITY: { MAX_LENGTH: 200 },
-  },
-  MILESTONES: {
-    TITLE: { MAX_LENGTH: 200 },
-    DESCRIPTION: { MAX_LENGTH: 500 },
-    DELIVERABLE: { MAX_LENGTH: 200 },
-  },
-  PHASES: {
-    NAME: { MAX_LENGTH: 100 },
-    DESCRIPTION: { MAX_LENGTH: 500 },
-    STATUS: { VALUES: ['pending', 'in_progress', 'completed'] as const },
-    DELIVERABLE: { MAX_LENGTH: 200 },
-  },
-  DELIVERABLES: {
-    NAME: { MAX_LENGTH: 200 },
-    DESCRIPTION: { MAX_LENGTH: 500 },
-    ACCEPTANCE_CRITERIA: { MAX_LENGTH: 300 },
-    STATUS: { VALUES: ['pending', 'in_progress', 'completed', 'delivered'] as const },
-  },
   RISKS: {
     DESCRIPTION: { MAX_LENGTH: 500 },
     MITIGATION: { MAX_LENGTH: 500 },
@@ -53,13 +32,11 @@ export const PROJECT_CONSTANTS = {
   },
   PROGRESS: {
     OVERALL: { MIN: 0, MAX: 100 },
-    PHASE_PROGRESS: { MIN: 0, MAX: 100 },
     NOTES: { MAX_LENGTH: 1000 },
   },
   RESOURCES: {
     ESTIMATED_HOURS: { MIN: 0 },
     ACTUAL_HOURS: { MIN: 0 },
-    TEAM_SIZE: { MIN: 1 },
     TOOL: { MAX_LENGTH: 100 },
     EXTERNAL_RESOURCE: { MAX_LENGTH: 200 },
   },
@@ -87,7 +64,7 @@ export const baseProjectSchema = z.object({
     .refine(name => name.length > 0, 'Project name is required'),
 
   description: z.string()
-    .max(PROJECT_CONSTANTS.DESCRIPTION.MAX_LENGTH, 'Description too long')
+    .max(PROJECT_CONSTANTS.DESCRIPTION.MAX_LENGTH, 'Description too long. Max 1000 words allowed.')
     .nullable()
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
@@ -127,11 +104,13 @@ export const baseProjectSchema = z.object({
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
-  requirements: z.string()
-    .max(PROJECT_CONSTANTS.REQUIREMENTS.MAX_LENGTH, 'Requirements too long')
-    .nullable()
+  requirements: z.array(
+    z.string()
+      .max(PROJECT_CONSTANTS.REQUIREMENTS.MAX_LENGTH, 'Requirement too long')
+      .transform(val => val.trim())
+  )
     .optional()
-    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    .default([]),
 
   timeline: z.string()
     .max(PROJECT_CONSTANTS.TIMELINE.MAX_LENGTH, 'Timeline too long')
@@ -149,44 +128,6 @@ export const baseProjectSchema = z.object({
     contingency: z.number().min(PROJECT_CONSTANTS.BUDGET_BREAKDOWN.CONTINGENCY.MIN).optional(),
   }).optional(),
 
-  stakeholders: z.object({
-    projectManager: objectIdSchema.optional(),
-    teamMembers: z.array(objectIdSchema).optional().default([]),
-    clientContacts: z.array(objectIdSchema).optional().default([]),
-    roles: z.array(z.object({
-      userId: objectIdSchema,
-      role: z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.ROLE.MAX_LENGTH).transform(val => val.trim()),
-      responsibilities: z.array(z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.RESPONSIBILITY.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
-    })).optional().default([]),
-  }).optional(),
-
-  milestones: z.array(z.object({
-    title: z.string().min(1).max(PROJECT_CONSTANTS.MILESTONES.TITLE.MAX_LENGTH).transform(val => val.trim()),
-    description: z.string().max(PROJECT_CONSTANTS.MILESTONES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
-    dueDate: z.date().optional(),
-    completed: z.boolean().default(false),
-    completedAt: z.date().optional(),
-    deliverables: z.array(z.string().max(PROJECT_CONSTANTS.MILESTONES.DELIVERABLE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
-  })).optional().default([]),
-
-  phases: z.array(z.object({
-    name: z.string().min(1).max(PROJECT_CONSTANTS.PHASES.NAME.MAX_LENGTH).transform(val => val.trim()),
-    description: z.string().max(PROJECT_CONSTANTS.PHASES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    status: z.enum(PROJECT_CONSTANTS.PHASES.STATUS.VALUES).default('pending'),
-    deliverables: z.array(z.string().max(PROJECT_CONSTANTS.PHASES.DELIVERABLE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
-  })).optional().default([]),
-
-  deliverables: z.array(z.object({
-    name: z.string().min(1).max(PROJECT_CONSTANTS.DELIVERABLES.NAME.MAX_LENGTH).transform(val => val.trim()),
-    description: z.string().max(PROJECT_CONSTANTS.DELIVERABLES.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()).optional(),
-    dueDate: z.date().optional(),
-    status: z.enum(PROJECT_CONSTANTS.DELIVERABLES.STATUS.VALUES).default('pending'),
-    assignedTo: objectIdSchema.optional(),
-    acceptanceCriteria: z.array(z.string().max(PROJECT_CONSTANTS.DELIVERABLES.ACCEPTANCE_CRITERIA.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
-  })).optional().default([]),
-
   risks: z.array(z.object({
     description: z.string().min(1).max(PROJECT_CONSTANTS.RISKS.DESCRIPTION.MAX_LENGTH).transform(val => val.trim()),
     impact: z.enum(PROJECT_CONSTANTS.RISKS.IMPACT.VALUES).default('medium'),
@@ -197,10 +138,6 @@ export const baseProjectSchema = z.object({
 
   progress: z.object({
     overall: z.number().min(PROJECT_CONSTANTS.PROGRESS.OVERALL.MIN).max(PROJECT_CONSTANTS.PROGRESS.OVERALL.MAX),
-    phases: z.array(z.object({
-      phaseId: z.string().min(1),
-      progress: z.number().min(PROJECT_CONSTANTS.PROGRESS.PHASE_PROGRESS.MIN).max(PROJECT_CONSTANTS.PROGRESS.PHASE_PROGRESS.MAX),
-    })).optional().default([]),
     lastUpdated: z.date().optional(),
     notes: z.string().max(PROJECT_CONSTANTS.PROGRESS.NOTES.MAX_LENGTH).transform(val => val.trim()).optional(),
   }).optional(),
@@ -208,7 +145,6 @@ export const baseProjectSchema = z.object({
   resources: z.object({
     estimatedHours: z.number().min(PROJECT_CONSTANTS.RESOURCES.ESTIMATED_HOURS.MIN).optional(),
     actualHours: z.number().min(PROJECT_CONSTANTS.RESOURCES.ACTUAL_HOURS.MIN).optional(),
-    teamSize: z.number().min(PROJECT_CONSTANTS.RESOURCES.TEAM_SIZE.MIN).optional(),
     tools: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.TOOL.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
     externalResources: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.EXTERNAL_RESOURCE.MAX_LENGTH).transform(val => val.trim())).optional().default([]),
   }).optional(),
@@ -236,7 +172,7 @@ export const baseProjectFormSchema = z.object({
     .transform(val => val.trim()),
 
   description: z.string()
-    .max(PROJECT_CONSTANTS.DESCRIPTION.MAX_LENGTH, 'Description too long')
+    .max(PROJECT_CONSTANTS.DESCRIPTION.MAX_LENGTH, 'Description too long. Max 1000 words allowed.')
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
@@ -254,9 +190,14 @@ export const baseProjectFormSchema = z.object({
   priority: z.enum(PROJECT_CONSTANTS.PRIORITY.VALUES)
     .default(PROJECT_CONSTANTS.PRIORITY.DEFAULT),
 
-  budget: z.string()
+  budget: z.union([z.string(), z.number()])
     .optional()
-    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    .transform(val => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? undefined : num;
+    })
+    .refine(val => val === undefined || val >= 0, 'Budget must be positive'),
 
   startDate: z.string()
     .optional()
@@ -272,86 +213,92 @@ export const baseProjectFormSchema = z.object({
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
-  requirements: z.string()
-    .max(PROJECT_CONSTANTS.REQUIREMENTS.MAX_LENGTH, 'Requirements too long')
+  requirements: z.array(
+    z.string()
+      .max(PROJECT_CONSTANTS.REQUIREMENTS.MAX_LENGTH, 'Requirement too long')
+      .transform(val => val.trim())
+  )
     .optional()
-    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    .default([]),
 
   timeline: z.string()
     .max(PROJECT_CONSTANTS.TIMELINE.MAX_LENGTH, 'Timeline too long')
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
-  // Enhanced professional CRM fields (form versions with string inputs)
+  // Enhanced
   budgetBreakdown: z.object({
-    development: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    design: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    testing: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    deployment: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    maintenance: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    contingency: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    development: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    design: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    testing: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    deployment: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    maintenance: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    contingency: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
   }).optional(),
 
-  stakeholders: z.object({
-    projectManager: objectIdSchema.optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    teamMembers: z.array(objectIdSchema).optional().default([]),
-    clientContacts: z.array(objectIdSchema).optional().default([]),
-    roles: z.array(z.object({
-      userId: objectIdSchema,
-      role: z.string().min(1).max(PROJECT_CONSTANTS.STAKEHOLDERS.ROLE.MAX_LENGTH),
-      responsibilities: z.array(z.string().max(PROJECT_CONSTANTS.STAKEHOLDERS.RESPONSIBILITY.MAX_LENGTH)).optional().default([]),
-    })).optional().default([]),
-  }).optional(),
-
-  milestones: z.array(z.object({
-    title: z.string().min(1).max(PROJECT_CONSTANTS.MILESTONES.TITLE.MAX_LENGTH),
-    description: z.string().max(PROJECT_CONSTANTS.MILESTONES.DESCRIPTION.MAX_LENGTH).optional(),
-    dueDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    status: z.enum(['pending', 'in-progress', 'completed', 'delayed'] as const).default('pending'),
-  })).optional().default([]),
-
-  phases: z.array(z.object({
-    name: z.string().min(1).max(PROJECT_CONSTANTS.PHASES.NAME.MAX_LENGTH),
-    description: z.string().max(PROJECT_CONSTANTS.PHASES.DESCRIPTION.MAX_LENGTH).optional(),
-    startDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    endDate: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    status: z.enum(['not-started', 'in-progress', 'completed', 'on-hold'] as const).default('not-started'),
-  })).optional().default([]),
-
-  deliverables: z.string()
-    .optional()
-    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
   risks: z.array(z.object({
     description: z.string().min(1).max(PROJECT_CONSTANTS.RISKS.DESCRIPTION.MAX_LENGTH),
     impact: z.enum(PROJECT_CONSTANTS.RISKS.IMPACT.VALUES).default('medium'),
     probability: z.enum(PROJECT_CONSTANTS.RISKS.PROBABILITY.VALUES).default('medium'),
     mitigation: z.string().max(PROJECT_CONSTANTS.RISKS.MITIGATION.MAX_LENGTH).optional(),
+    status: z.enum(PROJECT_CONSTANTS.RISKS.STATUS.VALUES).default('identified'),
   })).optional().default([]),
 
-  progress: z.object({
-    overallProgress: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    completedTasks: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    totalTasks: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    lastUpdated: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    nextMilestone: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    blockers: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-  }).optional(),
 
   resources: z.object({
-    estimatedHours: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    actualHours: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    teamSize: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    estimatedHours: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
+    actualHours: z.union([z.string(), z.number()])
+      .optional()
+      .transform(val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(num) ? undefined : num;
+      }),
     tools: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.TOOL.MAX_LENGTH)).optional().default([]),
     externalResources: z.array(z.string().max(PROJECT_CONSTANTS.RESOURCES.EXTERNAL_RESOURCE.MAX_LENGTH)).optional().default([]),
-  }).optional(),
-
-  qualityMetrics: z.object({
-    requirementsCoverage: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    defectDensity: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    customerSatisfaction: z.string().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
-    onTimeDelivery: z.boolean().default(false),
-    withinBudget: z.boolean().default(false),
   }).optional(),
 })
 
@@ -384,7 +331,9 @@ export const updateProjectSchema = baseProjectSchema
 export const createProjectFormSchema = baseProjectFormSchema.strict()
 
 export const updateProjectFormSchema = baseProjectFormSchema
-  .omit({ milestones: true, phases: true, risks: true, deliverables: true }) // Remove milestones, phases, risks, and deliverables - handled in dedicated tabs
+  .extend({
+    id: z.string().optional(),
+  })
   .partial()
   .strict()
   .refine(data => {
@@ -395,12 +344,20 @@ export const updateProjectFormSchema = baseProjectFormSchema
       
       // For objects, check if they have any meaningful content
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        return Object.values(value).some(v => v !== undefined && v !== null && v !== '');
+        return Object.values(value).some(v => {
+          if (typeof v === 'string') {
+            return v !== '';
+          }
+          if (Array.isArray(v)) {
+            return v.length > 0;
+          }
+          return v !== undefined && v !== null;
+        });
       }
       
-      // For arrays, check if not empty
+      // For arrays, allow empty arrays as valid updates (user might want to clear all items)
       if (Array.isArray(value)) {
-        return value.length > 0;
+        return true; // Empty arrays are valid updates
       }
       
       return true;
@@ -445,7 +402,7 @@ export const projectPrefillSchema = z.object({
   // Auto-filled from lead project info
   name: z.string().optional(),
   projectType: z.string().optional(),
-  requirements: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
   timeline: z.string().optional(),
   budget: z.number().optional(),
 })
@@ -483,7 +440,7 @@ export type Project = {
   startDate?: string
   endDate?: string
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
   createdBy: string
   approvedBy?: string

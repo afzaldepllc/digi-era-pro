@@ -175,7 +175,10 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching leads:', error)
-
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
     if (error.name === 'ZodError') {
       return NextResponse.json({
         success: false,
@@ -219,13 +222,22 @@ export async function POST(request: NextRequest) {
 
     // Create lead with automatic connection management
     const lead = await executeGenericDbQuery(async () => {
-      // Check for duplicate email
+      // Check for duplicate email in Lead collection
       const existingLead = await Lead.findOne({
         email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') }
       })
 
       if (existingLead) {
-        throw new Error('A lead with this email already exists')
+        throw new Error('A client or employee with this email already exists')
+      }
+
+      // Also prevent creating a lead using an email that belongs to a registered User
+      const existingUser = await User.findOne({
+        email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') }
+      })
+
+      if (existingUser) {
+        throw new Error('A user with this email already exists')
       }
 
       // Create new lead

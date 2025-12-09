@@ -254,7 +254,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'delete')
 
-    const validatedParams = taskIdSchema.parse({ id: (params as any).id })
+    // Resolve params and validate
+    const resolvedParams = await params
+    const validatedParams = taskIdSchema.parse({ id: resolvedParams.id })
 
     // Cancel task with automatic connection management
     const cancelledTask = await executeGenericDbQuery(async () => {

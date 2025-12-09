@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
-    const userHierarchyLevel = user.role?.hierarchyLevel || 0
-    if (!isSuperAdmin && userHierarchyLevel < 9) {
+    // const userHierarchyLevel = user.role?.hierarchyLevel || 0
+    if (!isSuperAdmin) {
       console.log('Theme management access denied:', {
         userEmail,
-        userHierarchyLevel,
+        // userHierarchyLevel,
         isSuperAdmin,
         roleName: user.role?.name
       })
@@ -94,11 +94,11 @@ export async function PUT(request: NextRequest) {
     )
 
     // Check if user is admin or super admin (hierarchy level >= 9)
-    const userHierarchyLevel = user.role?.hierarchyLevel || 0
-    if (!isSuperAdmin && userHierarchyLevel < 9) {
+    // const userHierarchyLevel = user.role?.hierarchyLevel || 0
+    if (!isSuperAdmin) {
       console.log('Theme update denied:', {
         userEmail,
-        userHierarchyLevel,
+        // userHierarchyLevel,
         isSuperAdmin,
         roleName: user.role?.name
       })

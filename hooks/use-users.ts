@@ -166,6 +166,16 @@ export function useUsers() {
     return await deleteMutation.mutateAsync(userId)
   }, [deleteMutation])
 
+  const restoreUserData = useCallback(async (userId: string) => {
+    return await updateMutation.mutateAsync({
+      id: userId,
+      data: {
+        isDeleted: false,
+        status: 'active'
+      }
+    })
+  }, [updateMutation])
+
   const fetchUserByIdData = useCallback(async (userId: string) => {
     // Set the user ID to fetch
     setUserIdToFetch(userId)
@@ -258,6 +268,7 @@ export function useUsers() {
     createUser: createUserData,
     updateUser: updateUserData,
     deleteUser: deleteUserData,
+    restoreUser: restoreUserData,
 
     // Filters and pagination
     setFilters: setFiltersData,

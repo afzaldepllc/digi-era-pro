@@ -26,6 +26,9 @@ export interface IMilestone extends Document {
   updatedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  
+  // Instance methods
+  calculateProgressFromTasks(): Promise<number>;
 }
 
 // Static methods interface
@@ -34,6 +37,7 @@ export interface MilestoneModel extends mongoose.Model<IMilestone> {
   findByPhase(phaseId: string): Promise<IMilestone[]>;
   calculateProjectProgress(projectId: string): Promise<number>;
   findOverdue(): Promise<IMilestone[]>;
+  updateProjectMilestoneProgress(projectId: string): Promise<Array<{ milestoneId: string, progress: number }>>;
 }
 
 const MilestoneSchema = new Schema<IMilestone>({
@@ -218,6 +222,65 @@ MilestoneSchema.statics.findOverdue = function () {
   })
     .populate('projectId', 'name')
     .populate('assigneeId', 'name email');
+};
+
+// Calculate milestone progress based on linked tasks
+MilestoneSchema.methods.calculateProgressFromTasks = async function () {
+  const Task = mongoose.model('Task');
+  
+  // Get all tasks linked to this milestone
+  const linkedTasks = await Task.find({
+    milestoneId: this._id,
+    status: { $nin: ['cancelled', 'deleted'] }
+  }).select('status').lean();
+
+  if (linkedTasks.length === 0) {
+    // If no tasks are linked, keep manual progress
+    return this.progress;
+  }
+
+  // Calculate automatic progress based on completed tasks
+  const completedTasks = linkedTasks.filter(task => task.status === 'completed').length;
+  const automaticProgress = Math.round((completedTasks / linkedTasks.length) * 100);
+
+  // Update progress and status
+  this.progress = automaticProgress;
+  
+  // Auto-update status based on progress
+  if (automaticProgress === 100) {
+    this.status = 'completed';
+    if (!this.completedDate) {
+      this.completedDate = new Date();
+    }
+  } else if (automaticProgress > 0) {
+    this.status = 'in-progress';
+  } else {
+    this.status = 'pending';
+  }
+
+  // Check if overdue
+  if (this.dueDate < new Date() && this.status !== 'completed') {
+    this.status = 'overdue';
+  }
+
+  await this.save();
+  return automaticProgress;
+};
+
+// Static method to update all milestone progress for a project
+MilestoneSchema.statics.updateProjectMilestoneProgress = async function (projectId: string) {
+  const milestones = await this.find({
+    projectId,
+    isDeleted: false
+  });
+
+  const results = [];
+  for (const milestone of milestones) {
+    const progress = await milestone.calculateProgressFromTasks();
+    results.push({ milestoneId: milestone._id, progress });
+  }
+
+  return results;
 };
 
 // Ensure virtual fields are serialized

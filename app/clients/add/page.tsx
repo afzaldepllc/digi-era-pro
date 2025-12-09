@@ -12,11 +12,13 @@ import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { CreateClientFormData, createClientFormSchema, CreateClientData } from '@/lib/validations/client';
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function AddClientPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { createClient, actionLoading } = useClients();
+  const { navigateTo } = useNavigation()
 
   const form = useForm<CreateClientFormData>({
     resolver: zodResolver(createClientFormSchema),
@@ -38,8 +40,6 @@ export default function AddClientPage() {
       clientStatus: "qualified",
       status: "qualified",
 
-      // Project Interests
-      projectInterests: "",
 
       // Address Information
       address: {
@@ -62,11 +62,6 @@ export default function AddClientPage() {
         theme: "system",
         language: "en",
         timezone: "UTC",
-        notifications: {
-          email: true,
-          push: false,
-          sms: false,
-        },
       },
 
       // Notes
@@ -89,8 +84,6 @@ export default function AddClientPage() {
         status: data.status || 'qualified',
         clientStatus: data.clientStatus,
 
-        // Project interests - split comma-separated string
-        projectInterests: data.projectInterests?.split(',').map(interest => interest.trim()).filter(interest => interest.length > 0) || [],
 
         // Address
         address: data.address ? {
@@ -125,7 +118,7 @@ export default function AddClientPage() {
         description: "Client created successfully",
       });
 
-      router.push("/clients");
+      navigateTo("/clients");
     } catch (error: any) {
       console.error('Create client error:', error)
 
@@ -170,7 +163,7 @@ export default function AddClientPage() {
           placeholder: "Enter client name",
           description: "Full name of the client",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
         },
         {
           name: "email",
@@ -180,7 +173,7 @@ export default function AddClientPage() {
           placeholder: "client@company.com",
           description: "Primary email address for communication",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
         },
         {
           name: "phone",
@@ -189,7 +182,7 @@ export default function AddClientPage() {
           placeholder: "+1 (555) 123-4567",
           description: "Phone number with country code",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
         },
         {
           name: "position",
@@ -198,7 +191,37 @@ export default function AddClientPage() {
           placeholder: "CEO, CTO, Manager, etc.",
           description: "Client's job title or position",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
+        },
+        {
+          name: "clientStatus",
+          label: "Client Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "qualified", label: "Qualified" },
+            { value: "unqualified", label: "Unqualified" },
+          ],
+          description: "Client qualification status",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "status",
+          label: "Account Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+            { value: "qualified", label: "Qualified" },
+            { value: "unqualified", label: "Unqualified" },
+          ],
+          description: "Account status",
+          cols: 12,
+          mdCols: 4,
         },
       ]
     },
@@ -259,59 +282,6 @@ export default function AddClientPage() {
           description: "Number of employees in the company",
           cols: 12,
           mdCols: 4,
-        },
-      ]
-    },
-    {
-      subform_title: "Client Status",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "clientStatus",
-          label: "Client Status",
-          type: "select" as const,
-          searchable: true,
-          required: true,
-          options: [
-            { value: "qualified", label: "Qualified" },
-            { value: "unqualified", label: "Unqualified" },
-          ],
-          description: "Client qualification status",
-          cols: 12,
-          mdCols: 6,
-        },
-        {
-          name: "status",
-          label: "Account Status",
-          type: "select" as const,
-          searchable: true,
-          required: true,
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-            { value: "qualified", label: "Qualified" },
-            { value: "unqualified", label: "Unqualified" },
-          ],
-          description: "Account status",
-          cols: 12,
-          mdCols: 6,
-        },
-      ]
-    },
-    {
-      subform_title: "Project Interests",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "projectInterests",
-          label: "Project Interests",
-          type: "textarea" as const,
-          placeholder: "Web Development, Mobile Apps, Consulting, etc.",
-          description: "Comma-separated list of project types the client is interested in",
-          cols: 12,
-          rows: 3,
         },
       ]
     },
@@ -448,7 +418,7 @@ export default function AddClientPage() {
         {
           name: "notes",
           label: "Notes",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Add any additional notes about this client...",
           description: "Internal notes about the client",
           cols: 12,

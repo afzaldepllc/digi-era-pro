@@ -84,7 +84,10 @@ export const baseDepartmentSchema = z.object({
 export const createDepartmentSchema = baseDepartmentSchema.strict()
 
 // Update department schema - all fields optional for PATCH operations
-export const updateDepartmentSchema = baseDepartmentSchema.partial().strict().refine(
+export const updateDepartmentSchema = baseDepartmentSchema.partial().extend({
+  // Allow isDeleted field only when restoring (setting to false)
+  isDeleted: z.literal(false).optional(),
+}).strict().refine(
   (data) => {
     // Ensure at least one field is provided for update
     const hasValidField = Object.values(data).some(value =>

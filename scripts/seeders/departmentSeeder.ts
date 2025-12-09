@@ -172,4 +172,17 @@ async function seedDepartments() {
   }
 }
 
+// Run directly if called as script
+if (require.main === module) {
+  seedDepartments()
+    .then(() => {
+      console.log('Department seeding completed!')
+      process.exit(0)
+    })
+    .catch((error) => {
+      console.error('Department seeding failed:', error)
+      process.exit(1)
+    })
+}
+
 export default seedDepartments

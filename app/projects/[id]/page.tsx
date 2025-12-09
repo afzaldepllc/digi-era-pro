@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Edit, Settings, Share2, MoreVertical, Clock, DollarSign, Users, Target, Archive, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, Settings, Share2, MoreVertical, Clock, DollarSign, Users, Target, Archive, Trash2, Plus, Building2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,67 +22,106 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 
 // Import our new components
-import { MilestonesSection } from "@/components/projects/MilestonesSection";
-import { PhasesTimeline } from "@/components/projects/PhasesTimeline";
 import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
 import { ProjectCategorization } from "@/components/projects/ProjectCategorization";
 import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
+import { useNavigation } from "@/components/providers/navigation-provider";
+import { Project } from "@/types";
+import HtmlTextRenderer from "@/components/ui/html-text-renderer";
 
-interface ProjectDetails {
+interface Risk {
+  description: string;
+  impact: 'low' | 'medium' | 'high' | 'critical';
+  probability: 'low' | 'medium' | 'high';
+  mitigation?: string;
+  status?: 'identified' | 'mitigated' | 'occurred';
+}
+
+interface Department {
   _id: string;
   name: string;
-  description: string;
-  status: 'draft' | 'active' | 'on-hold' | 'completed' | 'cancelled';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  startDate: string;
-  endDate: string;
-  budget: number;
-  actualCost: number;
-  progress: number;
-  clientId: string;
-  client: {
-    _id: string;
-    name: string;
-    email: string;
-    company?: string;
-  };
-  projectManagerId: string;
-  projectManager: {
-    _id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-  };
-  teamMemberIds: string[];
-  teamMembers: Array<{
-    _id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-    role?: string;
-  }>;
-  departmentId: string;
-  department: {
-    _id: string;
-    name: string;
-    color?: string;
-  };
-  tags: string[];
-  deliverables: string[];
-  objectives: string[];
-  risks: string[];
-  createdAt: string;
-  updatedAt: string;
+  status?: string;
+  description?: string;
 }
+
+interface TeamMember {
+  _id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role?: string;
+  department?: Department;
+}
+
+interface DepartmentTeamMember {
+  departmentId: string | null;
+  departmentName: string;
+  teamMembers: TeamMember[];
+}
+
+
+// Enhanced interfaces for better type safety
+interface ExtendedClient {
+  _id: string
+  name: string
+  email: string
+  company?: string
+  phone?: string
+  status?: string
+  avatar?: string
+}
+
+interface ExtendedTeamMember {
+  _id: string
+  name: string
+  email: string
+  avatar?: string
+  role?: string
+  department?: {
+    _id: string
+    name: string
+    status?: string
+    description?: string
+  }
+}
+
+interface ExtendedDepartmentTask {
+  departmentId: string
+  departmentName: string
+  taskCount: number
+  subTaskCount: number
+  tasks: Array<{
+    _id: string
+    title: string
+    status: string
+    assigneeId?: string
+    assignee?: ExtendedTeamMember | null
+    dueDate?: string
+  }>
+}
+
+interface ExtendedProject extends Omit<Project,'client' | 'creator' | 'departmentTasks'> {
+  client?: ExtendedClient;
+  creator?: {
+    _id: string
+    name: string
+    email: string
+    avatar?: string
+  }
+  departmentTasks?: ExtendedDepartmentTask[];
+}
+
+// Using Project type from @/types
 
 export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
   const { canUpdate, canDelete } = usePermissions();
-
-  const [project, setProject] = useState<ProjectDetails | null>(null);
+  const { navigateTo, isNavigating } = useNavigation()
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ExtendedProject | null>(null);
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('project-details-active-tab') || 'overview';
@@ -90,84 +130,75 @@ export default function ProjectDetailsPage() {
   });
 
   const projectId = params?.id as string;
+  const project = selectedProject;
 
-  // Fetch project details
-  const fetchProject = async () => {
+  // Safe renderer for sections that might have data issues
+  const safeRender = (renderFn: () => React.ReactNode, fallback?: React.ReactNode) => {
+    try {
+      return renderFn();
+    } catch (error) {
+      console.error('Error rendering section:', error);
+      return fallback || (
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <p className="text-sm text-destructive">Error loading this section</p>
+        </div>
+      );
+    }
+  };
+
+  // Fetch project details with retry mechanism
+  const fetchProject = async (retryCount = 0) => {
+    if (!projectId) return;
+
+    const maxRetries = 3;
+
     try {
       setLoading(true);
+      setError(null);
 
-      // Mock data - in real app this would fetch from API
-      // const response = await fetch(`/api/projects/${projectId}`);
-      // const projectData = await response.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      // Mock project data
-      const mockProject: ProjectDetails = {
-        _id: projectId,
-        name: "CRM System Enhancement",
-        description: "Enhance the existing CRM system with advanced task management, milestone tracking, and analytics features to improve project delivery and client satisfaction.",
-        status: 'active',
-        priority: 'high',
-        startDate: '2025-01-01',
-        endDate: '2025-06-30',
-        budget: 120000,
-        actualCost: 78000,
-        progress: 65,
-        clientId: 'client1',
-        client: {
-          _id: 'client1',
-          name: 'TechCorp Solutions',
-          email: 'contact@techcorp.com',
-          company: 'TechCorp Inc.'
+      const response = await fetch(`/api/projects/${projectId}`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
         },
-        projectManagerId: 'pm1',
-        projectManager: {
-          _id: 'pm1',
-          name: 'Sarah Wilson',
-          email: 'sarah@example.com',
-          avatar: '/avatars/sarah.jpg'
-        },
-        teamMemberIds: ['user1', 'user2', 'user3', 'user4'],
-        teamMembers: [
-          { _id: 'user1', name: 'Mike Developer', email: 'mike@example.com', role: 'Frontend Developer' },
-          { _id: 'user2', name: 'Alex Johnson', email: 'alex@example.com', role: 'Backend Developer' },
-          { _id: 'user3', name: 'Emma Wilson', email: 'emma@example.com', role: 'UI/UX Designer' },
-          { _id: 'user4', name: 'David Chen', email: 'david@example.com', role: 'QA Engineer' },
-        ],
-        departmentId: 'dept1',
-        department: {
-          _id: 'dept1',
-          name: 'Development',
-          color: '#3b82f6'
-        },
-        tags: ['CRM', 'Enhancement', 'Task Management', 'Analytics'],
-        deliverables: [
-          'Enhanced Task Management System',
-          'Milestone Tracking Features',
-          'Advanced Analytics Dashboard',
-          'User Documentation',
-          'Training Materials'
-        ],
-        objectives: [
-          'Improve project tracking accuracy by 40%',
-          'Reduce project delivery time by 25%',
-          'Enhance client communication and satisfaction',
-          'Implement comprehensive analytics and reporting'
-        ],
-        risks: [
-          'Potential scope creep from client requirements',
-          'Third-party integration dependencies',
-          'Team member availability during peak season'
-        ],
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-15T12:30:00Z',
-      };
+      });
 
-      setProject(mockProject);
-    } catch (error) {
+      clearTimeout(timeoutId);
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP ${response.status}: Failed to fetch project details`);
+      }
+
+      if (result.success && result.data) {
+        setSelectedProject(result.data);
+      } else {
+        throw new Error(result.error || 'Project not found');
+      }
+    } catch (error: unknown) {
       console.error('Error fetching project:', error);
+
+      const errorObj = error as Error;
+
+      // Retry logic for network errors
+      if ((errorObj.name === 'AbortError' || errorObj.message?.includes('fetch')) && retryCount < maxRetries) {
+        console.log(`Retrying project fetch (${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => fetchProject(retryCount + 1), 1000 * (retryCount + 1)); // Exponential backoff
+        return;
+      }
+
+      const errorMessage = errorObj.name === 'AbortError'
+        ? 'Request timed out. Please try again.'
+        : errorObj.message || 'Failed to load project details';
+
+      setError(errorMessage);
       toast({
         title: "Error",
-        description: "Failed to load project details",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -207,12 +238,48 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  if (loading) {
+  // Remove global loading - each tab handles its own loading state
+  // if (loading) {
+  //   return (
+  //     <div className="space-y-6">
+  //       <div className="flex items-center justify-between">
+  //         <div className="space-y-2">
+  //           <Skeleton className="h-8 w-64" />
+  //           <Skeleton className="h-4 w-96" />
+  //         </div>
+  //         <div className="flex gap-2">
+  //           <Skeleton className="h-9 w-20" />
+  //           <Skeleton className="h-9 w-9" />
+  //         </div>
+  //       </div>
+  //       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  //         {[...Array(4)].map((_, i) => (
+  //           <Card key={i}>
+  //             <CardContent className="p-6">
+  //               <Skeleton className="h-16 w-full" />
+  //             </CardContent>
+  //           </Card>
+  //         ))}
+  //       </div>
+  //       <Skeleton className="h-96 w-full" />
+  //     </div>
+  //   );
+  // }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-          <p>Loading project details...</p>
+      <div className="text-center py-12">
+        <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+        <h2 className="text-lg font-semibold mb-2">Error Loading Project</h2>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <div className="flex gap-2 justify-center">
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Go Back
+          </Button>
+          <Button onClick={() => fetchProject()}>
+            Try Again
+          </Button>
         </div>
       </div>
     );
@@ -220,31 +287,44 @@ export default function ProjectDetailsPage() {
 
   if (!project) {
     return (
-      <div className="text-center py-8">
-        <p className="text-muted-foreground">Project not found</p>
-        <Button variant="outline" onClick={() => router.back()} className="mt-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Go Back
-        </Button>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-20" />
+            <Skeleton className="h-9 w-9" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-96 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <PageHeader
         title={project.name}
         subtitle={project.description}
+        fullScreenMode="fullscreen-hide-layout"
+        showAddButton={false}
         actions={
           <div className="flex items-center gap-2">
-            {/* <Button variant="outline" size="sm">
-              <Share2 className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm">
+              <Share2 className="h-4 w-4 mr-1" />
               Share
-            </Button> */}
-            <Button variant="outline" onClick={() => router.push('/projects')} size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Projects List
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -256,6 +336,14 @@ export default function ProjectDetailsPage() {
                 <DropdownMenuItem>
                   <Settings className="h-4 w-4" />
                   Project Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigateTo('/projects')}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Project List
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigateTo('/projects/add')}>
+                  <Plus className="h-4 w-4" />
+                  Add Project
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Archive className="h-4 w-4" />
@@ -269,342 +357,590 @@ export default function ProjectDetailsPage() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-
           </div>
         }
       />
 
-      {/* Project Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Progress</p>
-                <p className="text-2xl font-bold">{project.progress}%</p>
-              </div>
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Target className="h-5 w-5 text-primary" />
-              </div>
-            </div>
-            <Progress value={project.progress} className="mt-2" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Budget Usage</p>
-                <p className="text-2xl font-bold">{Math.round((project.actualCost / project.budget) * 100)}%</p>
-              </div>
-              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/20 rounded-lg">
-                <DollarSign className="h-5 w-5 text-emerald-600" />
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ${project.actualCost.toLocaleString()} / ${project.budget.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Team Size</p>
-                <p className="text-2xl font-bold">{project.teamMembers.length}</p>
-              </div>
-              <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
-                <Users className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Active members
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Time Remaining</p>
-                <p className="text-2xl font-bold">
-                  {Math.max(0, Math.ceil((new Date(project.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))}
-                </p>
-              </div>
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                <Clock className="h-5 w-5 text-purple-600" />
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Days left
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Project Details Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="edit">Edit</TabsTrigger>
           <TabsTrigger value="categorization">Categorize & Task Creation</TabsTrigger>
-          <TabsTrigger value="phases">Phases</TabsTrigger>
-          <TabsTrigger value="milestones">Milestones</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* Project Overview */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              {/* Project Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    Project Information
-                    <div className="flex gap-2 ml-auto">
-                      <Badge className={getStatusColor(project.status)}>
-                        {project.status.replace('-', ' ')}
-                      </Badge>
-                      <Badge className={getPriorityColor(project.priority)}>
-                        {project.priority} priority
-                      </Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-muted-foreground">Start Date</label>
-                      <p className="font-medium">{new Date(project.startDate).toLocaleDateString()}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">End Date</label>
-                      <p className="font-medium">{new Date(project.endDate).toLocaleDateString()}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Department</label>
-                      <p className="font-medium">{project.department.name}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Client</label>
-                      <p className="font-medium">{project.client.name}</p>
-                    </div>
-                  </div>
-
-                  {project.tags.length > 0 && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">Tags</label>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {project.tags.map((tag, index) => (
-                          <Badge key={index} variant="secondary">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Objectives */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Project Objectives</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {project.objectives.map((objective, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
-                        <span className="text-sm">{objective}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-
-              {/* Deliverables */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Key Deliverables</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {project.deliverables.map((deliverable, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
-                        <Target className="h-4 w-4 text-primary" />
-                        <span className="text-sm">{deliverable}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
+          {loading ? (
             <div className="space-y-6">
-              {/* Project Manager & Team */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Project Manager</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarImage src={project.projectManager.avatar} />
-                      <AvatarFallback>
-                        {project.projectManager.name.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{project.projectManager.name}</p>
-                      <p className="text-sm text-muted-foreground">{project.projectManager.email}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Team Members */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Team Members ({project.teamMembers.length})</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {project.teamMembers.map((member) => (
-                    <div key={member._id} className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={member.avatar} />
-                        <AvatarFallback className="text-xs">
-                          {member.name.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{member.name}</p>
-                        <p className="text-xs text-muted-foreground">{member.role}</p>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* Risks */}
-              {project.risks.length > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-64" />
+                  <Skeleton className="h-4 w-96" />
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-9 w-20" />
+                  <Skeleton className="h-9 w-9" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-6">
+                      <Skeleton className="h-16 w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Skeleton className="h-96 w-full" />
+            </div>
+          ) : (
+            <>
+              <div>
+                {/* Project Statistics */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Target className="h-4 w-4 text-amber-500" />
-                      Project Risks
+                      <Target className="h-5 w-5 text-indigo-600" />
+                      Project Statistics & Health
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ul className="space-y-2">
-                      {project.risks.map((risk, index) => (
-                        <li key={index} className="text-sm p-2 bg-amber-50 dark:bg-amber-900/10 rounded border-l-2 border-amber-400">
-                          {risk}
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+
+                        <div className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-muted-foreground">Progress</p>
+                            </div>
+                            <div>
+                              <p className="text-xl font-bold text-indigo-600">{project.progress?.overall ?? 0}%</p>
+                            </div>
+                          </div>
+                          <Progress value={project.progress?.overall ?? 0} className="mt-1" />
+                        </div>
+                        <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Total Tasks</p>
+                          <p className="text-xl font-bold text-blue-600">{project.departmentTasks?.reduce((total, dept) => total + dept.taskCount, 0) ?? 0}</p>
+                        </div>
+                        <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Departments</p>
+                          <p className="text-xl font-bold text-orange-600">
+                            {project.departmentTasks?.length || 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Project Health Indicators */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-full ${(project.progress?.overall || 0) >= 80 ? 'bg-green-100 text-green-600' :
+                            (project.progress?.overall || 0) >= 50 ? 'bg-yellow-100 text-yellow-600' :
+                              'bg-red-100 text-red-600'
+                            }`}>
+                            <Target className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Progress Health</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(project.progress?.overall || 0) >= 80 ? 'On Track' :
+                                (project.progress?.overall || 0) >= 50 ? 'At Risk' : 'Behind Schedule'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-full ${project.budget && project.actualCost ?
+                            (project.actualCost / project.budget) <= 0.8 ? 'bg-green-100 text-green-600' :
+                              (project.actualCost / project.budget) <= 1.0 ? 'bg-yellow-100 text-yellow-600' :
+                                'bg-red-100 text-red-600'
+                            : 'bg-gray-100 text-gray-600'
+                            }`}>
+                            <DollarSign className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Budget Health</p>
+                            <p className="text-xs text-muted-foreground">
+                              {project.budget && project.actualCost ?
+                                (project.actualCost / project.budget) <= 0.8 ? 'Under Budget' :
+                                  (project.actualCost / project.budget) <= 1.0 ? 'On Budget' : 'Over Budget'
+                                : 'No Data'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-full bg-purple-100 text-purple-600`}>
+                            <Clock className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Time Remaining</p>
+                            <p className="text-xs text-muted-foreground">
+                              {project.endDate
+                                ? Math.max(0, Math.ceil((new Date(project.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+                                : 'N/A'
+                              }
+                              <span> {project.endDate ? 'Days left' : 'No end date set'}</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
-              )}
-            </div>
-          </div>
-        </TabsContent>
+              </div>
 
-        <TabsContent value="details" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Created</label>
-                    <p className="font-medium">{new Date(project.createdAt).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Last Updated</label>
-                    <p className="font-medium">{new Date(project.updatedAt).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Status</label>
-                    <Badge className={getStatusColor(project.status)}>
-                      {project.status.replace('-', ' ')}
-                    </Badge>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Priority</label>
-                    <Badge className={getPriorityColor(project.priority)}>
-                      {project.priority} priority
-                    </Badge>
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 space-y-4">
+                  {/* Project Info */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        Project Information
+                        <div className="flex gap-2 ml-auto">
+                          <Badge className={getStatusColor(project.status)}>
+                            {project.status.replace('-', ' ')}
+                          </Badge>
+                          <Badge className={getPriorityColor(project.priority)}>
+                            {project.priority} priority
+                          </Badge>
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-12 gap-4">
+                        <div className="col-span-3">
+                          <label className="text-sm text-muted-foreground">Start Date</label>
+                          <p className="font-medium">
+                            {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}
+                          </p>
+                        </div>
+                        <div className="col-span-3">
+                          <label className="text-sm text-muted-foreground">End Date</label>
+                          <p className="font-medium">
+                            {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'Not set'}
+                          </p>
+                        </div>
+                        <div className="col-span-3">
+                          <label className="text-sm text-muted-foreground">Last Updated</label>
+                          <p className="font-medium">{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                        <div className="col-span-3">
+                          <label className="text-sm text-muted-foreground">Created</label>
+                          <p className="font-medium">{project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                        <div className="col-span-4">
+                          <label className="text-sm text-muted-foreground">Created By</label>
+                          <div className="flex items-center gap-2">
+
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={project.creator?.avatar} />
+                              <AvatarFallback className="text-xs">
+                                {project.creator?.name.split(' ').map((n: string) => n[0]).join('') || 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{project.creator?.name}</p>
+                              <p className="text-xs text-muted-foreground">{project.creator?.email}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-span-4">
+                          <label className="text-sm text-muted-foreground">Client</label>
+                          <div className="flex items-center gap-2">
+
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={project.client?.avatar} />
+                              <AvatarFallback className="text-xs">
+                                {project.client?.name.split(' ').map((n: string) => n[0]).join('') || 'C'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{project.client?.name}</p>
+                              <p className="text-xs text-muted-foreground">{project.client?.email}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-span-4">
+                          <label className="text-sm text-muted-foreground">Budget</label>
+                          <div className="space-y-1">
+                            <p className="font-medium">
+                              ${(project.budget ?? 0).toLocaleString()}
+                            </p>
+                            {project.actualCost !== undefined && (
+                              <p className="text-xs text-muted-foreground">
+                                Spent: ${project.actualCost.toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="col-span-12">
+                          <label className="text-sm text-muted-foreground">Departments</label>
+                          <div className="space-y-1">
+                            {project.departmentTasks && Array.isArray(project.departmentTasks) && project.departmentTasks.length > 0 ? (
+                              project.departmentTasks.map((dept) => (
+                                <Badge key={dept.departmentId} variant="outline" className="text-xs">
+                                  {dept.departmentName}
+                                </Badge>
+                              ))
+                            ) : (
+                              <p className="font-medium text-muted-foreground">No departments assigned</p>
+                            )}
+                          </div>
+                        </div>
+                        {project.requirements && (
+                          <div className="col-span-12">
+                            <label className="text-sm font-medium text-muted-foreground">Requirements</label>
+                            <div className="flex gap-2 items-center mt-1 flex-wrap">
+                              {project.requirements.map((req, index) => (
+                                <Badge variant="outline" className="text-xs" key={index}>
+                                  {req}
+                                </Badge>
+                              ))}
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Project Description */}
+                  {project.description && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Project Description</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <HtmlTextRenderer
+                          content={project.description}
+                          fallbackText="No description"
+                          showFallback={true}
+                          renderAsHtml={true}
+                          truncateHtml={false}
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Project Requirements & Technical Details */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5 text-slate-600" />
+                        Technical Specifications
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-12 gap-3">
+                        <div className="col-span-6">
+                          <label className="text-sm font-medium text-muted-foreground">Project Type</label>
+                          <p className="text-sm font-medium mt-1">
+                            {project.projectType || 'Not specified'}
+                          </p>
+                        </div>
+
+                        <div className="col-span-6">
+                          <label className="text-sm font-medium text-muted-foreground">Timeline</label>
+                          <p className="text-sm font-medium mt-1">
+                            {project.timeline || 'Not specified'}
+                          </p>
+                        </div>
+
+                        {project.resources?.estimatedHours && (
+                          <div className="col-span-6">
+                            <label className="text-sm font-medium text-muted-foreground">Estimated Hours</label>
+                            <p className="text-sm font-medium mt-1">
+                              {project.resources.estimatedHours.toLocaleString()} hours
+                            </p>
+                          </div>
+                        )}
+
+                        {project.resources?.tools && project.resources.tools.length > 0 && (
+                          <div className="col-span-6">
+                            <label className="text-sm font-medium text-muted-foreground">Tools & Technologies</label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {project.resources.tools.map((tool, index) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {tool}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {project.resources?.externalResources && project.resources.externalResources.length > 0 && (
+                          <div className="col-span-6">
+                            <label className="text-sm font-medium text-muted-foreground">External Resources</label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {project.resources.externalResources.map((resource, index) => (
+                                <Badge key={index} variant="secondary" className="text-xs">
+                                  {resource}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Budget Breakdown */}
+                  {project.budgetBreakdown && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <DollarSign className="h-5 w-5 text-green-600" />
+                          Budget Breakdown
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                          {project.budgetBreakdown.development && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Development</p>
+                              <p className="font-semibold">${project.budgetBreakdown.development.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {project.budgetBreakdown.design && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Design</p>
+                              <p className="font-semibold">${project.budgetBreakdown.design.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {project.budgetBreakdown.testing && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Testing</p>
+                              <p className="font-semibold">${project.budgetBreakdown.testing.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {project.budgetBreakdown.deployment && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Deployment</p>
+                              <p className="font-semibold">${project.budgetBreakdown.deployment.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {project.budgetBreakdown.maintenance && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Maintenance</p>
+                              <p className="font-semibold">${project.budgetBreakdown.maintenance.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {project.budgetBreakdown.contingency && (
+                            <div className="text-center p-3 bg-muted/30 rounded-lg">
+                              <p className="text-xs text-muted-foreground">Contingency</p>
+                              <p className="font-semibold">${project.budgetBreakdown.contingency.toLocaleString()}</p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
 
-                <Separator />
+                <div className="space-y-6">
+                  {/* Team Members by Department */}
+                  {safeRender(() => (
+                    <Card className="max-h-96 overflow-y-auto">
+                      <CardHeader>
+                        <CardTitle className="flex align-center">
+                          Team Members
+                          {project.departmentTasks && Array.isArray(project.departmentTasks) && (
+                            <div className="flex align-center justify-between gap-2 flex-1">
+                              <span className="ml-1">
+                                ({
+                                  project.departmentTasks.reduce((assignees: Set<string>, dept) => {
+                                    dept.tasks.forEach(task => {
+                                      if (task.assigneeId) {
+                                        assignees.add(task.assigneeId);
+                                      }
+                                    });
+                                    return assignees;
+                                  }, new Set<string>()).size
+                                })
+                              </span>
+                              <Badge variant="outline" className="text-xs">
+                                {project.departmentTasks?.reduce((total, dept) => total + dept.taskCount, 0) ?? 0} Total Tasks
+                              </Badge>
+                            </div>
 
-                <div>
-                  <label className="text-sm text-muted-foreground">Description</label>
-                  <p className="text-sm mt-1">{project.description}</p>
+
+                          )}
+
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {project.departmentTasks && Array.isArray(project.departmentTasks) && project.departmentTasks.length > 0 ? (
+                          project.departmentTasks
+                            // .filter(dept => dept.taskCount > 0) // Only show departments with assigned tasks
+                            .map((dept, idx, arr) => {
+                              // Collect unique assignees for this department
+                              const uniqueAssignees = dept.tasks.reduce((acc: ExtendedTeamMember[], task) => {
+                                if (task.assignee && !acc.some(a => a._id === task?.assignee?._id)) {
+                                  acc.push(task.assignee);
+                                }
+                                return acc;
+                              }, []);
+
+                              if (uniqueAssignees.length === 0) return null; // Skip departments if no unique assignees were found
+                              const isLast = idx === arr.length - 1;
+                              return (
+                                <div key={dept.departmentId || 'unassigned'} className={`space-y-2 pb-3${!isLast ? ' border-b' : ''}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    {/* Assuming Building2 is an icon component for a department */}
+                                    <div className="flex items-center gap-2">
+                                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                                      <span className="font-medium text-sm">{dept.departmentName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {/* Display the count of unique assignees in this department */}
+                                      {/* <Badge variant="outline" className="text-xs">
+                                    {uniqueAssignees.length} Assignees
+                                  </Badge> */}
+                                      <Badge variant="outline" className="text-xs">
+                                        {dept.tasks.length} Tasks
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2 ml-2 ">
+                                    {/* Map over the unique assignees and display their details */}
+                                    {uniqueAssignees.map((member) => (
+                                      <div key={member._id} className="flex items-center gap-2">
+                                        {/* Assuming Avatar/AvatarImage/AvatarFallback components exist */}
+                                        <Avatar className="h-8 w-8">
+                                          <AvatarImage src={member.avatar} />
+                                          <AvatarFallback className="text-xs">
+                                            {member.name.split(' ').map((n: string) => n[0]).join('')}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium truncate">{member.name}</p>
+                                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                                        </div>
+                                        <Badge variant="outline" className="text-xs">
+                                          {
+                                            dept.tasks.filter(
+                                              (task) =>
+                                                (task.assignee?._id === member._id) ||
+                                                (task.assigneeId === member._id)
+                                            ).length
+                                          } Tasks
+                                        </Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })
+                        ) : (
+                          // Fallback if there are no departments or tasks
+                          <p className="text-sm text-muted-foreground">No assignees found in project tasks.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+
+                  {/* Risks */}
+                  {project.risks && Array.isArray(project.risks) && project.risks.length > 0 && (
+                    <Card className="max-h-96 overflow-y-auto">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          Project Risks
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {project.risks.map((risk, index: number) => {
+                            const impactColor =
+                              risk.impact === 'critical' ? 'border-red-500 bg-red-50 dark:bg-red-900/10' :
+                                risk.impact === 'high' ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/10' :
+                                  risk.impact === 'medium' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/10' :
+                                    'border-green-500 bg-green-50 dark:bg-green-900/10';
+
+                            return (
+                              <div key={index} className={`p-3 rounded-lg border-l-4 ${impactColor}`}>
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium">{risk.description}</p>
+                                    {risk.mitigation && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        <strong>Mitigation:</strong> {risk.mitigation}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-1 ml-2">
+                                    {risk.impact && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {risk.impact}
+                                      </Badge>
+                                    )}
+                                    {risk.probability && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {risk.probability}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <Card className="max-h-96 overflow-y-auto">
+                    <CardHeader>
+                      <CardTitle>Budget & Timeline</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">Budget Utilization</span>
+                          <span className="text-sm font-medium">
+                            {(project.budget && project.actualCost) ? Math.round((project.actualCost / project.budget) * 100) : 0}%
+                          </span>
+                        </div>
+                        <Progress value={(project.budget && project.actualCost) ? (project.actualCost / project.budget) * 100 : 0} className="h-2" />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>${(project.actualCost ?? 0).toLocaleString()} spent</span>
+                          <span>${(project.budget ?? 0).toLocaleString()} budget</span>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">Timeline Progress</span>
+                          <span className="text-sm font-medium">{project.progress?.overall ?? 0}%</span>
+                        </div>
+                        <Progress value={project.progress?.overall ?? 0} className="h-2" />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}</span>
+                          <span>{project.endDate ? new Date(project.endDate).toLocaleDateString() : 'Not set'}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Budget & Timeline</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Budget Utilization</span>
-                    <span className="text-sm font-medium">
-                      {Math.round((project.actualCost / project.budget) * 100)}%
-                    </span>
-                  </div>
-                  <Progress value={(project.actualCost / project.budget) * 100} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>${project.actualCost.toLocaleString()} spent</span>
-                    <span>${project.budget.toLocaleString()} budget</span>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Timeline Progress</span>
-                    <span className="text-sm font-medium">{project.progress}%</span>
-                  </div>
-                  <Progress value={project.progress} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{new Date(project.startDate).toLocaleDateString()}</span>
-                    <span>{new Date(project.endDate).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="categorization">
-          <ProjectCategorization
-            projectId={projectId}
-            project={project}
-            onProjectUpdate={fetchProject}
-          />
+          {safeRender(() => (
+            <ProjectCategorization
+              projectId={projectId}
+              project={project}
+              onProjectUpdate={fetchProject}
+            />
+          ))}
         </TabsContent>
 
-        <TabsContent value="phases">
-          <PhasesTimeline projectId={projectId} />
-        </TabsContent>
-
-        <TabsContent value="milestones">
-          <MilestonesSection projectId={projectId} />
-        </TabsContent>
 
         <TabsContent value="edit">
           <ProjectEditTab
@@ -614,7 +950,22 @@ export default function ProjectDetailsPage() {
         </TabsContent>
 
         <TabsContent value="analytics">
-          <ProjectAnalytics projectId={projectId} />
+          {safeRender(() => (
+            <ProjectAnalytics projectId={projectId} />
+          ), (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-semibold mb-2">Analytics Unavailable</h3>
+                <p className="text-muted-foreground mb-4">
+                  There was an error loading the analytics for this project.
+                </p>
+                <Button onClick={() => window.location.reload()} variant="outline">
+                  Try Again
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </TabsContent>
       </Tabs>
     </div>

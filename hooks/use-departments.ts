@@ -74,25 +74,39 @@ export function useDepartments() {
   const allDepartmentsParams = useMemo(() => ({
     page: 1,
     limit: 100,
-    filters: {},
+    filters: { status: 'active' },
     sort: {
       field: 'name' as const,
       direction: 'asc' as const,
     },
   }), [])
 
-  // Use generic hooks
+  // Use generic hooks with better caching
   const { data: fetchedDepartments, isLoading: queryLoading, refetch: refetchDepartments } = useGenericQuery(
     departmentOptions,
     queryParams,
-    true
+    true,
+    {
+      staleTime: 10 * 60 * 1000, // 10 minutes (departments change less frequently)
+      cacheTime: 30 * 60 * 1000, // 30 minutes
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 2,
+    }
   )
 
-  // Separate query for fetching all departments (for filters/dropdowns)
+  // Separate query for fetching all departments (for filters/dropdowns) with longer cache
   const { data: allDepartments } = useGenericQuery(
     departmentOptions,
     allDepartmentsParams,
-    true
+    true,
+    {
+      staleTime: 15 * 60 * 1000, // 15 minutes
+      cacheTime: 60 * 60 * 1000, // 1 hour
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 2,
+    }
   )
 
   const createMutation = useGenericCreate(departmentOptions)
@@ -116,6 +130,16 @@ export function useDepartments() {
   const handleDeleteDepartment = useCallback((departmentId: string) => {
     return deleteMutation.mutateAsync(departmentId)
   }, [deleteMutation])
+
+  const handleRestoreDepartment = useCallback(async (departmentId: string) => {
+    return await updateMutation.mutateAsync({
+      id: departmentId,
+      data: {
+        isDeleted: false,
+        status: 'active'
+      }
+    })
+  }, [updateMutation])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<DepartmentFilters>) => {
@@ -181,6 +205,7 @@ export function useDepartments() {
     createDepartment: handleCreateDepartment,
     updateDepartment: handleUpdateDepartment,
     deleteDepartment: handleDeleteDepartment,
+    restoreDepartment: handleRestoreDepartment,
 
     // Filters and pagination
     setFilters: handleSetFilters,

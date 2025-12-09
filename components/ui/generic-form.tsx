@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Plus, X } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -38,7 +40,7 @@ import RichTextEditor from "./rich-text-editor";
 export interface FormFieldConfig {
   name: string;
   label: string;
-  type: "text" | "email" | "password" | "number" | "textarea" | "rich-text" | "select" | "multi-select" | "checkbox" | "switch" | "date";
+  type: "text" | "email" | "password" | "number" | "textarea" | "rich-text" | "select" | "multi-select" | "checkbox" | "switch" | "date" | "array-input" | "array-object";
   placeholder?: string;
   description?: string;
   options?: { label: string; value: string | number }[];
@@ -54,6 +56,7 @@ export interface FormFieldConfig {
   mdCols?: number; // Medium screens (768px+)
   lgCols?: number; // Large screens (1024px+)
   xlCols?: number; // Extra large screens (1280px+)
+  fields?: FormFieldConfig[]; // Nested fields for array-object type
 }
 
 export interface SubFormConfig {
@@ -75,6 +78,7 @@ export interface GenericFormProps {
   className?: string;
   gridCols?: 1 | 2 | 3; // @deprecated - use individual field column configuration instead
   showCancel?: boolean;
+  children?: React.ReactNode;
 }
 
 // SearchableSelect Component
@@ -86,6 +90,8 @@ interface SearchableSelectProps {
   disabled?: boolean;
   loading?: boolean;
   defaultValue?: string;
+  // When used inside the generic filter 'dropdown' presentation, set this so the portal receives attributes that prevent closing the parent filter
+  inFilterDropdown?: boolean;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -96,6 +102,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   disabled = false,
   loading = false,
   defaultValue
+  , inFilterDropdown = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,22 +114,27 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     option.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const selectedOption = options.find(option => String(option.value) === value);
+  const selectedOption = options.find(option => String(option.value) === (value === '__$EMPTY$__' ? '' : value));
 
   const handleSelect = (optionValue: string) => {
-    onValueChange(optionValue);
+    // Map sentinel back to empty string for consumers that expect ''
+    if (optionValue === '__$EMPTY$__') {
+      onValueChange('');
+    } else {
+      onValueChange(optionValue);
+    }
     setIsOpen(false);
     setSearchQuery("");
   };
 
   const calculatePosition = () => {
     if (!containerRef.current) return;
-    
+
     const rect = containerRef.current.getBoundingClientRect();
     const dropdownHeight = 300; // Approximate max height
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    
+
     // Use bottom if there's enough space, otherwise use top if there's more space above
     setDropdownPosition(spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove ? 'bottom' : 'top');
   };
@@ -138,7 +150,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        containerRef.current && 
+        containerRef.current &&
         !containerRef.current.contains(event.target as Node) &&
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
@@ -192,34 +204,35 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       left: rect.left,
       width: rect.width,
       zIndex: 999999,
-      ...(dropdownPosition === 'bottom' 
+      ...(dropdownPosition === 'bottom'
         ? { top: rect.bottom + 4 }
         : { bottom: window.innerHeight - rect.top + 4 }
       )
     };
 
     return createPortal(
-      <div 
-        style={{ 
+      <div
+        style={{
           position: 'fixed',
           inset: 0,
           zIndex: 999999,
           pointerEvents: 'none'
         }}
+        data-filter-portal={inFilterDropdown ? 'true' : undefined}
       >
         {/* Backdrop */}
-        <div 
-          className="fixed inset-0" 
-          style={{ 
+        <div
+          className="fixed inset-0"
+          style={{
             zIndex: 999998,
             pointerEvents: 'auto'
           }}
-          onClick={() => setIsOpen(false)} 
+          onClick={() => setIsOpen(false)}
         />
         {/* Dropdown */}
-        <div 
+        <div
           ref={dropdownRef}
-          className="rounded-md border border-border bg-background text-foreground shadow-xl"
+          className={cn("rounded-md border border-border bg-background text-foreground shadow-xl", inFilterDropdown ? 'z-[999999]' : '')}
           style={{
             ...dropdownStyle,
             pointerEvents: 'auto',
@@ -242,18 +255,21 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 <span className="ml-2 text-sm text-muted-foreground">Loading options...</span>
               </div>
             ) : filteredOptions.length > 0 ? (
-              filteredOptions.map((option) => (
-                <div
-                  key={option.value}
-                  className={cn(
-                    "cursor-pointer px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                    String(option.value) === value && "bg-accent text-accent-foreground"
-                  )}
-                  onClick={() => handleSelect(String(option.value))}
-                >
-                  {option.label}
-                </div>
-              ))
+              filteredOptions.map((option) => {
+                const displayValue = String(option.value) === '' ? '__$EMPTY$__' : String(option.value);
+                return (
+                  <div
+                    key={displayValue}
+                    className={cn(
+                      "cursor-pointer px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                      displayValue === value && "bg-accent text-accent-foreground"
+                    )}
+                    onClick={() => handleSelect(displayValue)}
+                  >
+                    {option.label}
+                  </div>
+                );
+              })
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 No options found
@@ -322,8 +338,89 @@ const GenericForm: React.FC<GenericFormProps> = ({
     fields.map(field => field.defaultOpen !== false)
   );
 
+  // State for array input new items
+  const [arrayInputs, setArrayInputs] = useState<Record<string, string>>({});
+
   const toggleSection = (index: number) => {
     setOpenSections(prev => prev.map((open, i) => i === index ? !open : open));
+  };
+
+  // Array input handlers
+  const addArrayItem = (fieldName: string) => {
+    const newItem = arrayInputs[fieldName]?.trim();
+    if (newItem) {
+      const current = form.getValues(fieldName) || [];
+      form.setValue(fieldName, [...current, newItem]);
+      setArrayInputs(prev => ({ ...prev, [fieldName]: '' }));
+    }
+  };
+
+  const removeArrayItem = (fieldName: string, item: string) => {
+    const current = form.getValues(fieldName) || [];
+    form.setValue(fieldName, current.filter((i: string) => i !== item));
+  };
+
+  const handleArrayInputChange = (fieldName: string, value: string) => {
+    setArrayInputs(prev => ({ ...prev, [fieldName]: value }));
+  };
+
+  const handleArrayInputKeyPress = (fieldName: string, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addArrayItem(fieldName);
+    }
+  };
+
+  // Array-object handlers
+  const addArrayObjectItem = (fieldName: string, fields: FormFieldConfig[]) => {
+    const current = form.getValues(fieldName) || [];
+    const newItem: Record<string, any> = {};
+
+    // Initialize with default values based on field types
+    fields.forEach(field => {
+      switch (field.type) {
+        case 'select':
+          newItem[field.name] = field.defaultValue || (field.options?.[0]?.value) || '';
+          break;
+        case 'number':
+          newItem[field.name] = field.defaultValue || 0;
+          break;
+        case 'checkbox':
+          newItem[field.name] = field.defaultValue || false;
+          break;
+        default:
+          newItem[field.name] = field.defaultValue || '';
+      }
+    });
+
+    form.setValue(fieldName, [...current, newItem], {
+      shouldDirty: true,
+      shouldValidate: true,
+      shouldTouch: true
+    });
+  };
+
+  const removeArrayObjectItem = (fieldName: string, index: number) => {
+    const current = form.getValues(fieldName) || [];
+    const updated = current.filter((_: any, i: number) => i !== index);
+    form.setValue(fieldName, updated, {
+      shouldDirty: true,
+      shouldValidate: true,
+      shouldTouch: true
+    });
+  };
+
+  const updateArrayObjectItem = (fieldName: string, index: number, itemFieldName: string, value: any) => {
+    const current = form.getValues(fieldName) || [];
+    const updatedItems = [...current];
+    if (updatedItems[index]) {
+      updatedItems[index] = { ...updatedItems[index], [itemFieldName]: value };
+      form.setValue(fieldName, updatedItems, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true
+      });
+    }
   };
 
   const renderField = (field: FormFieldConfig) => {
@@ -349,9 +446,11 @@ const GenericForm: React.FC<GenericFormProps> = ({
         name={field.name}
         render={({ field: formField }) => (
           <FormItem className={cn(colClasses, field.className)}>
-            <FormLabel className={field.required ? "after:content-['*'] after:ml-0.5 after:text-destructive" : ""}>
-              {field.label}
-            </FormLabel>
+            {field.type !== "array-object" && (
+              <FormLabel className={field.required ? "after:content-['*'] after:ml-0.5 after:text-destructive" : ""}>
+                {field.label}
+              </FormLabel>
+            )}
             <FormControl>
               {(() => {
                 switch (field.type) {
@@ -381,19 +480,29 @@ const GenericForm: React.FC<GenericFormProps> = ({
                     return field.searchable ? (
                       <SearchableSelect
                         options={field.options}
-                        value={formField.value || (field.defaultValue ? String(field.defaultValue) : undefined)}
-                        onValueChange={formField.onChange}
+                        value={(formField.value === '' ? '__$EMPTY$__' : formField.value) || (field.defaultValue === '' ? '__$EMPTY$__' : (field.defaultValue ? String(field.defaultValue) : undefined))}
+                        onValueChange={(val) => {
+                          if (val === '__$EMPTY$__') formField.onChange(''); else formField.onChange(val);
+                        }}
                         placeholder={field.placeholder || "Select an option"}
                         disabled={field.disabled || loading || field.loading}
                         loading={field.loading}
-                        defaultValue={field.defaultValue ? String(field.defaultValue) : undefined}
+                        defaultValue={(field.defaultValue === '' ? '__$EMPTY$__' : (field.defaultValue ? String(field.defaultValue) : undefined))}
                       />
                     ) : (
                       <Select
-                        onValueChange={formField.onChange}
-                        value={formField.value || (field.defaultValue ? String(field.defaultValue) : undefined)}
+                        onValueChange={(val) => {
+                          // Map our internal empty sentinel back to an empty string to
+                          // maintain backward compatibility where code uses '' to indicate 'no selection' or 'all'.
+                          if (val === '__$EMPTY$__') {
+                            formField.onChange('');
+                          } else {
+                            formField.onChange(val);
+                          }
+                        }}
+                        value={(formField.value === '' ? '__$EMPTY$__' : formField.value) || (field.defaultValue === '' ? '__$EMPTY$__' : (field.defaultValue ? String(field.defaultValue) : undefined))}
                         disabled={field.disabled || loading || field.loading}
-                        defaultValue={field.defaultValue ? String(field.defaultValue) : undefined}
+                        defaultValue={(field.defaultValue === '' ? '__$EMPTY$__' : (field.defaultValue ? String(field.defaultValue) : undefined))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder={field.placeholder || "Select an option"} />
@@ -406,11 +515,14 @@ const GenericForm: React.FC<GenericFormProps> = ({
                               <span className="ml-2 text-sm text-muted-foreground">Loading options...</span>
                             </div>
                           ) : (
-                            field.options?.map((option) => (
-                              <SelectItem key={option.value} value={String(option.value)}>
-                                {option.label}
-                              </SelectItem>
-                            ))
+                            field.options?.map((option) => {
+                              const displayValue = String(option.value) === '' ? '__$EMPTY$__' : String(option.value);
+                              return (
+                                <SelectItem key={displayValue} value={displayValue}>
+                                  {option.label}
+                                </SelectItem>
+                              );
+                            })
                           )}
                         </SelectContent>
                       </Select>
@@ -462,7 +574,171 @@ const GenericForm: React.FC<GenericFormProps> = ({
                         type="date"
                         disabled={field.disabled || loading}
                         {...formField}
+                        style={{display:'block'}}
                       />
+                    );
+
+                  case "array-input":
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            value={arrayInputs[field.name] || ''}
+                            onChange={(e) => handleArrayInputChange(field.name, e.target.value)}
+                            placeholder={field.placeholder || `Add ${field.label.toLowerCase()}...`}
+                            disabled={field.disabled || loading}
+                            onKeyPress={(e) => handleArrayInputKeyPress(field.name, e)}
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => addArrayItem(field.name)}
+                            size="sm"
+                            disabled={field.disabled || loading || !arrayInputs[field.name]?.trim()}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(form.watch(field.name) || []).map((item: string, index: number) => (
+                            <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                              {item}
+                              <button
+                                type="button"
+                                onClick={() => removeArrayItem(field.name, item)}
+                                className="ml-1 hover:bg-red-100 rounded-full p-0.5"
+                                disabled={field.disabled || loading}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    );
+
+                  case "array-object":
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">{field.label}</span>
+                          <Button
+                            type="button"
+                            onClick={() => addArrayObjectItem(field.name, field.fields || [])}
+                            size="sm"
+                            disabled={field.disabled || loading}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add {field.label.slice(0, -1) || 'Item'}
+                          </Button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {(form.watch(field.name) || []).map((item: any, index: number) => (
+                            <div key={index} className="border rounded-lg p-4 space-y-4 relative">
+                              <div className="absolute top-2 right-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeArrayObjectItem(field.name, index)}
+                                  disabled={field.disabled || loading}
+                                  className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="grid grid-cols-12 gap-3">
+                                {(field.fields || []).map((subField) => {
+                                  // Build responsive column classes for sub-fields
+                                  const cols = subField.cols || 12;
+                                  const smCols = subField.smCols;
+                                  const mdCols = subField.mdCols;
+                                  const lgCols = subField.lgCols;
+                                  const xlCols = subField.xlCols;
+
+                                  const colClasses = [
+                                    `col-span-${Math.min(12, Math.max(1, cols))}`,
+                                    smCols && `sm:col-span-${Math.min(12, Math.max(1, smCols))}`,
+                                    mdCols && `md:col-span-${Math.min(12, Math.max(1, mdCols))}`,
+                                    lgCols && `lg:col-span-${Math.min(12, Math.max(1, lgCols))}`,
+                                    xlCols && `xl:col-span-${Math.min(12, Math.max(1, xlCols))}`,
+                                  ].filter(Boolean).join(' ');
+
+                                  return (
+                                    <div key={subField.name} className={cn("space-y-2", colClasses)}>
+                                      <Label className={subField.required ? "after:content-['*'] after:ml-0.5 after:text-destructive" : ""}>
+                                        {subField.label}
+                                      </Label>
+
+                                      {subField.type === 'select' ? (
+                                        <Select
+                                          value={item[subField.name] || ''}
+                                          onValueChange={(value) => updateArrayObjectItem(field.name, index, subField.name, value)}
+                                          disabled={subField.disabled || loading}
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue placeholder={subField.placeholder || `Select ${subField.label.toLowerCase()}`} />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {(subField.options || []).map((option) => (
+                                              <SelectItem key={option.value} value={String(option.value)}>
+                                                {option.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : subField.type === 'date' ? (
+                                        <Input
+                                          type="date"
+                                          value={item[subField.name] || ''}
+                                          onChange={(e) => updateArrayObjectItem(field.name, index, subField.name, e.target.value)}
+                                          disabled={subField.disabled || loading}
+                                          style={{display:'block'}}
+                                        />
+                                      ) : subField.type === 'number' ? (
+                                        <Input
+                                          type="number"
+                                          value={item[subField.name] || ''}
+                                          onChange={(e) => updateArrayObjectItem(field.name, index, subField.name, parseFloat(e.target.value) || 0)}
+                                          placeholder={subField.placeholder}
+                                          disabled={subField.disabled || loading}
+                                        />
+                                      ) : subField.type === 'textarea' ? (
+                                        <Textarea
+                                          value={item[subField.name] || ''}
+                                          onChange={(e) => updateArrayObjectItem(field.name, index, subField.name, e.target.value)}
+                                          placeholder={subField.placeholder}
+                                          disabled={subField.disabled || loading}
+                                          rows={subField.rows || 3}
+                                        />
+                                      ) : (
+                                        <Input
+                                          type="text"
+                                          value={item[subField.name] || ''}
+                                          onChange={(e) => updateArrayObjectItem(field.name, index, subField.name, e.target.value)}
+                                          placeholder={subField.placeholder}
+                                          disabled={subField.disabled || loading}
+                                        />
+                                      )}
+
+                                      {subField.description && (
+                                        <p className="text-xs text-muted-foreground">{subField.description}</p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+
+                          {(form.watch(field.name) || []).length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No {field.label.toLowerCase()} added yet. Click the button above to add one.
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     );
 
                   default:
@@ -489,9 +765,36 @@ const GenericForm: React.FC<GenericFormProps> = ({
     );
   };
 
+  const { formState } = form;
+  const { isSubmitting } = formState;
+
+  // Wrap submit with trigger() to ensure validation runs and prevents submission
+  // in case handleSubmit is bypassed or misbehaving in some contexts.
+  const submitHandler = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    // Explicitly trigger validation for all fields
+    const isValid = await form.trigger();
+    if (!isValid) {
+      // If there are validation errors, focus the first invalid field
+      const firstError = Object.keys(form.formState.errors)[0];
+      if (firstError) {
+        try {
+          form.setFocus(firstError as any);
+        } catch (err) {
+          // ignore focus errors
+        }
+      }
+      return;
+    }
+
+    // Now call onSubmit directly with the form data
+    const data = form.getValues();
+    onSubmit(data);
+  }, [form, onSubmit]);
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className={cn("space-y-3", className)}>
+      <form onSubmit={submitHandler} className={cn("space-y-3", className)}>
         {/* Check if any field has custom column configuration */}
         {fields.flatMap((subform) => subform.fields).some(field => field.cols || field.smCols || field.mdCols || field.lgCols || field.xlCols) ? (
           // Use 12-column grid when fields have custom column configuration
@@ -540,7 +843,7 @@ const GenericForm: React.FC<GenericFormProps> = ({
                           </CollapsibleTrigger>
                           <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
                             <div className="p-4 bg-card/30 border border-border/30 rounded-bl-md rounded-br-md backdrop-blur-sm">
-                              <div className="grid grid-cols-12 gap-4">
+                              <div className="grid grid-cols-12 gap-3">
                                 {field.fields.map(renderField)}
                               </div>
                             </div>
@@ -636,6 +939,8 @@ const GenericForm: React.FC<GenericFormProps> = ({
           </div>
         )}
 
+        {/* {children} */}
+
         <div className="flex items-center justify-end gap-3">
           {showCancel && onCancel && (
             <Button
@@ -647,7 +952,7 @@ const GenericForm: React.FC<GenericFormProps> = ({
               {cancelText}
             </Button>
           )}
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading || isSubmitting}>
             {loading && <InlineLoader className="mr-2" />}
             {submitText}
           </Button>

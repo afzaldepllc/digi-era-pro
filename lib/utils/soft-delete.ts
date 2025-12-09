@@ -85,13 +85,13 @@ export async function canSoftDelete(
             // Build dependency filter
             let dependentFilter: any = {
                 [check.field]: new mongoose.Types.ObjectId(entityId),
-                status: { $ne: 'deleted' } // Exclude already deleted records
+                isDeleted: false // Exclude already soft deleted records
             }
 
             // Special handling for User dependencies from leads - check for active clients only
             if (check.model === 'User' && modelName.toLowerCase() === 'lead') {
                 dependentFilter.isClient = true // Only check client users
-                dependentFilter.status = { $ne: 'deleted' } // Exclude deleted clients
+                dependentFilter.isDeleted = false // Exclude deleted clients
             }
 
             const dependentCount = await DependentModel.countDocuments(dependentFilter)
@@ -118,15 +118,36 @@ export async function canSoftDelete(
  * Generic function to perform soft delete on an entity
  * @param modelName - The name of the model
  * @param entityId - The ID of the entity to soft delete
- * @param userEmail - Email of the user performing the action (for logging)
+ * @param userEmail - Email of the user performing the action
+ * @param deletionReason - Optional reason for deletion
  * @returns Promise<{ success: boolean, message: string, data?: any }>
  */
 export async function performSoftDelete(
     modelName: string,
     entityId: string,
-    userEmail: string
+    userEmail: string,
+    deletionReason?: string
 ): Promise<{ success: boolean; message: string; data?: any }> {
     try {
+        // Get the user ID from email
+        const UserModel = mongoose.models.User
+        if (!UserModel) {
+            return {
+                success: false,
+                message: 'User model not found'
+            }
+        }
+
+        const currentUser = await UserModel.findOne({ email: userEmail }).select('_id')
+        if (!currentUser) {
+            return {
+                success: false,
+                message: 'User not found'
+            }
+        }
+
+        const userId = currentUser._id
+
         // First check if entity can be deleted
         const deleteCheck = await canSoftDelete(modelName, entityId)
         if (!deleteCheck.canDelete) {
@@ -157,13 +178,13 @@ export async function performSoftDelete(
             // For leads, check for active status (leads use different status values)
             existingEntity = await Model.findOne({
                 _id: entityId,
-                status: { $nin: ['deleted', 'inactive'] } // Consider inactive as soft deleted for leads
+                isDeleted: false // Not already soft deleted
             })
         } else {
-            // For other models, use standard status check
+            // For other models, use standard isDeleted check
             existingEntity = await Model.findOne({
                 _id: entityId,
-                status: { $ne: 'deleted' }
+                isDeleted: false
             })
         }
 
@@ -177,30 +198,39 @@ export async function performSoftDelete(
         // Perform soft delete
         let updatedEntity
         if (modelName.toLowerCase() === 'lead') {
-            // For leads, set status to 'deleted' (adding it to Lead model enum)
+            // For leads, set status to 'deleted' and soft delete fields
             updatedEntity = await Model.findByIdAndUpdate(
                 entityId,
                 {
                     $set: {
                         status: 'deleted',
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        deletedBy: userId,
+                        deletionReason: deletionReason,
                         updatedAt: new Date()
                     }
                 },
                 { new: true, runValidators: false }
             )
         } else {
-            // For other models, set status to 'deleted'
-            updatedEntity = await Model.findByIdAndUpdate(
-                entityId,
-                {
-                    $set: {
-                        status: 'deleted',
-                        deletedAt: new Date(),
-                        deletedBy: userEmail
-                    }
-                },
-                { new: true, runValidators: false }
-            )
+            // For other models, set status to 'deleted' and soft delete fields
+            const existingEntity = await Model.findById(entityId)
+            if (!existingEntity) {
+                return {
+                    success: false,
+                    message: `${modelName.charAt(0).toUpperCase() + modelName.slice(1)} not found`
+                }
+            }
+
+            existingEntity.status = 'deleted'
+            existingEntity.isDeleted = true
+            existingEntity.deletedAt = new Date()
+            existingEntity.deletedBy = userId
+            existingEntity.deletionReason = deletionReason
+            existingEntity.updatedAt = new Date()
+
+            updatedEntity = await existingEntity.save({ validateBeforeSave: false })
         }
 
         if (!updatedEntity) {
@@ -217,7 +247,8 @@ export async function performSoftDelete(
         console.log(`${modelName.charAt(0).toUpperCase() + modelName.slice(1)} soft deleted:`, {
             entityId,
             entityName: updatedEntity.name || updatedEntity.projectName || updatedEntity.displayName || 'Unknown',
-            deletedBy: userEmail,
+            deletedBy: userId,
+            deletionReason: deletionReason,
             timestamp: new Date().toISOString()
         })
 
@@ -242,13 +273,13 @@ export async function performSoftDelete(
  */
 async function clearCacheForEntity(modelName: string, entityId: string): Promise<void> {
     try {
-        const cacheKeys = [
-            `${modelName}s:*`, // List caches
-            `${modelName}-${entityId}*`, // Individual entity caches
-            `${modelName}-*-${entityId}*`, // Related caches
+        const patterns = [
+            `${modelName}s`, // List caches
+            `${modelName}-${entityId}`, // Individual entity caches
+            entityId // Any cache containing the entity ID
         ]
 
-        for (const pattern of cacheKeys) {
+        for (const pattern of patterns) {
             await clearCache(pattern)
         }
     } catch (error) {
@@ -262,38 +293,49 @@ async function clearCacheForEntity(modelName: string, entityId: string): Promise
  * @returns MongoDB filter object
  */
 export function getBaseFilter(isSuperAdmin: boolean = false): Record<string, any> {
-    if (isSuperAdmin) {
-        return {} // Super admins see all records including deleted
-    }
-    return { status: { $ne: 'deleted' } } // Regular users don't see deleted records
+    // Always exclude deleted records from list queries
+    // Super admins can access individual deleted records via direct ID queries
+    return { isDeleted: false }
 }
 
 /**
  * Helper function to add soft delete filter to existing query
  * @param existingFilter - Existing MongoDB filter
  * @param isSuperAdmin - Whether the user is a super admin
+ * @param isListQuery - Whether this is a list query (default true)
  * @returns Combined filter with soft delete logic
  */
 export function addSoftDeleteFilter(
     existingFilter: Record<string, any>,
-    isSuperAdmin: boolean = false
+    isSuperAdmin: boolean = false,
+    isListQuery: boolean = true
 ): Record<string, any> {
+    // Always exclude deleted records from list queries
+    // Super admins can access individual deleted records via direct ID queries
+    // if (isSuperAdmin && !isListQuery) {
     if (isSuperAdmin) {
-        return existingFilter // Super admins see all records
+        return existingFilter
     }
 
     const result = { ...existingFilter }
 
-    if (result.status !== undefined) {
-        // If status already exists, combine it with soft delete filter
-        const existingStatusFilter = typeof result.status === 'object' ? result.status : { $eq: result.status }
-        result.status = { $and: [{ status: existingStatusFilter }, { status: { $ne: 'deleted' } }] }
+    if (result.isDeleted !== undefined) {
+        // If isDeleted already exists, combine it with soft delete filter by converting
+        // the existing condition into a $and clause so both constraints are preserved.
+        const existingIsDeletedFilter = typeof result.isDeleted === 'object' ? result.isDeleted : { $eq: result.isDeleted }
+
+        // Remove the isDeleted property and combine into an $and clause for MongoDB
+        delete result.isDeleted
+        result.$and = result.$and || []
+        result.$and.push({ isDeleted: existingIsDeletedFilter })
+        result.$and.push({ isDeleted: false })
     } else {
-        // If no status filter, just add soft delete filter
-        result.status = { status: { $ne: 'deleted' } }
+        // If no isDeleted filter, just add the soft delete check to the filter
+        result.isDeleted = false
     }
 
-    return result.status
+    // Return the full filter object (not only the isDeleted portion)
+    return result
 }
 
 /**

@@ -68,13 +68,13 @@ export const basePhaseSchema = z.object({
   
   actualCost: z.number().min(0, 'Actual cost cannot be negative').optional(),
   
-  objectives: z.array(z.string().max(500, 'Objective description too long')).default([]),
+  objectives: z.array(z.string().max(500, 'Objective description too long. Max 500 words allowed.')).default([]),
   
-  deliverables: z.array(z.string().max(500, 'Deliverable description too long')).default([]),
+  deliverables: z.array(z.string().max(500, 'Deliverable description too long. Max 500 words allowed.')).default([]),
   
-  resources: z.array(z.string().max(200, 'Resource description too long')).default([]),
+  resources: z.array(z.string().max(200, 'Resource description too long. Max 200 words allowed.')).default([]),
   
-  risks: z.array(z.string().max(500, 'Risk description too long')).default([]),
+  risks: z.array(z.string().max(500, 'Risk description too long. Max 500 words allowed.')).default([]),
   
   dependencies: z.array(objectIdSchema).default([]),
   
@@ -234,7 +234,16 @@ export const createPhaseFormSchema = z.object({
   
   risks: z.array(z.string()).default([]),
   
-  budgetAllocation: z.string().optional(),
+  budgetAllocation: z.string()
+    .optional()
+    .transform(val => {
+      if (!val || val.trim() === '') return undefined;
+      const num = parseFloat(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .refine(val => val === undefined || val >= 0, {
+      message: 'Budget allocation cannot be negative'
+    }),
   
   approvalRequired: z.boolean().default(false),
 });

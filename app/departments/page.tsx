@@ -18,11 +18,14 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useDepartments } from "@/hooks/use-departments";
 import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2';
+import { useNavigation } from "@/components/providers/navigation-provider";
+import GenericReportExporter from "@/components/shared/GenericReportExporter";
 
 export default function DepartmentsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { canCreate } = usePermissions();
+  const { navigateTo, isNavigating } = useNavigation()
 
   // Local state
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
@@ -37,6 +40,7 @@ export default function DepartmentsPage() {
     error: hookError,
     fetchDepartments,
     deleteDepartment,
+    restoreDepartment,
     setFilters,
     setSort,
     setPagination,
@@ -163,6 +167,7 @@ export default function DepartmentsPage() {
         const statusColors = {
           active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           inactive: 'bg-muted text-muted-foreground border-border',
+          deleted: 'text-muted bg-red-600 border-white-200',
         };
 
         return (
@@ -275,6 +280,7 @@ export default function DepartmentsPage() {
       } catch (err: any) {
         // Show error message
         console.log('Delete Department Error:', err);
+        const errorMessage = err.error?.message || err.error || err.message || "Failed to delete department. Please try again.";
         Swal.fire({
           customClass: {
             popup: 'swal-bg',
@@ -282,7 +288,7 @@ export default function DepartmentsPage() {
             htmlContainer: 'swal-content',
           },
           title: "Error!",
-          text: err.error,
+          text: errorMessage,
           icon: "error",
           confirmButtonText: "OK"
         });
@@ -291,6 +297,80 @@ export default function DepartmentsPage() {
       }
     }
   }, [deleteDepartment, toast, fetchDepartments]);
+
+  const handleRestoreDepartment = useCallback(async (department: Department) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${department.name}?`,
+      text: "Are you sure you want to restore this department?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the department.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreDepartment(department._id as string);
+
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "Department has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "Department restored successfully.",
+          variant: "default",
+        });
+
+        fetchDepartments();
+      } catch (error: any) {
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: error.error?.message || error.error || error.message || "Failed to restore department. Please try again.",
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+        handleAPIError(error, "Failed to restore department. Please try again.");
+      }
+    }
+  }, [restoreDepartment, toast, fetchDepartments]);
 
   // Refs to track previous values and prevent unnecessary calls
   const prevParamsRef = useRef<string>('')
@@ -392,7 +472,7 @@ export default function DepartmentsPage() {
       <PageHeader
         title="Departments"
         subtitle="Manage organizational departments"
-        onAddClick={() => router.push("/departments/add")}
+        onAddClick={() => navigateTo("/departments/add")}
         addButtonText="Add Department"
         showAddButton={canCreate("departments")}
 
@@ -410,6 +490,28 @@ export default function DepartmentsPage() {
         showRefreshButton={true}
         onRefresh={handleFilterReset}
         isRefreshing={loading}
+
+        actions={
+          <GenericReportExporter
+            moduleName="departments"
+            data={departments}
+            onExportComplete={(result) => {
+              if (result.success) {
+                toast({
+                  title: "Success",
+                  description: result.message,
+                  variant: "default",
+                });
+              } else {
+                toast({
+                  title: "Error",
+                  description: result.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        }
       >
         {/* Generic Filter - Updated to match clients/leads page */}
         {isFilterExpanded && (
@@ -427,7 +529,7 @@ export default function DepartmentsPage() {
       {error && (
         <Alert variant="destructive" className="border-destructive bg-destructive/10">
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="text-destructive-foreground">{error.error}</AlertDescription>
+          <AlertDescription className="text-destructive-foreground">{error.error?.message || error.error || error.message || 'An error occurred'}</AlertDescription>
         </Alert>
       )}
 
@@ -449,6 +551,7 @@ export default function DepartmentsPage() {
           resourceName="departments"
           onView={handleViewDepartment}
           onDelete={handleDeleteDepartment}
+          onRestore={handleRestoreDepartment}
           enablePermissionChecking={true}
           statsCards={statsCards}
         />

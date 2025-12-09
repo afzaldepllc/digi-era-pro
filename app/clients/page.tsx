@@ -16,11 +16,14 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import Swal from 'sweetalert2';
 import { handleAPIError } from "@/lib/utils/api-client";
+import { useNavigation } from "@/components/providers/navigation-provider";
+import GenericReportExporter from "@/components/shared/GenericReportExporter";
 
 export default function ClientsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { canCreate } = usePermissions();
+  const { navigateTo, isNavigating } = useNavigation()
 
   // Hooks
   const {
@@ -36,6 +39,7 @@ export default function ClientsPage() {
     setPagination,
     fetchClients,
     deleteClient,
+    restoreClient,
     clearError,
   } = useClients();
 
@@ -153,38 +157,14 @@ export default function ClientsPage() {
           qualified: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800',
           unqualified: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
-          deleted: 'bg-red-600 text-white dark:bg-red-900/20 dark:text-white-300 border-red-200 dark:border-red-800',
+          inactive: 'bg-muted text-muted-foreground border-border',
+          deleted: 'text-muted bg-red-600 border-white-200',
         };
 
         return (
           <Badge className={`${statusColors[value as keyof typeof statusColors]} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
-        );
-      },
-    },
-    {
-      key: 'projectInterests',
-      label: 'Project Interests',
-      sortable: false,
-      render: (value) => {
-        if (!value || value.length === 0) {
-          return <span className="text-sm text-muted-foreground italic">None specified</span>;
-        }
-
-        return (
-          <div className="flex flex-wrap gap-1">
-            {value.slice(0, 2).map((interest: string, index: number) => (
-              <Badge key={index} variant="secondary" className="text-xs">
-                {interest}
-              </Badge>
-            ))}
-            {value.length > 2 && (
-              <Badge variant="outline" className="text-xs">
-                +{value.length - 2} more
-              </Badge>
-            )}
-          </div>
         );
       },
     },
@@ -222,7 +202,7 @@ export default function ClientsPage() {
       params.set('clientId', client._id);
       params.set('prefill', 'true');
 
-      router.push(`/projects/add?${params.toString()}`);
+      navigateTo(`/projects/add?${params.toString()}`);
 
     } catch (error: any) {
       console.log('Error navigating to create project:', error);
@@ -342,6 +322,80 @@ export default function ClientsPage() {
     }
   }, [deleteClient, toast, fetchClients]);
 
+  const handleRestoreClient = useCallback(async (client: Client) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${client.name}?`,
+      text: "Are you sure you want to restore this client?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the client.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreClient(client._id as string);
+
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "Client has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "Client restored successfully.",
+          variant: "default",
+        });
+
+        fetchClients();
+      } catch (error: any) {
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: error.error,
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+        handleAPIError(error, "Failed to restore client. Please try again.");
+      }
+    }
+  }, [restoreClient, toast, fetchClients]);
+
   // Error handling effect
   useEffect(() => {
     if (error) {
@@ -405,7 +459,7 @@ export default function ClientsPage() {
       <PageHeader
         title="Clients"
         subtitle="Manage your qualified clients and their information"
-        onAddClick={() => router.push("/clients/add")}
+        onAddClick={() => navigateTo("/clients/add")}
         addButtonText="Add Client"
         showAddButton={canCreate("clients")}
 
@@ -422,6 +476,27 @@ export default function ClientsPage() {
         showRefreshButton={true}
         onRefresh={handleFilterReset}
         isRefreshing={loading}
+        actions={
+          <GenericReportExporter
+            moduleName="clients"
+            data={clients}
+            onExportComplete={(result) => {
+              if (result.success) {
+                toast({
+                  title: "Success",
+                  description: result.message,
+                  variant: "default",
+                });
+              } else {
+                toast({
+                  title: "Error",
+                  description: result.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        }
       >
         {/* Generic Filter */}
         {isFilterExpanded && (
@@ -454,6 +529,7 @@ export default function ClientsPage() {
           customActions={customActions}
           onView={handleViewClient}
           onDelete={handleDeleteClient}
+          onRestore={handleRestoreClient}
           enablePermissionChecking={true}
           statsCards={statsCards}
         />
@@ -546,22 +622,6 @@ export default function ClientsPage() {
                         {/* {selectedClientForView?.address || 'Not specified'} */}
                       </p>
                     </div>
-                    <div className="col-span-2">
-                      <label className="text-sm font-medium text-muted-foreground">Project Interests</label>
-                      <div className="mt-1">
-                        {selectedClientForView.projectInterests && selectedClientForView.projectInterests.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {selectedClientForView.projectInterests.map((interest, index) => (
-                              <Badge key={index} variant="secondary" className="text-xs">
-                                {interest}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground italic">No project interests specified</p>
-                        )}
-                      </div>
-                    </div>
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Created</label>
                       <p className="mt-1">
@@ -601,21 +661,6 @@ export default function ClientsPage() {
                   </div>
 
                   <div className="space-y-3">
-                    {/* Project Interests */}
-                    {/* <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                        <FolderPlus className="h-4 w-4 text-blue-600" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">Project Interests</p>
-                        <p className="text-xs text-muted-foreground">
-                          {selectedClientForView.projectInterests && selectedClientForView.projectInterests.length > 0
-                            ? `${selectedClientForView.projectInterests.length} interest(s): ${selectedClientForView.projectInterests.join(', ')}`
-                            : 'No specific project interests recorded'
-                          }
-                        </p>
-                      </div>
-                    </div> */}
 
                     {/* Client Status for Projects */}
                     <div className="flex items-center space-x-3 p-3 bg-card rounded-lg border">

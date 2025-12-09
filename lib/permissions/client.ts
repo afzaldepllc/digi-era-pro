@@ -22,9 +22,34 @@ export class ClientPermissionManager {
   private permissions: Permission[]
   private isSuperAdmin: boolean
 
-  constructor(permissions: Permission[] = [], userRole?: string) {
+  constructor(permissions: Permission[] = [], userRole?: string | any) {
     this.permissions = permissions
-    this.isSuperAdmin = userRole === 'super_admin'
+
+    // Enhanced super admin detection logic
+    this.isSuperAdmin = this.checkSuperAdminStatus(userRole)
+  }
+
+  /**
+   * Check if user is super admin using multiple detection methods
+   */
+  private checkSuperAdminStatus(userRole?: string | any): boolean {
+    if (!userRole) return false
+
+    // Handle string role
+    if (typeof userRole === 'string') {
+      return userRole === 'super_admin'
+    }
+
+    // Handle role object
+    if (typeof userRole === 'object') {
+      return (
+        userRole.name === 'super_admin' ||
+        userRole.role === 'super_admin' ||
+        userRole.isSuperAdmin === true
+      )
+    }
+
+    return false
   }
 
   /**
@@ -101,35 +126,20 @@ export class ClientPermissionManager {
 }
 
 /**
- * Helper function to get permissions from session or localStorage
+ * Helper function to get permissions from NextAuth session only
+ * Note: This function is deprecated - use session.user.permissions directly
  */
 export function getStoredPermissions(): Permission[] {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  try {
-    const stored = localStorage.getItem('userPermissions')
-    return stored ? JSON.parse(stored) : []
-  } catch (error) {
-    console.warn('Failed to parse stored permissions:', error)
-    return []
-  }
+  console.warn('getStoredPermissions is deprecated. Use session.user.permissions directly from useSession hook.')
+  return []
 }
 
 /**
- * Helper function to store permissions in localStorage
+ * Helper function for permission storage - now handled by server session
+ * Note: This function is deprecated - permissions are managed server-side
  */
 export function storePermissions(permissions: Permission[]): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    localStorage.setItem('userPermissions', JSON.stringify(permissions))
-  } catch (error) {
-    console.warn('Failed to store permissions:', error)
-  }
+  console.warn('storePermissions is deprecated. Permissions are now managed server-side via NextAuth session.')
 }
 
 /**

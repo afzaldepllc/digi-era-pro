@@ -1,4 +1,6 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { refreshAnalytics } from '@/lib/utils/analytics-refresh'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
   setPhases,
@@ -26,8 +28,12 @@ import type {
   UpdatePhaseData,
 } from '@/lib/validations/phase'
 
+// Extended type for update operations that may need projectId for analytics
+type ExtendedUpdatePhaseData = UpdatePhaseData & { projectId?: string }
+
 export function usePhases() {
   const dispatch = useAppDispatch()
+  const queryClient = useQueryClient()
 
   const {
     phases,
@@ -88,16 +94,133 @@ export function usePhases() {
   }, [dispatch, refetchPhases])
 
   const handleCreatePhase = useCallback(async (phaseData: CreatePhaseData) => {
-    return createMutation.mutateAsync(phaseData)
-  }, [createMutation])
+    try {
+      const result = await createMutation.mutateAsync(phaseData)
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchPhases()
+      
+      // Trigger analytics refresh
+      if (phaseData.projectId) {
+        refreshAnalytics({ projectId: phaseData.projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error creating phase:', error)
+      throw error
+    }
+  }, [createMutation, refetchPhases, queryClient])
 
-  const handleUpdatePhase = useCallback(async (id: string, data: UpdatePhaseData) => {
-    return updateMutation.mutateAsync({ id, data })
-  }, [updateMutation])
+  const handleUpdatePhase = useCallback(async (id: string, data: ExtendedUpdatePhaseData) => {
+    try {
+      const result = await updateMutation.mutateAsync({ id, data })
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchPhases()
+      
+      // Trigger analytics refresh
+      const currentPhase = phases.find((p: any) => p._id === id)
+      const projectId = data?.projectId || currentPhase?.projectId
+      if (projectId) {
+        refreshAnalytics({ projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error updating phase:', error)
+      throw error
+    }
+  }, [updateMutation, refetchPhases, queryClient, phases])
 
   const handleDeletePhase = useCallback(async (phaseId: string) => {
-    return deleteMutation.mutateAsync(phaseId)
-  }, [deleteMutation])
+    try {
+      const phaseToDelete = phases.find((p: any) => p._id === phaseId)
+      const result = await deleteMutation.mutateAsync(phaseId)
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchPhases()
+      
+      // Trigger analytics refresh
+      if (phaseToDelete?.projectId) {
+        refreshAnalytics({ projectId: phaseToDelete.projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error deleting phase:', error)
+      throw error
+    }
+  }, [deleteMutation, refetchPhases, queryClient, phases])
+
+  // Individual phase loading states
+  const [individualLoading, setIndividualLoading] = useState<Record<string, boolean>>({})
+
+  // Quick status and end date updates with optimistic updates
+  const handleUpdatePhaseStatus = useCallback(async (id: string, status: 'pending' | 'planning' | 'in-progress' | 'on-hold' | 'completed' | 'cancelled') => {
+    setIndividualLoading(prev => ({ ...prev, [id]: true }))
+    
+    // Optimistic update
+    const currentPhase = phases.find((p: any) => p._id === id)
+    if (currentPhase) {
+      const updatedPhases = phases.map((p: any) => 
+        p._id === id ? { ...p, status } : p
+      )
+      dispatch(setPhases(updatedPhases))
+    }
+    
+    try {
+      await handleUpdatePhase(id, { status })
+      // Refetch to ensure sync
+      await refetchPhases()
+    } catch (error) {
+      // Revert optimistic update on error
+      if (currentPhase) {
+        const revertedPhases = phases.map((p: any) => 
+          p._id === id ? currentPhase : p
+        )
+        dispatch(setPhases(revertedPhases))
+      }
+      throw error
+    } finally {
+      setIndividualLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }, [dispatch, phases, handleUpdatePhase, refetchPhases])
+
+  const handleUpdatePhaseEndDate = useCallback(async (id: string, endDate: string) => {
+    setIndividualLoading(prev => ({ ...prev, [id]: true }))
+    
+    // Optimistic update
+    const currentPhase = phases.find((p: any) => p._id === id)
+    if (currentPhase) {
+      const updatedPhases = phases.map((p: any) => 
+        p._id === id ? { ...p, endDate } : p
+      )
+      dispatch(setPhases(updatedPhases))
+    }
+    
+    try {
+      await handleUpdatePhase(id, { endDate: new Date(endDate) })
+      // Refetch to ensure sync
+      await refetchPhases()
+    } catch (error) {
+      // Revert optimistic update on error
+      if (currentPhase) {
+        const revertedPhases = phases.map((p: any) => 
+          p._id === id ? currentPhase : p
+        )
+        dispatch(setPhases(revertedPhases))
+      }
+      throw error
+    } finally {
+      setIndividualLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }, [dispatch, phases, handleUpdatePhase, refetchPhases])
+
+  // Check if individual phase is loading
+  const isPhaseLoading = useCallback((id: string) => {
+    return individualLoading[id] || false
+  }, [individualLoading])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: any) => {
@@ -124,6 +247,105 @@ export function usePhases() {
   const refreshPhases = useCallback(() => {
     return handleFetchPhases({ projectId: filters.projectId })
   }, [handleFetchPhases, filters.projectId])
+
+  // Analytics operations
+  const handleGetPhaseAnalytics = useCallback(async (projectId?: string, departmentId?: string) => {
+    try {
+      const params = new URLSearchParams()
+      if (projectId) params.append('projectId', projectId)
+      if (departmentId) params.append('departmentId', departmentId)
+      params.append('type', 'overview')
+
+      const response = await fetch(`/api/phases/analytics?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get phase analytics')
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    }
+  }, [dispatch])
+
+  const handleGetPhaseTimeline = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/phases/analytics?projectId=${projectId}&type=timeline`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get phase timeline')
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    }
+  }, [dispatch])
+
+  const handleGetPhaseTaskAnalytics = useCallback(async (phaseId: string) => {
+    try {
+      const response = await fetch(`/api/phases/analytics?phaseId=${phaseId}&type=tasks`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get phase task analytics')
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    }
+  }, [dispatch])
+
+  const handleGetCustomAnalytics = useCallback(async (filters: any) => {
+    try {
+      const response = await fetch('/api/phases/analytics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(filters),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get custom analytics')
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    }
+  }, [dispatch])
 
   // Computed values
   const hasPhases = phases.length > 0
@@ -167,10 +389,22 @@ export function usePhases() {
     updatePhase: handleUpdatePhase,
     deletePhase: handleDeletePhase,
 
+    // Quick updates
+    updatePhaseStatus: handleUpdatePhaseStatus,
+    updatePhaseEndDate: handleUpdatePhaseEndDate,
+    isPhaseLoading,
+    individualLoading,
+
     // Filter and sort operations
     setFilters: handleSetFilters,
     setSort: handleSetSort,
     setPagination: handleSetPagination,
+
+    // Analytics operations
+    getPhaseAnalytics: handleGetPhaseAnalytics,
+    getPhaseTimeline: handleGetPhaseTimeline,
+    getPhaseTaskAnalytics: handleGetPhaseTaskAnalytics,
+    getCustomAnalytics: handleGetCustomAnalytics,
 
     // Utility operations
     clearError: handleClearError,
@@ -215,24 +449,31 @@ export function useProjectPhases(projectId: string) {
     phases, 
     setFilters, 
     refreshPhases,
+    filters,
     ...rest 
   } = usePhases()
 
-  // Filter phases by project automatically
-  useMemo(() => {
-    if (projectId && projectId !== rest.filters.projectId) {
+  const initializedRef = useRef(false)
+
+  // Filter phases by project automatically using useEffect
+  useEffect(() => {
+    // Only set filters on first mount or if projectId changes
+    if (projectId && (!initializedRef.current || filters.projectId !== projectId)) {
       setFilters({ projectId })
+      initializedRef.current = true
     }
-  }, [projectId, rest.filters.projectId, setFilters])
+  }, [projectId, filters.projectId, setFilters])
 
   const projectPhases = useMemo(() => {
     // Since the API already filters by projectId, no need to filter again
     return phases
-  }, [phases, projectId])
+  }, [phases])
 
   return {
     phases: projectPhases,
+    filters,
     ...rest,
+    setFilters, // Add setFilters to the return
     refreshPhases: () => refreshPhases(),
   }
 }

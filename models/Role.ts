@@ -34,6 +34,10 @@ export interface IRole extends Document {
   }
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 }
 
 const PermissionSchema = new Schema<IPermission>({
@@ -162,6 +166,21 @@ const RoleSchema = new Schema<IRole>({
     notes: String,
     tags: [String],
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -275,4 +294,10 @@ RoleSchema.pre('deleteOne', { document: true, query: false }, function (next) {
   next()
 })
 
-export default mongoose.models.Role || mongoose.model<IRole>("Role", RoleSchema)
+const Role = mongoose.models.Role || mongoose.model<IRole>("Role", RoleSchema)
+
+// Register the model with the generic registry
+import { registerModel } from '../lib/modelRegistry'
+registerModel('Role', Role, RoleSchema, '1.0.0', ['Department'])
+
+export default Role

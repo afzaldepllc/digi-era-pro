@@ -12,20 +12,24 @@ import bcrypt from 'bcryptjs'
 // POST /api/leads/[id]/create-client - Create client from lead
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
     // Security & Authentication - Sales team can create clients from leads
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'clients', 'create')
 
     // Validate lead ID
-    const validatedParams = leadIdSchema.parse({ id: params.id })
+    // Note: In some Next.js setups, `params` may be a Promise. Unwrap it with await to ensure `id` is defined.
+    // `params` may be a Promise in the server API handler context. Awaiting it is safe
+    // even if it isn't a Promise, so we just await and treat the result as the resolved params.
+    const resolvedParams = (await params) as { id: string }
+    const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
 
     // Create client with automatic connection management
     const result = await executeGenericDbQuery(async () => {
       // 1. Fetch the lead with all required data
       const lead = await Lead.findById(validatedParams.id)
-      
+
       if (!lead) {
         throw new Error('Lead not found')
       }
@@ -40,7 +44,7 @@ export async function POST(
       }
 
       // 2. Check if client with this email already exists
-      const existingClient = await User.findOne({ 
+      const existingClient = await User.findOne({
         email: lead.email.toLowerCase(),
         role: { $exists: true }
       }).populate('role')
@@ -58,18 +62,18 @@ export async function POST(
       }
 
       // 3. Get client role for sales department
-      const salesDepartment = await Department.findOne({ 
-        name: 'Sales', 
-        status: 'active' 
+      const salesDepartment = await Department.findOne({
+        name: 'Sales',
+        status: 'active'
       })
 
       if (!salesDepartment) {
         throw new Error('Sales department not found')
       }
 
-      const clientRole = await Role.findOne({ 
+      const clientRole = await Role.findOne({
         name: `client_${salesDepartment.name.toLowerCase().replace(/\s+/g, '_')}`,
-        status: 'active' 
+        status: 'active'
       })
 
       if (!clientRole) {
@@ -86,11 +90,13 @@ export async function POST(
         email: lead.email.toLowerCase(),
         password: hashedPassword,
         phone: lead.phone || '',
-        company: lead.company || undefined,
+        company: lead.company || lead.name || 'Not specified',
         role: clientRole._id,
         department: salesDepartment._id,
         leadId: lead._id, // Link back to the lead
         status: 'qualified', // Start as qualified
+        isClient: true,
+        clientStatus: 'qualified', // Required for client users
         emailVerified: false, // Will need to verify email
         phoneVerified: false,
         twoFactorEnabled: false,
@@ -99,11 +105,6 @@ export async function POST(
           theme: 'system',
           language: 'en',
           timezone: 'UTC',
-          notifications: {
-            email: true,
-            push: false,
-            sms: false
-          }
         },
         metadata: {
           tags: ['converted_from_lead'],
@@ -162,10 +163,18 @@ export async function POST(
   } catch (error: any) {
     console.error('Error creating client from lead:', error)
 
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid lead ID format',
+        details: error.errors
+      }, { status: 400 })
+    }
+
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message || 'Failed to create client from lead' 
+      {
+        success: false,
+        error: error.message || 'Failed to create client from lead'
       },
       { status: 400 }
     )

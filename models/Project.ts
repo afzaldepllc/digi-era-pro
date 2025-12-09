@@ -13,7 +13,7 @@ export interface IProject extends Document {
 
   // Fields from lead project info
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
 
   // Enhanced professional CRM fields
@@ -26,43 +26,6 @@ export interface IProject extends Document {
     contingency?: number
   }
 
-  stakeholders?: {
-    projectManager?: mongoose.Types.ObjectId
-    teamMembers?: mongoose.Types.ObjectId[]
-    clientContacts?: mongoose.Types.ObjectId[]
-    roles?: {
-      userId: mongoose.Types.ObjectId
-      role: string
-      responsibilities?: string[]
-    }[]
-  }
-
-  milestones?: {
-    title: string
-    description?: string
-    dueDate?: Date
-    completed: boolean
-    completedAt?: Date
-    deliverables?: string[]
-  }[]
-
-  phases?: {
-    name: string
-    description?: string
-    startDate?: Date
-    endDate?: Date
-    status: 'pending' | 'in_progress' | 'completed'
-    deliverables?: string[]
-  }[]
-
-  deliverables?: {
-    name: string
-    description?: string
-    dueDate?: Date
-    status: 'pending' | 'in_progress' | 'completed' | 'delivered'
-    assignedTo?: mongoose.Types.ObjectId
-    acceptanceCriteria?: string[]
-  }[]
 
   risks?: {
     description: string
@@ -74,7 +37,6 @@ export interface IProject extends Document {
 
   progress?: {
     overall: number // 0-100
-    phases?: { phaseId: string; progress: number }[]
     lastUpdated?: Date
     notes?: string
   }
@@ -82,7 +44,6 @@ export interface IProject extends Document {
   resources?: {
     estimatedHours?: number
     actualHours?: number
-    teamSize?: number
     tools?: string[]
     externalResources?: string[]
   }
@@ -156,11 +117,11 @@ const ProjectSchema = new Schema<IProject>({
     trim: true,
     maxlength: [100, "Project type cannot exceed 100 characters"],
   },
-  requirements: {
+  requirements: [{
     type: String,
     trim: true,
-    maxlength: [2000, "Requirements cannot exceed 2000 characters"],
-  },
+    maxlength: [200, "Requirement cannot exceed 200 characters"],
+  }],
   timeline: {
     type: String,
     trim: true,
@@ -177,43 +138,7 @@ const ProjectSchema = new Schema<IProject>({
     contingency: { type: Number, min: [0, "Contingency budget must be positive"] },
   },
 
-  stakeholders: {
-    projectManager: { type: Schema.Types.ObjectId, ref: 'User' },
-    teamMembers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
-    clientContacts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
-    roles: [{
-      userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-      role: { type: String, required: true, trim: true, maxlength: [100, "Role cannot exceed 100 characters"] },
-      responsibilities: [{ type: String, trim: true, maxlength: [200, "Responsibility cannot exceed 200 characters"] }],
-    }],
-  },
 
-  milestones: [{
-    title: { type: String, required: true, trim: true, maxlength: [200, "Milestone title cannot exceed 200 characters"] },
-    description: { type: String, trim: true, maxlength: [500, "Milestone description cannot exceed 500 characters"] },
-    dueDate: { type: Date },
-    completed: { type: Boolean, default: false },
-    completedAt: { type: Date },
-    deliverables: [{ type: String, trim: true, maxlength: [200, "Deliverable cannot exceed 200 characters"] }],
-  }],
-
-  phases: [{
-    name: { type: String, required: true, trim: true, maxlength: [100, "Phase name cannot exceed 100 characters"] },
-    description: { type: String, trim: true, maxlength: [500, "Phase description cannot exceed 500 characters"] },
-    startDate: { type: Date },
-    endDate: { type: Date },
-    status: { type: String, enum: ['pending', 'in_progress', 'completed'], default: 'pending' },
-    deliverables: [{ type: String, trim: true, maxlength: [200, "Deliverable cannot exceed 200 characters"] }],
-  }],
-
-  deliverables: [{
-    name: { type: String, required: true, trim: true, maxlength: [200, "Deliverable name cannot exceed 200 characters"] },
-    description: { type: String, trim: true, maxlength: [500, "Deliverable description cannot exceed 500 characters"] },
-    dueDate: { type: Date },
-    status: { type: String, enum: ['pending', 'in_progress', 'completed', 'delivered'], default: 'pending' },
-    assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
-    acceptanceCriteria: [{ type: String, trim: true, maxlength: [300, "Acceptance criterion cannot exceed 300 characters"] }],
-  }],
 
   risks: [{
     description: { type: String, required: true, trim: true, maxlength: [500, "Risk description cannot exceed 500 characters"] },
@@ -225,10 +150,6 @@ const ProjectSchema = new Schema<IProject>({
 
   progress: {
     overall: { type: Number, min: [0, "Progress cannot be negative"], max: [100, "Progress cannot exceed 100"] },
-    phases: [{
-      phaseId: { type: String, required: true },
-      progress: { type: Number, min: [0, "Phase progress cannot be negative"], max: [100, "Phase progress cannot exceed 100"] },
-    }],
     lastUpdated: { type: Date },
     notes: { type: String, trim: true, maxlength: [1000, "Progress notes cannot exceed 1000 characters"] },
   },
@@ -236,7 +157,6 @@ const ProjectSchema = new Schema<IProject>({
   resources: {
     estimatedHours: { type: Number, min: [0, "Estimated hours cannot be negative"] },
     actualHours: { type: Number, min: [0, "Actual hours cannot be negative"] },
-    teamSize: { type: Number, min: [1, "Team size must be at least 1"] },
     tools: [{ type: String, trim: true, maxlength: [100, "Tool name cannot exceed 100 characters"] }],
     externalResources: [{ type: String, trim: true, maxlength: [200, "External resource cannot exceed 200 characters"] }],
   },
@@ -280,9 +200,8 @@ ProjectSchema.index({ priority: 1, status: 1 })
 ProjectSchema.index({
   name: 'text',
   description: 'text',
-  requirements: 'text'
 }, {
-  weights: { name: 10, description: 5, requirements: 3 },
+  weights: { name: 10, description: 5 },
   name: 'project_search_index'
 })
 
@@ -345,12 +264,6 @@ ProjectSchema.virtual('subTasks', {
   match: { type: 'sub-task' }
 })
 
-// Virtual for project phases (from Phase model)
-ProjectSchema.virtual('projectPhases', {
-  ref: 'Phase',
-  localField: '_id',
-  foreignField: 'projectId',
-})
 
 // Pre-save validation
 ProjectSchema.pre('save', async function (next) {

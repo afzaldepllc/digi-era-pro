@@ -240,6 +240,12 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching projects:', error)
+
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
+
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to fetch projects'
@@ -264,7 +270,7 @@ export async function POST(request: NextRequest) {
       ...formData,
       startDate: formData.startDate ? new Date(formData.startDate) : undefined,
       endDate: formData.endDate ? new Date(formData.endDate) : undefined,
-      budget: formData.budget ? parseFloat(formData.budget) : undefined,
+      budget: formData.budget ? formData.budget : undefined,
       createdBy: user.id,
     }
 
@@ -302,6 +308,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error creating project:', error)
+
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({

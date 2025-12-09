@@ -20,7 +20,7 @@ Purpose: Multi-tier security with role-based access control
 Multi-Tier Authentication: Admin (2FA + without VPN), Employee (VPN), Client (Global)
 Dynamic Role Management: 10+ roles with hierarchical permissions
 Security Enforcement: Network validation, session management, audit logging
-Superadmin Protection: superadmin@gmail.com (unrestricted)
+Superadmin Protection:user with role.name ='super_admin (unrestricted)
 User registration/login with security tier validation
 Network access control (VPN)
 Two-factor authentication for admins on every login.

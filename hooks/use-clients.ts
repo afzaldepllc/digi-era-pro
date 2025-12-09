@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
   useGenericQuery,
@@ -27,6 +27,9 @@ import type {
 export function useClients() {
   const dispatch = useAppDispatch()
 
+  // Local state for fetching client by ID
+  const [clientIdToFetch, setClientIdToFetch] = useState<string | undefined>(undefined)
+
   const {
     selectedClient,
     filters,
@@ -47,8 +50,8 @@ export function useClients() {
       setStats: (stats: any) => {
         // Stats will be handled by TanStack Query
       },
-      setLoading: () => {},
-      setActionLoading: () => {},
+      setLoading: () => { },
+      setActionLoading: () => { },
       setError: (error: any) => {
         // Error handling is done by handleAPIError
       },
@@ -71,25 +74,39 @@ export function useClients() {
     refetch: refetchClients,
   } = useGenericQuery<Client>(genericOptions, queryParams)
 
+  // Fetch single client by ID
+  const { data: fetchedClientById, isLoading: clientByIdLoading } = useGenericQueryById<Client>(
+    {
+      entityName: 'clients',
+      baseUrl: '/api/clients',
+      reduxDispatchers: {
+        setEntity: (entity: Client | null) => dispatch(setSelectedClient(entity)),
+        setLoading: (loading: boolean) => {
+          // Loading handled by query
+        },
+        setError: (error: any) => {
+          // Error handled in generic hook
+        },
+        clearError: () => dispatch(clearError()),
+      },
+    },
+    clientIdToFetch,
+    !!clientIdToFetch
+  )
+
   // Mutations
   const createMutation = useGenericCreate<Client>(genericOptions)
   const updateMutation = useGenericUpdate<Client>(genericOptions)
   const deleteMutation = useGenericDelete<Client>(genericOptions)
-
-  // For single client fetching (used in edit page)
-  const {
-    data: clientById,
-    isLoading: clientByIdLoading,
-  } = useGenericQueryById<Client>(genericOptions, undefined, false) // Will be enabled when ID is provided
 
   // Fetch operations
   const handleFetchClients = useCallback(() => {
     refetchClients()
   }, [refetchClients])
 
-  const handleFetchClientById = useCallback((id: string) => {
-    // This will be handled by useGenericQueryById when we pass the id
-    // For now, we'll use the mutation to fetch or implement separately
+  const handleFetchClientById = useCallback(async (id: string) => {
+    // Set the client ID to fetch
+    setClientIdToFetch(id)
   }, [])
 
   // CRUD operations
@@ -104,6 +121,23 @@ export function useClients() {
   const handleDeleteClient = useCallback(async (clientId: string) => {
     return await deleteMutation.mutateAsync(clientId)
   }, [deleteMutation])
+
+  const handleRestoreClient = useCallback(async (clientId: string) => {
+    // First get the current client to preserve clientStatus
+    const currentClient = clients.find(c => c._id === clientId)
+    if (!currentClient) {
+      throw new Error('Client not found')
+    }
+
+    return await updateMutation.mutateAsync({
+      id: clientId,
+      data: {
+        isDeleted: false,
+        status: 'active',
+        clientStatus: currentClient.clientStatus // Preserve existing clientStatus
+      }
+    })
+  }, [updateMutation, clients])
 
   // Status operations with business logic
   const handleUpdateClientStatus = useCallback(async (id: string, clientStatus: string, reason?: string) => {
@@ -212,7 +246,7 @@ export function useClients() {
   }, [clients])
 
   const getClientsByCompany = useCallback((company: string) => {
-    return clients.filter(client => 
+    return clients.filter(client =>
       client.company?.toLowerCase().includes(company.toLowerCase())
     )
   }, [clients])
@@ -238,9 +272,9 @@ export function useClients() {
   }), [clients])
 
   return {
-    // State
-    clients,
-    selectedClient,
+    // State - combine Redux state with TanStack Query data
+    clients: clients,
+    selectedClient: fetchedClientById || selectedClient,
     loading: loading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
     actionLoading: createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
     statusLoading: updateMutation.isPending, // For status updates
@@ -250,12 +284,17 @@ export function useClients() {
     pagination,
     stats,
 
+    // Individual loading states
+    queryLoading: loading,
+    clientByIdLoading,
+
     // CRUD operations
     fetchClients: handleFetchClients,
     fetchClientById: handleFetchClientById,
     createClient: handleCreateClient,
     updateClient: handleUpdateClient,
     deleteClient: handleDeleteClient,
+    restoreClient: handleRestoreClient,
 
     // Status operations
     updateClientStatus: handleUpdateClientStatus,
@@ -269,7 +308,7 @@ export function useClients() {
     setSelectedClient: handleSetSelectedClient,
 
     // Utility operations
-    clearError: () => {}, // Not needed with TanStack Query
+    clearError: () => { }, // Not needed with TanStack Query
     resetState: handleResetState,
     refreshClients,
 

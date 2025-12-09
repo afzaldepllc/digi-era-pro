@@ -44,7 +44,6 @@ The CRM system implements a comprehensive role-based workflow with the following
 ### 7. Team Member
 - Task execution and time logging
 - Status updates and documentation
-- Deliverable creation and testing
 - Quality assurance
 
 ### 8. Client Portal
@@ -149,7 +148,6 @@ The CRM system implements a comprehensive role-based workflow with the following
    - Access logging and tracking
 
 5. **Quality Control**
-   - Mandatory code review for technical deliverables
    - Quality checkpoints at project milestones
    - Client sign-off requirements
    - Performance metrics tracking

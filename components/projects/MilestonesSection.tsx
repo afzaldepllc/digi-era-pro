@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,12 @@ import {
   TrendingUp,
   Link as LinkIcon,
   DollarSign,
-  RefreshCw
+  RefreshCw,
+  Workflow,
+  Send,
+  FileText,
+  BookTemplateIcon,
+  Filter
 } from "lucide-react";
 import {
   Select,
@@ -40,7 +45,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
 import CustomModal from "@/components/ui/custom-modal";
+import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
 import { createMilestoneFormSchema, updateMilestoneFormSchema, getMilestoneStatusColor, getMilestonePriorityColor } from "@/lib/validations/milestone";
 import type { CreateMilestoneFormData, UpdateMilestoneFormData } from "@/lib/validations/milestone";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +56,17 @@ import { useUsers } from "@/hooks/use-users";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDistanceToNow } from "date-fns";
 import type { IMilestone } from "@/models/Milestone";
+import { MilestoneTemplateGallery } from "./MilestoneTemplateGallery";
+import { MilestoneApprovalManager } from "./MilestoneApprovalManager";
+import {
+  InlineMilestoneStatusDropdown,
+  InlineMilestonePriorityDropdown,
+  InlineMilestoneDueDateInput,
+  InlineMilestoneProgressDisplay,
+  getProgressFromStatus,
+  milestoneStatusColors,
+  milestonePriorityColors,
+} from "./InlineMilestoneEditUtils";
 
 interface MilestonesSectionProps {
   projectId: string;
@@ -59,13 +77,23 @@ interface MilestonesSectionProps {
 export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: MilestonesSectionProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<IMilestone | null>(null);
-  const [viewFilter, setViewFilter] = useState<'all' | 'pending' | 'in-progress' | 'completed' | 'overdue'>('all');
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const [showApprovalManager, setShowApprovalManager] = useState(false);
+  const [submittingApproval, setSubmittingApproval] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   const { toast } = useToast();
+
+  // Helper function to check if a specific milestone action is loading
+  const isActionLoadingForMilestone = (milestoneId: string) => {
+    return actionLoading[milestoneId] || false;
+  };
   const { canCreate, canUpdate, canDelete } = usePermissions();
   const { users } = useUsers();
 
-  // Use milestone management hook
+  // Use milestone management hook FIRST (before callbacks that depend on it)
   const {
     milestones,
     loading,
@@ -74,13 +102,95 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
     createMilestone,
     updateMilestone,
     deleteMilestone,
+    updateMilestoneStatus,
+    updateMilestoneDueDate,
+    isMilestoneLoading,
+    individualLoading,
     completedMilestones,
     pendingMilestones,
     inProgressMilestones,
     overdueMilestones,
     overallProgress,
-    completionRate
+    completionRate,
+    setFilters: setBackendFilters,
+    filters: backendFilters,
   } = useMilestoneManagement(projectId, phaseId);
+
+  // Milestone filter configuration
+  const milestoneFilterConfig: FilterConfig = useMemo(() => ({
+    fields: [
+      { key: 'search', label: 'Search', type: 'text', placeholder: 'Search milestone title or description', cols: 12 },
+      {
+        key: 'status', label: 'Status', type: 'select', placeholder: 'All', options: [
+          { value: 'all', label: 'All' },
+          { value: 'pending', label: 'Pending' },
+          { value: 'in-progress', label: 'In Progress' },
+          { value: 'completed', label: 'Completed' },
+          { value: 'cancelled', label: 'Cancelled' },
+        ], cols: 6
+      },
+      {
+        key: 'priority', label: 'Priority', type: 'select', placeholder: 'All', options: [
+          { value: 'all', label: 'All' },
+          { value: 'low', label: 'Low' },
+          { value: 'medium', label: 'Medium' },
+          { value: 'high', label: 'High' },
+          { value: 'urgent', label: 'Urgent' },
+        ], cols: 6
+      },
+      { 
+        key: 'assigneeId', 
+        label: 'Assignee', 
+        type: 'select', 
+        placeholder: 'Any', 
+        options: [
+          { value: 'all', label: 'Any' }, 
+          ...(users || []).filter((u: any) => u.status === 'active').map((u: any) => ({ value: u._id, label: u.name }))
+        ], 
+        searchable: true, 
+        cols: 12 
+      },
+      { key: 'dueDateFrom', label: 'Due Date From', type: 'date', cols: 6 },
+      { key: 'dueDateTo', label: 'Due Date To', type: 'date', cols: 6 },
+    ],
+    defaultValues: { search: '', status: 'all', priority: 'all', assigneeId: 'all', dueDateFrom: '', dueDateTo: '' }
+  }), [users]);
+
+  // Apply filters function - uses backend filtering for supported fields
+  const applyFilters = useCallback((values: any) => {
+    // Build backend filter object for API query
+    const mapped: any = {
+      projectId, // Always filter by project
+    };
+    
+    // Add phaseId if provided
+    if (phaseId) {
+      mapped.phaseId = phaseId;
+    }
+    
+    // Map filters following task pattern
+    if (values.search) mapped.search = values.search;
+    if (values.status && values.status !== 'all') mapped.status = values.status;
+    if (values.priority && values.priority !== 'all') mapped.priority = values.priority;
+    if (values.assigneeId && values.assigneeId !== 'all') mapped.assigneeId = values.assigneeId;
+    if (values.dueDateFrom) mapped.dueDateFrom = values.dueDateFrom;
+    if (values.dueDateTo) mapped.dueDateTo = values.dueDateTo;
+    
+    // Apply backend filters
+    setBackendFilters(mapped);
+  }, [projectId, phaseId, setBackendFilters]);
+
+  // Compute number of applied filters (ignore defaults and projectId/phaseId)
+  const filterCount = useMemo(() => {
+    const keys = ['search', 'status', 'priority', 'assigneeId', 'dueDateFrom', 'dueDateTo'];
+    if (!backendFilters) return 0;
+    return keys.reduce((count, k) => {
+      const v = (backendFilters as any)[k];
+      if (v === undefined || v === null) return count;
+      if (v === '' || v === 'all') return count;
+      return count + 1;
+    }, 0);
+  }, [backendFilters]);
 
   // Forms
   const addForm = useForm<CreateMilestoneFormData>({
@@ -92,10 +202,11 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
       phaseId: phaseId || "",
       dueDate: "",
       priority: "medium",
+      status: "pending",
       assigneeId: "",
       deliverables: [],
       successCriteria: [],
-      budgetAllocation: "",
+      budgetAllocation: 0,
     },
   });
 
@@ -106,20 +217,32 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
       description: "",
       dueDate: "",
       priority: "medium",
+      status: "pending",
       assigneeId: "",
       deliverables: [],
       successCriteria: [],
-      budgetAllocation: "",
+      budgetAllocation: 0,
     },
   });
 
 
 
-  // Filter milestones based on view filter
-  const filteredMilestones = (milestones || []).filter((milestone: IMilestone) => {
-    if (viewFilter === 'all') return true;
-    return milestone.status === viewFilter;
-  });
+  // Filter milestones based on advanced filters (search is client-side only)
+  const filteredMilestones = useMemo(() => {
+    let filtered = [...(milestones || [])];
+
+    // Search filter (client-side only)
+    const searchValue = (backendFilters as any)?.search || '';
+    if (searchValue && searchValue.trim() !== '') {
+      const searchLower = searchValue.toLowerCase();
+      filtered = filtered.filter((milestone: IMilestone) =>
+        milestone.title.toLowerCase().includes(searchLower) ||
+        (milestone.description && milestone.description.toLowerCase().includes(searchLower))
+      );
+    }
+
+    return filtered;
+  }, [milestones, backendFilters]);
 
   // Calculate statistics
   const milestoneStats = {
@@ -142,16 +265,19 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
         phaseId: phaseId || "",
         dueDate: new Date(data.dueDate),
         priority: data.priority,
+        status: data.status || "pending",
+        progress: 0, // Always start at 0, will be calculated from status
         assigneeId: data.assigneeId || "",
         deliverables: data.deliverables,
         successCriteria: data.successCriteria,
         budgetAllocation: data.budgetAllocation ? Number(data.budgetAllocation) : undefined,
-        progress: 0,
-        status: "pending" as const,
         linkedTaskIds: [],
         dependencies: [],
       });
 
+      // Ensure data is refreshed
+      await refetch();
+      
       setShowAddModal(false);
       addForm.reset();
       onMilestoneUpdate?.();
@@ -168,11 +294,85 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
       description: milestone.description,
       dueDate: new Date(milestone.dueDate).toISOString().split('T')[0],
       priority: milestone.priority,
+      status: milestone.status,
       assigneeId: milestone.assigneeId?.toString(),
       deliverables: milestone.deliverables,
       successCriteria: milestone.successCriteria,
-      budgetAllocation: milestone.budgetAllocation?.toString(),
+      budgetAllocation: milestone.budgetAllocation,
     });
+  };
+
+  // Inline update handlers with optimistic updates
+  const handleInlineStatusChange = async (milestoneId: string, newStatus: string) => {
+    try {
+      await updateMilestoneStatus(milestoneId, newStatus as 'pending' | 'in-progress' | 'completed' | 'overdue');
+      onMilestoneUpdate?.();
+      
+      toast({
+        title: "Status Updated",
+        description: `Milestone status changed to ${newStatus}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update milestone status",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleInlinePriorityChange = async (milestoneId: string, newPriority: string) => {
+    try {
+      await updateMilestone(milestoneId, { priority: newPriority as any });
+      onMilestoneUpdate?.();
+      
+      toast({
+        title: "Priority Updated",
+        description: "Milestone priority has been updated",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update milestone priority",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleInlineDueDateChange = async (milestoneId: string, newDueDate: string) => {
+    try {
+      await updateMilestoneDueDate(milestoneId, newDueDate);
+      onMilestoneUpdate?.();
+      
+      toast({
+        title: "Due Date Updated",
+        description: "Milestone due date has been updated",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update milestone due date",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleInlineProgressChange = async (milestoneId: string, newProgress: number) => {
+    setActionLoading(prev => ({ ...prev, [milestoneId]: true }));
+    try {
+      await updateMilestone(milestoneId, { progress: newProgress });
+      onMilestoneUpdate?.();
+    } catch (error) {
+      console.error('Error updating milestone progress:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update milestone progress",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setActionLoading(prev => ({ ...prev, [milestoneId]: false }));
+    }
   };
 
   // Handle milestone update
@@ -185,12 +385,16 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
         description: data.description,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         priority: data.priority,
+        status: data.status,
         assigneeId: data.assigneeId,
         deliverables: data.deliverables,
         successCriteria: data.successCriteria,
-        budgetAllocation: data.budgetAllocation ? parseFloat(data.budgetAllocation) : undefined,
+        budgetAllocation: data.budgetAllocation ? parseFloat(data.budgetAllocation.toString()) : 0,
       });
 
+      // Ensure data is refreshed
+      await refetch();
+      
       setEditingMilestone(null);
       editForm.reset();
       onMilestoneUpdate?.();
@@ -199,17 +403,163 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
     }
   };
 
+  // Handle template application
+  const handleTemplateApply = async (result: any) => {
+    toast({
+      title: "Template Applied",
+      description: `Successfully created ${result.milestones?.length || 0} milestones from template.`,
+    });
+    
+    // Force refresh milestone data
+    try {
+      await refetch();
+      onMilestoneUpdate?.();
+    } catch (error) {
+      console.error('Error refreshing milestones:', error);
+      // Fallback: reload the page if refetch fails
+      window.location.reload();
+    }
+  };
+
+  // Submit milestone for approval
+  const handleSubmitApproval = async (milestoneId: string) => {
+    try {
+      setSubmittingApproval(milestoneId);
+      
+      // Default approval workflow configuration
+      const workflowConfig = {
+        requiresApproval: true,
+        approvalStages: [
+          {
+            stageName: "Manager Review",
+            requiredRoles: ["project-manager", "department-head"],
+            isOptional: false,
+            order: 0
+          },
+          {
+            stageName: "Final Approval",
+            requiredRoles: ["super-administrator"],
+            isOptional: false,
+            order: 1
+          }
+        ]
+      };
+
+      const response = await fetch('/api/milestone-approvals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          milestoneId,
+          projectId,
+          phaseId,
+          workflowConfig,
+          submissionComments: 'Milestone ready for approval',
+          completionDeadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days from now
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit milestone for approval');
+      }
+
+      toast({
+        title: "Approval Submitted",
+        description: "Milestone has been submitted for approval.",
+      });
+
+      refetch();
+    } catch (error: any) {
+      console.error('Error submitting approval:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to submit milestone for approval',
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingApproval(null);
+    }
+  };
+
   // Handle milestone deletion
   const handleDeleteMilestone = async (milestoneId: string) => {
     try {
       await deleteMilestone(milestoneId);
+      
+      // Ensure data is refreshed
+      await refetch();
       onMilestoneUpdate?.();
     } catch (error) {
       console.error('Error deleting milestone:', error);
     }
   };
 
-  if (loading) {
+  // Handle milestone approval submission
+  const handleSubmitForApproval = async (milestoneId: string) => {
+    setSubmittingApproval(milestoneId);
+    try {
+      const milestone = milestones?.find(m => m._id === milestoneId);
+      if (!milestone) return;
+
+      // Submit milestone for approval with default workflow
+      const response = await fetch('/api/milestone-approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          milestoneId,
+          projectId,
+          phaseId: phaseId || undefined,
+          workflowConfig: {
+            requiresApproval: true,
+            approvalStages: [
+              {
+                stageName: 'Manager Review',
+                requiredRoles: ['project-manager', 'admin'],
+                isOptional: false,
+                order: 1
+              },
+              {
+                stageName: 'Client Approval',
+                requiredRoles: ['client', 'admin'], 
+                isOptional: false,
+                order: 2
+              }
+            ]
+          },
+          submissionComments: `Milestone "${milestone.title}" submitted for approval`,
+          completionDeadline: milestone.dueDate ? new Date(milestone.dueDate).toISOString() : undefined
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit milestone for approval');
+      }
+
+      toast({
+        title: "Approval Submitted",
+        description: `Milestone "${milestone.title}" has been submitted for approval`,
+      });
+
+      // Refresh data to show updated approval status
+      refetch();
+      onMilestoneUpdate?.();
+    } catch (error) {
+      console.error('Error submitting milestone for approval:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit milestone for approval",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingApproval(null);
+    }
+  };
+
+  // Show loading only for initial load, not for updates
+  if (loading && (!milestones || milestones.length === 0)) {
     return (
       <div className="flex items-center justify-center h-64 gap-2">
         <RefreshCw className="h-6 w-6 animate-spin text-primary" />
@@ -226,23 +576,86 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
             <CardTitle className="text-lg">Project Milestones</CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={viewFilter} onValueChange={(value: any) => setViewFilter(value)}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Milestones</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={() => setShowAddModal(true)} size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              Add Milestone
+            <Button
+              ref={filterButtonRef}
+              variant="outline"
+              size="sm"
+              onClick={() => setFilterOpen(!filterOpen)}
+              className="relative"
+            >
+              <Filter className="h-4 w-4 mr-1" />
+              Filters
+              {filterCount > 0 && (
+                <Badge variant="destructive" className="ml-1 px-1 py-0 h-4 text-xs">
+                  {filterCount}
+                </Badge>
+              )}
             </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowApprovalManager(true)}
+            >
+              <Workflow className="h-4 w-4 mr-1" />
+              Approvals
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowTemplateGallery(true)}
+            >
+              <BookTemplateIcon className="h-4 w-4 mr-1" />
+              Templates
+            </Button>
+            
+            {canCreate("milestones") && (
+              <Button onClick={() => setShowAddModal(true)} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Milestone
+              </Button>
+            )}
           </div>
+        </div>
+
+        {/* Milestone Filters */}
+        <div className="mt-3">
+          {filterOpen && (
+            <GenericFilter
+              config={milestoneFilterConfig}
+              values={{
+                search: (backendFilters?.search || '') as string,
+                status: ((backendFilters as any)?.status || 'all') as string,
+                priority: ((backendFilters as any)?.priority || 'all') as string,
+                assigneeId: ((backendFilters as any)?.assigneeId || 'all') as string,
+                dueDateFrom: ((backendFilters as any)?.dueDateFrom || '') as string,
+                dueDateTo: ((backendFilters as any)?.dueDateTo || '') as string
+              }}
+              onFilterChange={applyFilters}
+              onReset={() => {
+                // Reset backend filters - explicitly clear all fields
+                const resetFilters: any = {
+                  projectId,
+                  search: '',
+                  status: '',
+                  priority: '',
+                  assigneeId: '',
+                  dueDateFrom: '',
+                  dueDateTo: ''
+                };
+                if (phaseId) resetFilters.phaseId = phaseId;
+                setBackendFilters(resetFilters);
+                // Trigger refetch to get all data
+                setTimeout(() => refetch(), 100);
+              }}
+              presentation="dropdown"
+              isOpen={filterOpen}
+              onOpenChange={setFilterOpen}
+              anchorRef={filterButtonRef}
+              loading={loading}
+            />
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -281,11 +694,50 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
         {filteredMilestones?.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Flag className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No milestones found</p>
-            <p className="text-sm">Create your first milestone to track project progress!</p>
+            {filterCount > 0 ? (
+              <>
+                <p>No milestones match your filters</p>
+                <p className="text-sm">Try adjusting your filter criteria</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Reset backend filters - explicitly clear all fields
+                    const resetFilters: any = {
+                      projectId,
+                      search: '',
+                      status: '',
+                      priority: '',
+                      assigneeId: '',
+                      dueDateFrom: '',
+                      dueDateTo: ''
+                    };
+                    if (phaseId) resetFilters.phaseId = phaseId;
+                    setBackendFilters(resetFilters);
+                    // Trigger refetch to get all data
+                    setTimeout(() => refetch(), 100);
+                  }}
+                  className="mt-4"
+                >
+                  Clear All Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <p>No milestones found</p>
+                <p className="text-sm">Create your first milestone to track project progress!</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Show loading indicator for bulk operations */}
+            {loading && milestones && milestones.length > 0 && (
+              <div className="flex items-center justify-center py-2 text-muted-foreground bg-muted/30 rounded-lg">
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                <span className="text-sm">Syncing milestones...</span>
+              </div>
+            )}
             {filteredMilestones.map((milestone: IMilestone) => (
               <Card key={milestone._id} className="border-l-4 border-l-primary/30 hover:shadow-md transition-shadow group">
                 <CardContent className="pt-4">
@@ -299,13 +751,21 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
                                 'bg-muted-foreground/30'
                           }`} />
                         <h4 className="font-semibold text-foreground truncate">{milestone.title}</h4>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <Badge className={getMilestoneStatusColor(milestone.status)}>
-                            {milestone.status.replace('-', ' ')}
-                          </Badge>
-                          <Badge variant="outline" className={getMilestonePriorityColor(milestone.priority)}>
-                            {milestone.priority} priority
-                          </Badge>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <InlineMilestoneStatusDropdown
+                            milestone={milestone}
+                            isLoading={isActionLoadingForMilestone(milestone._id)}
+                            canUpdate={canUpdate("milestones")}
+                            onStatusChange={handleInlineStatusChange}
+                            isMilestoneLoading={isMilestoneLoading}
+                          />
+                          <InlineMilestonePriorityDropdown
+                            milestone={milestone}
+                            isLoading={isActionLoadingForMilestone(milestone._id)}
+                            canUpdate={canUpdate("milestones")}
+                            onPriorityChange={handleInlinePriorityChange}
+                            isMilestoneLoading={isMilestoneLoading}
+                          />
                         </div>
                       </div>
 
@@ -318,23 +778,31 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
                       {/* Progress Bar */}
                       <div className="mb-3">
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-xs text-muted-foreground">Progress</span>
-                          <span className="text-xs font-medium">{milestone.progress}%</span>
+                          <span className="text-xs text-muted-foreground">Progress (Auto-calculated)</span>
+                          <InlineMilestoneProgressDisplay
+                            milestone={milestone}
+                            isLoading={isActionLoadingForMilestone(milestone._id)}
+                          />
                         </div>
-                        <Progress value={milestone.progress} className="h-2" />
+                        <Progress value={getProgressFromStatus(milestone.status)} className="h-2" />
                       </div>
 
                       {/* Milestone Metadata */}
                       <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Due: {new Date(milestone.dueDate).toLocaleDateString()}
+                        <div className="flex items-center gap-1">
+                          <InlineMilestoneDueDateInput
+                            milestone={milestone}
+                            isLoading={isActionLoadingForMilestone(milestone._id)}
+                            canUpdate={canUpdate("milestones")}
+                            onDueDateChange={handleInlineDueDateChange}
+                            isMilestoneLoading={isMilestoneLoading}
+                          />
                           {milestone.status === 'overdue' && (
-                            <span className="text-destructive font-medium">
+                            <span className="text-destructive font-medium text-xs">
                               (Overdue)
                             </span>
                           )}
-                        </span>
+                        </div>
                         {milestone.assigneeId && (
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3" />
@@ -392,6 +860,15 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {milestone.status === 'in-progress' && canUpdate("milestones") && (
+                          <DropdownMenuItem 
+                            onClick={() => handleSubmitApproval(milestone._id)}
+                            disabled={submittingApproval === milestone._id}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            Submit for Approval
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => handleEditMilestone(milestone)}>
                           <Edit3 className="h-4 w-4 mr-2" />
                           Edit Milestone
@@ -475,6 +952,35 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="status">Status</Label>
+                <Select onValueChange={(value) => addForm.setValue("status", value as any)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="on-hold">On Hold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="progress">Progress (%)</Label>
+                <Input
+                  id="progress"
+                  type="number"
+                  min="0"
+                  max="100"
+                  {...addForm.register("progress", { valueAsNumber: true })}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
             <div>
               <Label htmlFor="budgetAllocation">Budget Allocation (Optional)</Label>
               <Input
@@ -552,6 +1058,35 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editStatus">Status</Label>
+                <Select onValueChange={(value) => editForm.setValue("status", value as any)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="on-hold">On Hold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="editProgress">Progress (%)</Label>
+                <Input
+                  id="editProgress"
+                  type="number"
+                  min="0"
+                  max="100"
+                  {...editForm.register("progress", { valueAsNumber: true })}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
             <div>
               <Label htmlFor="editBudgetAllocation">Budget Allocation</Label>
               <Input
@@ -575,6 +1110,33 @@ export function MilestonesSection({ projectId, phaseId, onMilestoneUpdate }: Mil
               </Button>
             </div>
           </form>
+        </CustomModal>
+
+        {/* Template Gallery Modal */}
+        <MilestoneTemplateGallery
+          isOpen={showTemplateGallery}
+          onClose={() => setShowTemplateGallery(false)}
+          projectId={projectId}
+          phaseId={phaseId}
+          onApplyTemplate={handleTemplateApply}
+        />
+        
+        {/* Approval Manager Modal */}
+        <CustomModal
+          isOpen={showApprovalManager}
+          onClose={() => setShowApprovalManager(false)}
+          title="Milestone Approval Management"
+          modalSize="xl"
+        >
+          <div className="overflow-auto max-h-[calc(90vh-8rem)]">
+            <MilestoneApprovalManager
+              projectId={projectId}
+              onApprovalUpdate={() => {
+                refetch();
+                onMilestoneUpdate?.();
+              }}
+            />
+          </div>
         </CustomModal>
       </CardContent>
     </Card>

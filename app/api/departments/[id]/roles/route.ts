@@ -29,7 +29,7 @@ export async function GET(
 ) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail,isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'roles', 'read')
 
     const { id: departmentId } = await params
 
@@ -146,7 +146,8 @@ export async function GET(
           description: department?.description,
           status: department?.status
         },
-        roles: rolesWithUserCounts,
+        // roles: rolesWithUserCounts,
+        data: rolesWithUserCounts,
         statistics: departmentStats[0] || {
           totalRoles: 0,
           systemRoles: 0,
@@ -169,14 +170,14 @@ export async function GET(
       userId: userEmail,
       departmentId,
       departmentName: responseData.department?.name,
-      roleCount: responseData.roles?.length || 0,
+      roleCount: responseData.data?.length || 0,
       isSuperAdmin,
       ip: getClientInfo(request).ipAddress
     })
 
     return NextResponse.json({
       success: true,
-      data: responseData.roles, // Return roles directly for the frontend
+      data: responseData.data, // Return roles directly for the frontend
       department: responseData.department,
       statistics: responseData.statistics,
       message: 'Department roles retrieved successfully'

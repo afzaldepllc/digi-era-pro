@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from 'react-dom'
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,10 @@ interface GenericFilterProps {
   title?: string;
   loading?: boolean;
   clearText?: string;
+  presentation?: 'inline' | 'dropdown';
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 const GenericFilter: React.FC<GenericFilterProps> = ({
@@ -51,13 +56,24 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
   title = "Filters",
   loading = false,
   clearText = "Clear Filters",
+  presentation = 'inline',
+  isOpen: controlledIsOpen,
+  onOpenChange,
+  anchorRef,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const [positionStyle, setPositionStyle] = useState<React.CSSProperties | null>(null)
 
   // Local state for form values (not applied until Search is clicked)
   const [formValues, setFormValues] = useState<Record<string, any>>(
     appliedFilters || config.defaultValues || {}
   );
+
+  // Keep local form state in sync with external applied filters
+  React.useEffect(() => {
+    setFormValues(appliedFilters || config.defaultValues || {});
+  }, [appliedFilters, config.defaultValues]);
 
   const handleFieldChange = (key: string, value: any) => {
     setFormValues(prev => ({ ...prev, [key]: value }));
@@ -68,13 +84,16 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
     onFilterChange(formValues);
     // Close panel if collapsible
     if (collapsible) setIsExpanded(false);
+    if (presentation === 'dropdown') onOpenChange?.(false)
   };
 
   const handleReset = () => {
     const resetValues = config.defaultValues || {};
     setFormValues(resetValues);
     onFilterChange(resetValues);
+    if (onReset) onReset();
     if (collapsible) setIsExpanded(false);
+    if (presentation === 'dropdown') onOpenChange?.(false)
   };
 
   // Check if there are active applied filters (for badges)
@@ -88,6 +107,69 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
   // Active filter count for badges
   // const activeCount = Object.values(appliedFilters).filter(v => v && v !== 'all').length;
   const activeCount = Object.values(appliedFilters).filter(v => v && v !== 'all').length;
+
+  const open = typeof controlledIsOpen === 'boolean' ? controlledIsOpen : isExpanded
+
+  useEffect(() => {
+    if (presentation !== 'dropdown' || !open) return
+    const handleDocDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      // If the click is inside the rendered dropdown ui, ignore
+      if (dropdownRef.current && dropdownRef.current.contains(target)) return
+      // If the click is inside the anchor button, ignore
+      if (anchorRef?.current && anchorRef.current.contains(target)) return
+      // If the click is inside any portal that is marked as part of this filter dropdown (e.g., SelectContent or SearchableSelect portal), ignore
+      if ((target as Element).closest && (target as Element).closest('[data-filter-portal]')) return
+      onOpenChange?.(false)
+    }
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onOpenChange?.(false) }
+    document.addEventListener('mousedown', handleDocDown)
+    document.addEventListener('keydown', handleEsc)
+
+    // Position computation
+    const computePosition = () => {
+      const dropdownEl = dropdownRef.current
+      const anchorEl = anchorRef?.current
+      const margin = 12
+      const viewportW = window.innerWidth
+      const viewportH = window.innerHeight
+      // Default dims
+      let width = 420
+      if (anchorEl) width = Math.max(320, Math.min(720, Math.max(anchorEl.getBoundingClientRect().width, 420)))
+      // Constrain width to viewport
+      width = Math.min(width, viewportW - margin * 2)
+
+      // start with anchor left
+      let left = anchorEl ? anchorEl.getBoundingClientRect().left : margin
+      // If this causes overflow to the right, try aligning to anchor right
+      if (left + width > viewportW - margin) {
+        left = anchorEl ? anchorEl.getBoundingClientRect().right - width : viewportW - margin - width
+      }
+      // prevent going off the left edge
+      if (left < margin) left = margin
+
+      // Vertical: prefer below anchor, otherwise above
+      let top = anchorEl ? anchorEl.getBoundingClientRect().bottom + 8 : 64
+      let height = dropdownEl ? dropdownEl.getBoundingClientRect().height : 360
+      if (top + height > viewportH - margin) {
+        // place above
+        top = anchorEl ? anchorEl.getBoundingClientRect().top - height - 8 : Math.max(margin, viewportH - margin - height)
+        if (top < margin) top = margin
+      }
+
+      setPositionStyle({ left, top, width })
+    }
+
+    computePosition()
+    window.addEventListener('resize', computePosition)
+    window.addEventListener('scroll', computePosition, { capture: true })
+    return () => {
+      document.removeEventListener('mousedown', handleDocDown)
+      document.removeEventListener('keydown', handleEsc)
+      window.removeEventListener('resize', computePosition)
+      window.removeEventListener('scroll', computePosition, { capture: true })
+    }
+  }, [presentation, open, dropdownRef, anchorRef, onOpenChange])
 
   const baseToggleClasses = (extra?: string) => cn(
     "flex items-center gap-2 transition-all duration-200",
@@ -148,16 +230,17 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
                 placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`}
                 disabled={loading}
                 loading={false}
+                inFilterDropdown={presentation === 'dropdown'}
               />
             ) : (
               <Select
-                value={formValues[field.key] || ''}
+                value={String(formValues[field.key] || '')}
                 onValueChange={(value) => handleFieldChange(field.key, value)}
               >
                 <SelectTrigger className="bg-background border-border">
                   <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent data-filter-portal={presentation === 'dropdown' ? 'true' : undefined} className={presentation === 'dropdown' ? 'z-[999999]' : ''}>
                   {field.options?.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -206,6 +289,61 @@ const GenericFilter: React.FC<GenericFilterProps> = ({
         return null;
     }
   };
+
+  // Render dropdown if requested
+  if (presentation === 'dropdown') {
+    if (!open) return null
+    // Initialize with something until measurement completes
+    let style: React.CSSProperties = { position: 'fixed', zIndex: 60, left: 12, top: 64, minWidth: 320 }
+    if (positionStyle) style = { ...style, ...positionStyle }
+
+    return createPortal(
+      <>
+        <div onClick={() => onOpenChange?.(false)} className="fixed inset-0 z-50 bg-black/20" />
+        <div style={style} ref={dropdownRef} className={cn("pointer-events-auto", className)}>
+          <div className="bg-popover border rounded-md p-4 shadow-lg">
+          <div className="grid grid-cols-12 gap-4">
+            {config.fields.map(renderField)}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSearch}
+              aria-label="Search Filters"
+              className={cn(
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                !hasChanges && "opacity-50"
+              )}
+              disabled={loading}
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Search Filters
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              aria-label="Clear Filters"
+              disabled={!hasActiveFilters}
+              className={baseToggleClasses()}
+            >
+              <X className="h-4 w-4 mr-2" />
+              {clearText}
+              {activeCount > 0 && (
+                <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
+                  {activeCount}
+                </span>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+      </>, document.body
+    )
+  }
 
   if (collapsible) {
     return (

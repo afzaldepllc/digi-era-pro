@@ -35,11 +35,13 @@ import {
   Copy,
   Download,
   Archive,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TableLoader } from "./loader";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useRouter } from "next/navigation";
+import { useNavigation } from "../providers/navigation-provider";
 
 export interface ColumnDef<T> {
   key: keyof T;
@@ -89,6 +91,11 @@ export interface GenericActionConfig {
     onClick?: (row: any) => void;
     confirmTitle?: string;
     confirmMessage?: string;
+  };
+  restore?: {
+    enabled?: boolean; // Optional - defaults to true if user has permission
+    label?: string;
+    onClick?: (row: any) => void;
   };
   duplicate?: {
     enabled?: boolean; // Must be explicitly enabled
@@ -143,6 +150,7 @@ export interface DataTableProps<T> {
   onDuplicate?: (row: T) => void;
   onArchive?: (row: T) => void;
   onExport?: (row: T) => void;
+  onRestore?: (row: T) => void;
 
   // Legacy support
   showQuickView?: boolean;
@@ -188,12 +196,14 @@ const DataTable = <T extends Record<string, any>>({
   onDuplicate,
   onArchive,
   onExport,
+  onRestore,
   showQuickView = false,
   onQuickView,
   statsCards, // Add this
 }: DataTableProps<T>) => {
   const [currentView, setCurrentView] = useState<"table" | "grid">(defaultView);
   const router = useRouter();
+  const { navigateTo, isNavigating } = useNavigation()
 
   // Get permissions hook
   const { canCreate, canRead, canUpdate, canDelete, hasPermission } = usePermissions();
@@ -207,11 +217,11 @@ const DataTable = <T extends Record<string, any>>({
     if (actions?.edit?.onClick) {
       actions.edit.onClick(row);
     } else if (actions?.edit?.route && row._id) {
-      router.push(`${actions.edit.route}/${row._id}`);
+      navigateTo(`${actions.edit.route}/${row._id}`);
     } else if (onEdit) {
       onEdit(row);
     } else if (resourceName && row._id) {
-      router.push(`/${resourceName}/edit/${row._id}`);
+      navigateTo(`/${resourceName}/edit/${row._id}`);
     }
   };
 
@@ -228,7 +238,7 @@ const DataTable = <T extends Record<string, any>>({
       console.log('View action triggered for:', row);
       // Optional: Default navigation
       if (resourceName && row._id) {
-        router.push(`/${resourceName}/${row._id}`);
+        navigateTo(`/${resourceName}/${row._id}`);
       }
     }
   };
@@ -265,6 +275,12 @@ const DataTable = <T extends Record<string, any>>({
     }
   };
 
+  const handleGenericRestore = (row: T) => {
+    if (onRestore) {
+      onRestore(row);
+    }
+  };
+
   // Build generic actions with internal permission checking
   const buildGenericActions = useMemo((): ActionMenuItem<T>[] => {
     const genericActions: ActionMenuItem<T>[] = [];
@@ -292,6 +308,7 @@ const DataTable = <T extends Record<string, any>>({
         onClick: handleGenericEdit,
         requiresUpdate: true,
         hideIfNoPermission: true,
+        hideIf: (row: T) => (row as any).status === 'deleted',
       });
     }
 
@@ -306,6 +323,19 @@ const DataTable = <T extends Record<string, any>>({
         requiresDelete: true,
         hideIfNoPermission: true,
         hideIf: (row: T) => (row as any).status === 'deleted',
+      });
+    }
+
+    // Restore action - Only show for deleted items
+    if (actions?.restore?.enabled !== false && // Not explicitly disabled
+      (!resourceName || canUpdate(resourceName))) { // Has permission if resourceName provided
+      genericActions.push({
+        label: actions?.restore?.label || "Restore",
+        icon: <RotateCcw className="h-4 w-4" />,
+        onClick: actions?.restore?.onClick || handleGenericRestore,
+        requiresUpdate: true,
+        hideIfNoPermission: true,
+        hideIf: (row: T) => (row as any).status !== 'deleted',
       });
     }
 
@@ -346,7 +376,7 @@ const DataTable = <T extends Record<string, any>>({
     }
 
     return genericActions;
-  }, [actions, showQuickView, onQuickView, onView, resourceName, canCreate, canRead, canUpdate, canDelete]);
+  }, [actions, showQuickView, onQuickView, onView, onRestore, resourceName, canCreate, canRead, canUpdate, canDelete]);
 
   // Combine all actions
   const allActions = useMemo((): ActionMenuItem<T>[] => {

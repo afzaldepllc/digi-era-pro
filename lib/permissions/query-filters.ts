@@ -475,17 +475,15 @@ export class QueryFilters {
     // Check multiple ways a user might be superadmin
     const isSuper = (
       user.role?.name === 'super_admin' ||
-      user.role?.displayName === 'Super Administrator' ||
-      user.role?.hierarchyLevel >= 10 ||
-      user.isSuperAdmin === true ||
-      user.email === 'superadmin@gmail.com' || // Primary superadmin email
-      user.email === process.env.SUPERADMIN_EMAIL // Fallback from env
+      user.role === 'super_admin' ||
+      user.isSuperAdmin === true
     )
     
     console.log('QueryFilters: Superadmin check:', {
+      user:user,
       userEmail: user.email,
-      roleName: user.role?.name,
-      roleDisplayName: user.role?.displayName,
+      roleName: user.role,
+      roleDisplayName: user.displayName,
       hierarchyLevel: user.role?.hierarchyLevel,
       isSuperAdmin: isSuper
     })

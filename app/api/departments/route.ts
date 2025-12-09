@@ -92,8 +92,8 @@ export async function GET(request: NextRequest) {
         filter.status = validatedParams.status
       } else {
         console.log('93 params are', validatedParams)
-        // For non-super admins, combine status filter with soft delete exclusion
-        filter.status = { $and: [{ $ne: 'deleted' }, { $eq: validatedParams.status }] }
+        // For non-super admins, soft delete already excludes deleted, so just filter by status
+        filter.status = validatedParams.status
         console.log('status is 95', filter)
       }
     }

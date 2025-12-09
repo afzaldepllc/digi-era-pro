@@ -2,29 +2,42 @@
 
 import { Users, Building2, Target, TrendingUp } from "lucide-react"
 import { useAuthUser } from "@/hooks/use-auth-user"
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DashboardCharts } from "@/components/dashboard/charts"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useSession } from "next-auth/react"
-import DataTable from "@/components/ui/data-table"
+import { ChartErrorBoundary } from "@/components/ui/chart-error-boundary"
+import { memo, useMemo, Suspense } from "react"
+import dynamic from "next/dynamic"
 
-export default function DashboardPage() {
-  const { user, loading } = useAuthUser()
-  const { data: session } = useSession() // Added to access session data
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading dashboard...</p>
-        </div>
+
+// Lazy load heavy components with optimized loading
+const DashboardCharts = dynamic(
+  () => import("@/components/dashboard/charts-lazy").then(mod => ({ default: mod.OptimizedDashboardCharts })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className={`col-span-2 ${i === 0 ? 'lg:col-span-2' : i === 1 ? 'lg:col-span-4' : 'lg:col-span-3'}`}>
+            <CardHeader>
+              <div className="h-4 w-32 bg-muted rounded animate-pulse mb-2" />
+              <div className="h-3 w-48 bg-muted rounded animate-pulse" />
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] bg-muted animate-pulse rounded-md" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     )
   }
+)
 
-  const stats = [
+
+function DashboardPage() {
+  const { user, loading } = useAuthUser()
+
+  // Memoize static data to prevent recreation on every render
+  const stats = useMemo(() => [
     {
       title: "Total Users",
       value: "1,234",
@@ -53,7 +66,19 @@ export default function DashboardPage() {
       icon: TrendingUp,
       color: "text-orange-600",
     },
-  ]
+  ], [])
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
@@ -97,7 +122,25 @@ export default function DashboardPage() {
         ))}
       </div>
       {/* Charts Section */}
-      <DashboardCharts />
+      <ChartErrorBoundary>
+        <Suspense fallback={
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="col-span-2 lg:col-span-3">
+                <CardHeader>
+                  <div className="h-4 w-32 bg-muted rounded animate-pulse mb-2" />
+                  <div className="h-3 w-48 bg-muted rounded animate-pulse" />
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[300px] bg-muted animate-pulse rounded-md" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        }>
+          <DashboardCharts />
+        </Suspense>
+      </ChartErrorBoundary>
 
       {/* Main Content Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -204,6 +247,9 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+// Memoize the component to prevent unnecessary re-renders
+export default memo(DashboardPage)
 
 
 

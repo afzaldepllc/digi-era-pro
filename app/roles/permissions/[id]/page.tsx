@@ -13,6 +13,7 @@ import { Save, ArrowLeft, AlertTriangle, Shield, Crown, Users } from "lucide-rea
 import type { Permission } from "@/types";
 import PageHeader from "@/components/ui/page-header";
 import { FormLoader } from "@/components/ui/loader";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function RolePermissionsPage() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function RolePermissionsPage() {
   const { toast } = useToast();
   const roleId = params?.id as string;
 
+  const { navigateTo, isNavigating } = useNavigation()
 
   const {
     roles,
@@ -37,13 +39,11 @@ export default function RolePermissionsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Load data on mount
+  // Load data on mount (stable dependency on fetchRoles)
   useEffect(() => {
-  
-
     const loadData = async () => {
       try {
-        await fetchRoles();
+        fetchRoles();
       } catch (error) {
         toast({
           title: "Error",
@@ -52,33 +52,38 @@ export default function RolePermissionsPage() {
         });
       }
     };
+
     loadData();
-  }, [router, fetchRoles, toast]);
+    // Intentionally depend only on fetchRoles (stable via useCallback in the hook)
+  }, [fetchRoles]);
 
   // Load specific role data and fetch individual role if needed
   useEffect(() => {
-    if (roleId) {
-      const loadRoleData = async () => {
-        try {
-          // First check if role exists in the current roles array
-          let role = roles.find((r) => r._id === roleId);
+    if (!roleId) return;
 
-          // If not found in the current array, fetch it individually
-          if (!role && roles.length > 0) {
-            const response = await fetchRoleById(roleId).unwrap();
-            if (response.success && response.data) {
-              role = response.data;
-            }
+    const loadRoleData = async () => {
+      try {
+        // First check if role exists in the current roles array
+        let role = roles.find((r) => r._id === roleId);
+
+        // If not found in the current array, fetch it individually
+        if (!role && roles.length > 0) {
+          const response = await fetchRoleById(roleId);
+          if (response && (response as any).success && (response as any).data) {
+            role = (response as any).data;
           }
+        }
 
-          if (role) {
+        if (role) {
+          // Only update selectedRole if it's different to avoid re-render loops
+          if (!selectedRole || selectedRole._id !== role._id) {
             setSelectedRole(role);
 
             // Ensure permissions is always an array and properly structured
             const rolePermissions = Array.isArray(role.permissions) ? role.permissions : [];
 
             // Validate permission structure
-            const validPermissions = rolePermissions.filter(permission =>
+            const validPermissions = rolePermissions.filter((permission: Permission) =>
               permission &&
               typeof permission === 'object' &&
               permission.resource &&
@@ -94,28 +99,29 @@ export default function RolePermissionsPage() {
 
             setSelectedPermissions(validPermissions);
             setHasChanges(false);
-          } else {
-            // Role not found, redirect back
-            toast({
-              title: "Error",
-              description: "Role not found",
-              variant: "destructive",
-            });
-            router.push("/roles");
           }
-        } catch (error) {
-          console.error('Error loading role data:', error);
+        } else {
+          // Role not found, redirect back
           toast({
             title: "Error",
-            description: "Failed to load role data",
+            description: "Role not found",
             variant: "destructive",
           });
+          navigateTo("/roles");
         }
-      };
+      } catch (error) {
+        console.error('Error loading role data:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load role data",
+          variant: "destructive",
+        });
+      }
+    };
 
-      loadRoleData();
-    }
-  }, [roles, roleId, setSelectedRole, router, toast]);
+    loadRoleData();
+    // Depend on roleId and roles; include stable callbacks. Avoid router to prevent unnecessary re-runs.
+  }, [roleId, roles, fetchRoleById, setSelectedRole, selectedRole, navigateTo, toast]);
 
   // Handle permission changes
   const handlePermissionChange = (permissions: Permission[]) => {
@@ -131,7 +137,7 @@ export default function RolePermissionsPage() {
 
   // Handle form submission
   const handleSave = async () => {
-   
+
     try {
       // Validate that we have a selected role
       if (!selectedRole) {
@@ -201,7 +207,7 @@ export default function RolePermissionsPage() {
 
         // Wait a bit before redirecting to allow user to see the success message
         setTimeout(() => {
-          router.push("/roles");
+          navigateTo("/roles");
         }, 1500);
       } else {
         throw new Error(result.payload || 'Failed to update role permissions');
@@ -221,10 +227,10 @@ export default function RolePermissionsPage() {
   const handleCancel = () => {
     if (hasChanges) {
       if (confirm("You have unsaved changes. Are you sure you want to leave?")) {
-        router.push("/roles");
+        navigateTo("/roles");
       }
     } else {
-      router.push("/roles");
+      navigateTo("/roles");
     }
   };
 
@@ -352,7 +358,7 @@ export default function RolePermissionsPage() {
       )}
 
       {/* Super Admin Protection Warning */}
-      {(selectedRole.name === 'super_admin' || selectedRole.name === 'superadmin') && (
+      {(selectedRole.name === 'super_admin') && (
         <Alert className="border-amber-200 bg-amber-50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800">
@@ -368,8 +374,7 @@ export default function RolePermissionsPage() {
         onPermissionsChange={handlePermissionChange}
         disabled={
           isSubmitting ||
-          selectedRole.name === 'super_admin' ||
-          selectedRole.name === 'superadmin'
+          selectedRole.name === 'super_admin'
         }
       />
 
@@ -398,8 +403,7 @@ export default function RolePermissionsPage() {
               isSubmitting ||
               !hasChanges ||
               selectedPermissions.length === 0 ||
-              selectedRole.name === 'super_admin' ||
-              selectedRole.name === 'superadmin'
+              selectedRole.name === 'super_admin'
             }
             className="gap-2"
           >

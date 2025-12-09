@@ -28,13 +28,15 @@ const initializeRateLimiters = async () => {
     }),
 
     api: new RLM({
-      points: 100, // Number of requests
+      // points: 100, // Number of requests
+      points: 300, // Number of requests
       duration: 900, // Per 15 minutes (in seconds)
       blockDuration: 300, // Block for 5 minutes (lighter for API)
     }),
 
     sensitive: new RLM({
-      points: 10, // Number of requests  
+      // points: 10, // Number of requests  
+      points: 100, // Number of requests  
       duration: 900, // Per 15 minutes (in seconds)
       blockDuration: 900, // Block for 15 minutes
     }),

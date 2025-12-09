@@ -1,136 +1,22 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
-
-// Analytics data interfaces
-export interface AnalyticsOverview {
-  totalProjects: number
-  activeProjects: number
-  completedProjects: number
-  pendingProjects: number
-  totalBudget: number
-  completionRate: number
-}
-
-export interface AnalyticsTaskMetrics {
-  totalTasks: number
-  completedTasks: number
-  inProgressTasks: number
-  pendingTasks: number
-  onHoldTasks: number
-  overdueTasks: number
-  totalEstimatedHours: number
-  totalActualHours: number
-  completionRate: number
-  efficiencyRate: number
-  recentTasksCreated: number
-}
-
-export interface AnalyticsPhaseMetrics {
-  totalPhases: number
-  completedPhases: number
-  activePhases: number
-  plannedPhases: number
-  overduePhases: number
-  averageProgress: number
-  totalBudget: number
-  totalActualCost: number
-  budgetVariance: number
-  completionRate: number
-  recentPhasesCreated: number
-}
-
-export interface AnalyticsMilestoneMetrics {
-  totalMilestones: number
-  completedMilestones: number
-  inProgressMilestones: number
-  pendingMilestones: number
-  overdueMilestones: number
-  onTimeMilestones: number
-  averageProgress: number
-  completionRate: number
-  onTimeRate: number
-  recentMilestonesCreated: number
-}
-
-export interface AnalyticsPerformance {
-  velocity: number
-  averageTaskDuration: number
-  productivity: number
-  activeTeamMembers: number
-}
-
-export interface AnalyticsTrends {
-  tasks: Array<{ _id: string; completed: number; totalHours: number }>
-  milestones: Array<{ _id: string; completed: number }>
-}
-
-export interface AnalyticsRisk {
-  type: 'budget' | 'timeline' | 'quality' | 'resource'
-  level: 'low' | 'medium' | 'high' | 'critical'
-  description: string
-  impact: string
-  mitigation: string
-}
-
-export interface AnalyticsMeta {
-  dateRange: string
-  startDate: string
-  endDate: string
-  projectId?: string
-  generatedAt: string
-}
-
-export interface AnalyticsData {
-  overview: AnalyticsOverview
-  tasks: AnalyticsTaskMetrics
-  phases: AnalyticsPhaseMetrics
-  milestones: AnalyticsMilestoneMetrics
-  performance: AnalyticsPerformance
-  trends: AnalyticsTrends
-  risks: AnalyticsRisk[]
-  meta: AnalyticsMeta
-}
-
-// Filter interface for analytics queries
-export interface AnalyticsFilters {
-  projectId?: string
-  dateRange?: '7d' | '30d' | '90d' | '1y' | 'custom'
-  startDate?: Date
-  endDate?: Date
-  includeCompleted?: boolean
-  departmentId?: string
-  userId?: string
-  taskStatus?: string[]
-  phaseStatus?: string[]
-  milestoneStatus?: string[]
-}
-
-// Sort configuration for analytics (mainly for risks)
-export interface AnalyticsSort {
-  field: 'level' | 'type' | 'description'
-  direction: 'asc' | 'desc'
-}
-
-// Pagination interface for analytics (mainly for risks)
-export interface AnalyticsPagination {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
-
-// Insight interface for analytics insights
-export interface AnalyticsInsight {
-  type: 'success' | 'warning' | 'error' | 'info'
-  title: string
-  message: string
-  priority: 'low' | 'medium' | 'high'
-  actionable?: boolean
-  recommendedAction?: string
-}
+import type {
+  EnhancedAnalyticsData,
+  AnalyticsFilters,
+  AnalyticsSort,
+  AnalyticsPagination,
+  AnalyticsInsight,
+  AnalyticsOverview,
+  AnalyticsTasks,
+  AnalyticsPhases,
+  AnalyticsMilestones,
+  AnalyticsPerformance,
+  AnalyticsRisk,
+  AnalyticsTrends
+} from '@/hooks/use-analytics'
 
 // Analytics slice state interface
 export interface AnalyticsState {
-  data: AnalyticsData | null
+  data: EnhancedAnalyticsData | null
   insights: AnalyticsInsight[]
   loading: boolean
   actionLoading: boolean
@@ -181,7 +67,7 @@ const analyticsSlice = createSlice({
   initialState,
   reducers: {
     // Data management
-    setAnalyticsData: (state, action: PayloadAction<AnalyticsData>) => {
+    setAnalyticsData: (state, action: PayloadAction<EnhancedAnalyticsData>) => {
       state.data = action.payload
       state.loading = false
       state.error = null
@@ -256,19 +142,19 @@ const analyticsSlice = createSlice({
       }
     },
 
-    updateTaskMetrics: (state, action: PayloadAction<Partial<AnalyticsTaskMetrics>>) => {
+    updateTaskMetrics: (state, action: PayloadAction<Partial<AnalyticsTasks>>) => {
       if (state.data) {
         state.data.tasks = { ...state.data.tasks, ...action.payload }
       }
     },
 
-    updatePhaseMetrics: (state, action: PayloadAction<Partial<AnalyticsPhaseMetrics>>) => {
+    updatePhaseMetrics: (state, action: PayloadAction<Partial<AnalyticsPhases>>) => {
       if (state.data) {
         state.data.phases = { ...state.data.phases, ...action.payload }
       }
     },
 
-    updateMilestoneMetrics: (state, action: PayloadAction<Partial<AnalyticsMilestoneMetrics>>) => {
+    updateMilestoneMetrics: (state, action: PayloadAction<Partial<AnalyticsMilestones>>) => {
       if (state.data) {
         state.data.milestones = { ...state.data.milestones, ...action.payload }
       }
@@ -398,28 +284,28 @@ export const {
 export default analyticsSlice.reducer
 
 // Selector helpers for derived state
-export const selectAnalyticsOverview = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsOverview = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.overview || null
 
-export const selectAnalyticsTaskMetrics = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsTaskMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.tasks || null
 
-export const selectAnalyticsPhaseMetrics = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsPhaseMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.phases || null
 
-export const selectAnalyticsMilestoneMetrics = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsMilestoneMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.milestones || null
 
-export const selectAnalyticsPerformanceMetrics = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsPerformanceMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.performance || null
 
-export const selectAnalyticsRisks = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsRisks = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.risks || []
 
-export const selectHighPriorityRisks = (analytics: AnalyticsData | null) =>
+export const selectHighPriorityRisks = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.risks?.filter(risk => risk.level === 'high' || risk.level === 'critical') || []
 
-export const selectAnalyticsTrends = (analytics: AnalyticsData | null) =>
+export const selectAnalyticsTrends = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.trends || null
 
 export const selectIsDataStale = (lastUpdated: Date | null, refreshInterval: number) => {

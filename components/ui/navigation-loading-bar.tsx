@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigation } from '@/components/providers/navigation-provider'
+import { ProfessionalLoader } from './professional-loader'
 
 export function NavigationLoadingBar() {
   const { isNavigating } = useNavigation()
@@ -28,5 +29,11 @@ export function NavigationLoadingBar() {
         style={{ width: `${progress}%` }}
       />
     </div>
+    // <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
+    //   <ProfessionalLoader
+    //     size="md"
+    //   />
+    // </div>
+
   )
 }

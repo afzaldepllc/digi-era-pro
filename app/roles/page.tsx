@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/hooks/redux";
 import { Role, RoleFilters, FilterConfig } from "@/types";
 import PageHeader from "@/components/ui/page-header";
-import DataTable, { ColumnDef } from "@/components/ui/data-table";
+import DataTable, { ActionMenuItem, ColumnDef } from "@/components/ui/data-table";
 import GenericFilter from "@/components/ui/generic-filter";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -18,12 +18,14 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useRoles } from "@/hooks/use-roles";
 import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2';
+import { useNavigation } from "@/components/providers/navigation-provider";
+import GenericReportExporter from "@/components/shared/GenericReportExporter";
 
 export default function RolesPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { canCreate } = usePermissions();
-
+  const { canCreate, canUpdate } = usePermissions();
+  const { navigateTo, isNavigating } = useNavigation()
   // Local state
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
@@ -37,12 +39,14 @@ export default function RolesPage() {
     error: hookError,
     fetchRoles,
     deleteRole,
+    restoreRole,
     setFilters,
     setSort,
     setPagination,
     clearError,
     setSelectedRole
   } = useRoles();
+
 
   // Redux state for filters, sort, pagination (these are managed by Redux for persistence)
   const {
@@ -57,6 +61,7 @@ export default function RolesPage() {
   const loading = hookLoading;
   const error = hookError;
 
+  console.log('roles are', roles)
   // Filter configuration
   const filterConfig: FilterConfig = useMemo(() => ({
     fields: [
@@ -175,6 +180,7 @@ export default function RolesPage() {
         const statusColors = {
           active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           inactive: 'bg-muted text-muted-foreground border-border',
+          deleted: 'text-muted bg-red-600 border-white-200'
         };
 
         return (
@@ -286,6 +292,7 @@ export default function RolesPage() {
         fetchRoles();
       } catch (error: any) {
         // Show error message
+        const errorMessage = error.error?.message || error.error || error.message || "Failed to delete role. Please try again.";
         Swal.fire({
           customClass: {
             popup: 'swal-bg',
@@ -293,7 +300,7 @@ export default function RolesPage() {
             htmlContainer: 'swal-content',
           },
           title: "Error!",
-          text: error.error,
+          text: errorMessage,
           icon: "error",
           confirmButtonText: "OK"
         });
@@ -302,6 +309,109 @@ export default function RolesPage() {
       }
     }
   }, [deleteRole, toast, fetchRoles]);
+
+  const handleRestoreRole = useCallback(async (role: Role) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${role.displayName || role.name}?`,
+      text: "Are you sure you want to restore this role?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the role.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreRole(role._id as string);
+
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "Role has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "Role restored successfully.",
+          variant: "default",
+        });
+
+        fetchRoles();
+      } catch (error: any) {
+        const errorMessage = error.error?.message || error.error || error.message || "Failed to restore role. Please try again.";
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: errorMessage,
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+        handleAPIError(error, "Failed to restore role. Please try again.");
+      }
+    }
+  }, [restoreRole, toast, fetchRoles]);
+
+  // Custom actions for DataTable (Change Permissions)
+  const handleChangePermissions = useCallback((role: Role) => {
+    try {
+      // Set selected role in redux so the permissions page can use it if needed
+      setSelectedRole?.(role);
+      // Navigate to the permissions editor for this role
+      navigateTo?.(`/roles/permissions/${role._id}`);
+    } catch (err) {
+      console.error('Failed to navigate to role permissions', err);
+      toast({
+        title: 'Error',
+        description: 'Unable to open permissions editor for this role.',
+        variant: 'destructive',
+      });
+    }
+  }, [setSelectedRole, navigateTo, toast]);
+
+  const customActions: ActionMenuItem<Role>[] = [
+    {
+      label: 'Change Permissions',
+      icon: <Shield className="h-4 w-4" />,
+      onClick: handleChangePermissions,
+      disabled: (role: Role) => role?.name === 'super_admin',
+      hasPermission: () => canUpdate('roles'),
+      hideIfNoPermission: true,
+    },
+  ];
 
   // Error handling effect
   useEffect(() => {
@@ -363,7 +473,7 @@ export default function RolesPage() {
       <PageHeader
         title="Roles"
         subtitle="Manage user roles and permissions"
-        onAddClick={() => router.push("/roles/add")}
+        onAddClick={() => navigateTo("/roles/add")}
         addButtonText="Add Role"
         showAddButton={canCreate("roles")}
 
@@ -381,6 +491,28 @@ export default function RolesPage() {
         showRefreshButton={true}
         onRefresh={handleFilterReset}
         isRefreshing={loading}
+
+        actions={
+          <GenericReportExporter
+            moduleName="roles"
+            data={roles}
+            onExportComplete={(result) => {
+              if (result.success) {
+                toast({
+                  title: "Success",
+                  description: result.message,
+                  variant: "default",
+                });
+              } else {
+                toast({
+                  title: "Error",
+                  description: result.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        }
       >
         {/* Generic Filter - Updated to match clients/leads/departments page */}
         {isFilterExpanded && (
@@ -398,7 +530,7 @@ export default function RolesPage() {
       {error && (
         <Alert variant="destructive" className="border-destructive bg-destructive/10">
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="text-destructive-foreground">{error.error}</AlertDescription>
+          <AlertDescription className="text-destructive-foreground">{error.error?.message || error.error || error.message || 'An error occurred'}</AlertDescription>
         </Alert>
       )}
 
@@ -420,6 +552,8 @@ export default function RolesPage() {
           resourceName="roles"
           onView={handleViewRole}
           onDelete={handleDeleteRole}
+          onRestore={handleRestoreRole}
+          customActions={customActions}
           enablePermissionChecking={true}
           statsCards={statsCards}
         />

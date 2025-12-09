@@ -15,12 +15,14 @@ import { useDepartments } from "@/hooks/use-departments";
 import { useRoles } from "@/hooks/use-roles";
 import { updateUserSchema, type UpdateUserData } from "@/lib/validations/user";
 import type { Role, Department } from "@/types";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
+  const { navigateTo, isNavigating } = useNavigation()
 
   const userId = params?.id as string;
 
@@ -54,18 +56,19 @@ export default function EditUserPage() {
       position: "",
       status: "active",
       // Address fields
-      street: "",
-      city: "",
-      state: "",
-      country: "",
-      zipCode: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        country: "",
+        zipCode: "",
+      },
       // Preferences
-      theme: "system",
-      language: "en",
-      timezone: "UTC",
-      emailNotifications: true,
-      smsNotifications: false,
-      pushNotifications: true,
+      preferences: {
+        theme: "system",
+        language: "en",
+        timezone: "UTC",
+      },
     },
   });
 
@@ -86,22 +89,7 @@ export default function EditUserPage() {
     if (departmentId) {
       try {
         const result = await fetchRolesByDepartment(departmentId);
-        // Handle Redux thunk result
-        if (result.payload) {
-          // Check if payload is an array (direct roles data) or wrapped response
-          if (Array.isArray(result.payload)) {
-            setAvailableRoles(result.payload);
-          } else if (result.payload.success && result.payload.data) {
-            setAvailableRoles(result.payload.data || []);
-          } else {
-            console.error("Failed to fetch roles for department:", result.payload);
-            setAvailableRoles([]);
-          }
-        } else {
-          // Handle rejected thunk
-          console.error("Failed to fetch roles for department");
-          setAvailableRoles([]);
-        }
+        setAvailableRoles(result);
       } catch (error) {
         console.error("Error fetching roles:", error);
         setAvailableRoles([]);
@@ -142,51 +130,23 @@ export default function EditUserPage() {
       // Set department and load its roles
       if (departmentId && typeof departmentId === 'string' && /^[0-9a-fA-F]{24}$/.test(departmentId)) {
         setSelectedDepartment(departmentId);
+
         // Fetch roles for the department without triggering change handler
         // Only fetch if we haven't already fetched for this department
         if (currentDepartmentRef.current !== departmentId) {
           currentDepartmentRef.current = departmentId;
-          fetchRolesByDepartment(departmentId).then((result) => {
-            if (result.payload) {
-              let roles = result.payload;
-              // Handle different response formats
-              if (Array.isArray(roles)) {
-                setAvailableRoles(roles);
-                // Set the role value after roles are loaded
-                if (roleId) {
-                  form.setValue('role', roleId);
-                }
-              } else if (roles.success && roles.data && Array.isArray(roles.data)) {
-                setAvailableRoles(roles.data);
-                // Set the role value after roles are loaded
-                if (roleId) {
-                  form.setValue('role', roleId);
-                }
-              } else {
-                console.error("Unexpected response format for roles:", roles);
-                setAvailableRoles([]);
-              }
-            } else {
-              // Handle rejected thunk
-              const error = (result as any).error || (result.meta as any)?.rejectedWithValue;
-              if (Array.isArray(error)) {
-                // The error is actually the data
-                setAvailableRoles(error);
-                // Set the role value after roles are loaded
-                if (roleId) {
-                  form.setValue('role', roleId);
-                }
-              } else {
-                console.error("Failed to fetch roles for department:", error);
-                setAvailableRoles([]);
-              }
+          fetchRolesByDepartment(departmentId).then((roles) => {
+            console.log('result payload roles fetch: 152');
+            setAvailableRoles(roles || []);
+            // Set the role after roles are loaded
+            if (roleId) {
+              form.setValue('role', roleId);
             }
           }).catch((error) => {
             console.error("Error fetching roles:", error);
             setAvailableRoles([]);
           });
         } else {
-          // Roles already fetched for this department, just set the role
           if (roleId) {
             form.setValue('role', roleId);
           }
@@ -203,18 +163,19 @@ export default function EditUserPage() {
         position: user.position || "",
         status: user.status as any,
         // Address fields
-        street: user.address?.street || "",
-        city: user.address?.city || "",
-        state: user.address?.state || "",
-        country: user.address?.country || "",
-        zipCode: user.address?.zipCode || "",
+        address: {
+          street: user.address?.street || "",
+          city: user.address?.city || "",
+          state: user.address?.state || "",
+          country: user.address?.country || "",
+          zipCode: user.address?.zipCode || "",
+        },
         // Preferences
-        theme: user.preferences?.theme || "system",
-        language: user.preferences?.language || "en",
-        timezone: user.preferences?.timezone || "UTC",
-        emailNotifications: user.preferences?.notifications?.email ?? true,
-        smsNotifications: user.preferences?.notifications?.sms ?? false,
-        pushNotifications: user.preferences?.notifications?.push ?? true,
+        preferences: {
+          theme: user.preferences?.theme || "system",
+          language: user.preferences?.language || "en",
+          timezone: user.preferences?.timezone || "UTC",
+        },
       });
 
       setLoading(false);
@@ -239,13 +200,22 @@ export default function EditUserPage() {
   }, [setSelectedUser]);
 
   const handleSubmit = async (data: UpdateUserData) => {
+    console.log('Form submit data: 236', data);
     if (!selectedUser || !selectedUser._id) return;
     setSaving(true);
     try {
-      // The updateUserSchema with transformation will handle converting flat form data to nested structure
+      // Transform form data to API format with nested address structure
       const updateData = {
         _id: selectedUser._id,
-        ...data, // The schema transformation will handle the nested structure conversion
+        ...data,
+        // Address
+        address: data.address ? {
+          street: data.address.street?.trim() || undefined,
+          city: data.address.city?.trim() || undefined,
+          state: data.address.state?.trim() || undefined,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          country: data.address.country?.trim() || undefined,
+        } : undefined,
       };
 
       await updateUser(updateData);
@@ -255,7 +225,7 @@ export default function EditUserPage() {
         description: "User updated successfully",
       });
 
-      router.push("/users");
+      navigateTo("/users");
     } catch (error: any) {
       handleAPIError(error, 'Failed to update user');
     } finally {
@@ -264,7 +234,7 @@ export default function EditUserPage() {
   };
 
   const handleCancel = () => {
-    router.push("/users");
+    navigateTo("/users");
   };
 
   const formFields = [
@@ -302,67 +272,6 @@ export default function EditUserPage() {
             { value: "inactive", label: "Inactive" },
             { value: "suspended", label: "Suspended" },
           ],
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-      ]
-    },
-    {
-      subform_title: "Contact Information",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "phone",
-          label: "Phone Number",
-          type: "text" as const,
-          placeholder: "Enter phone number",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "street",
-          label: "Street Address",
-          type: "text" as const,
-          placeholder: "Enter street address",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "city",
-          label: "City",
-          type: "text" as const,
-          placeholder: "Enter city",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "state",
-          label: "State/Province",
-          type: "text" as const,
-          placeholder: "Enter state or province",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "country",
-          label: "Country",
-          type: "text" as const,
-          placeholder: "Enter country",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "zipCode",
-          label: "ZIP/Postal Code",
-          type: "text" as const,
-          placeholder: "Enter ZIP or postal code",
           cols: 12,
           mdCols: 6,
           lgCols: 4,
@@ -419,11 +328,72 @@ export default function EditUserPage() {
         {
           name: "bio",
           label: "Bio",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Enter user bio (optional)",
           cols: 12,
           mdCols: 12,
           lgCols: 12,
+        },
+      ]
+    },
+    {
+      subform_title: "Contact Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "phone",
+          label: "Phone Number",
+          type: "text" as const,
+          placeholder: "Enter phone number",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.street",
+          label: "Street Address",
+          type: "text" as const,
+          placeholder: "Enter street address",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.city",
+          label: "City",
+          type: "text" as const,
+          placeholder: "Enter city",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.state",
+          label: "State/Province",
+          type: "text" as const,
+          placeholder: "Enter state or province",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.country",
+          label: "Country",
+          type: "text" as const,
+          placeholder: "Enter country",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "address.zipCode",
+          label: "ZIP/Postal Code",
+          type: "text" as const,
+          placeholder: "Enter ZIP or postal code",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
         },
       ]
     },
@@ -433,7 +403,7 @@ export default function EditUserPage() {
       defaultOpen: false,
       fields: [
         {
-          name: "language",
+          name: "preferences.language",
           label: "Language",
           type: "select" as const,
           searchable: true,
@@ -447,7 +417,7 @@ export default function EditUserPage() {
           mdCols: 6,
         },
         {
-          name: "timezone",
+          name: "preferences.timezone",
           label: "Timezone",
           type: "select" as const,
           searchable: true,

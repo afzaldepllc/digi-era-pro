@@ -32,12 +32,14 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/utils";
 import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2';
+import { useNavigation } from "@/components/providers/navigation-provider";
+import GenericReportExporter from "@/components/shared/GenericReportExporter";
 
 export default function LeadsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { canCreate } = usePermissions();
-
+  const { navigateTo, isNavigating } = useNavigation()
   const {
     leads: hookLeads,
     loading: hookLoading,
@@ -45,6 +47,8 @@ export default function LeadsPage() {
     error: hookError,
     fetchLeads,
     deleteLead,
+    restoreLead,
+    createClientFromLead,
     setFilters,
     setSort,
     setPagination,
@@ -222,6 +226,7 @@ export default function LeadsPage() {
           inactive: 'bg-muted text-muted-foreground border-border',
           qualified: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           unqualified: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
+          deleted: 'text-muted bg-red-600 border-white-200'
         };
 
         return (
@@ -310,18 +315,12 @@ export default function LeadsPage() {
       if (!result.isConfirmed) return;
 
       // Call API to create client from lead
-      const response = await fetch(`/api/leads/${lead._id}/create-client`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const responseData = await response.json();
-
-      if (!responseData.success) {
-        throw new Error(responseData.error || 'Failed to create client');
+      const leadId = (lead._id || (lead as any).id)?.toString()
+      if (!leadId) {
+        throw new Error('Invalid lead id')
       }
+
+      const responseData = await createClientFromLead(leadId);
 
       toast({
         title: "Success",
@@ -329,7 +328,7 @@ export default function LeadsPage() {
       });
 
       // Navigate to client edit page
-      router.push(`/clients/edit/${responseData.client._id}`);
+      navigateTo(`/clients/edit/${responseData.client._id}`);
 
     } catch (error: any) {
       console.error('Error creating client from lead:', error);
@@ -339,7 +338,7 @@ export default function LeadsPage() {
         description: error.message || "Failed to create client from lead",
       });
     }
-  }, [toast, router]);
+  }, [createClientFromLead, toast, navigateTo]);
 
 
   // Custom actions for DataTable
@@ -372,7 +371,7 @@ export default function LeadsPage() {
   }, [setPagination]);
 
   const handleEditLead = useCallback((lead: Lead) => {
-    router.push(`/leads/edit/${lead._id}`);
+    navigateTo(`/leads/edit/${lead._id}`);
   }, [router]);
 
   // Refs to track previous values and prevent unnecessary calls
@@ -478,6 +477,80 @@ export default function LeadsPage() {
       }
     }
   }, [deleteLead, toast, fetchLeads]);
+
+  const handleRestoreLead = useCallback(async (lead: Lead) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${lead.name}?`,
+      text: "Are you sure you want to restore this lead?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the lead.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreLead(lead._id as string);
+
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "Lead has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "Lead restored successfully.",
+          variant: "default",
+        });
+
+        fetchLeads();
+      } catch (error: any) {
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: error.error,
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+        handleAPIError(error, "Failed to restore lead. Please try again.");
+      }
+    }
+  }, [restoreLead, toast, fetchLeads]);
 
   // Fetch leads effect - only when parameters actually change
   useEffect(() => {
@@ -602,9 +675,8 @@ export default function LeadsPage() {
       <PageHeader
         title="Leads"
         subtitle="Manage and track your sales leads"
-        onAddClick={() => router.push("/leads/add")}
+        onAddClick={() => navigateTo("/leads/add")}
         addButtonText="Add Lead"
-        showAddButton={canCreate("leads")}
 
         // Filter functionality - Updated to match clients page
         showFilterButton={true}
@@ -620,6 +692,27 @@ export default function LeadsPage() {
         showRefreshButton={true}
         onRefresh={handleFilterReset}
         isRefreshing={loading}
+        actions={
+          <GenericReportExporter
+            moduleName="leads"
+            data={leads}
+            onExportComplete={(result) => {
+              if (result.success) {
+                toast({
+                  title: "Success",
+                  description: result.message,
+                  variant: "default",
+                });
+              } else {
+                toast({
+                  title: "Error",
+                  description: result.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        }
       >
         {/* Generic Filter - Updated to match clients page */}
         {isFilterExpanded && (
@@ -661,6 +754,7 @@ export default function LeadsPage() {
           customActions={customActions}
           onView={handleViewLead}
           onDelete={handleDeleteLead}
+          onRestore={handleRestoreLead}
           enablePermissionChecking={true}
         />
       </div>
@@ -885,6 +979,24 @@ export default function LeadsPage() {
                           <p className="text-sm font-medium">Requirements</p>
                           <p className="text-xs text-muted-foreground mt-1">
                             {selectedLeadForView.projectRequirements.map((item, index) => (
+                              <span key={index} className="block">
+                                <b>{index + 1}.</b> {item}
+                              </span>
+                            ))}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {/* Requirements */}
+                    {selectedLeadForView.customerServices && (
+                      <div className="flex items-start space-x-3 p-3 bg-card rounded-lg border">
+                        <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center mt-0.5">
+                          <AlertTriangle className="h-4 w-4 text-orange-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Customer Services</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {selectedLeadForView.customerServices.map((item, index) => (
                               <span key={index} className="block">
                                 <b>{index + 1}.</b> {item}
                               </span>

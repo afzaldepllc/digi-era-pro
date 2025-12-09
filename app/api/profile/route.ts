@@ -72,11 +72,6 @@ export async function GET(request: NextRequest) {
         theme: "system",
         language: "en",
         timezone: "UTC",
-        notifications: {
-          email: true,
-          push: true,
-          sms: false,
-        },
       },
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,

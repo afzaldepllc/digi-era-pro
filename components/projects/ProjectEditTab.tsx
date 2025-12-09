@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useClients } from '@/hooks/use-clients';
 import { useDepartments } from '@/hooks/use-departments';
 import { useUsers } from '@/hooks/use-users';
-import { useProjects } from '@/hooks/use-projects';
+import { useProject } from '@/hooks/use-projects';
 import { updateProjectFormSchema, UpdateProjectFormData } from '@/lib/validations/project';
 import { Save } from 'lucide-react';
 
@@ -27,7 +27,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
   const { clients } = useClients();
   const { departments } = useDepartments();
   const { users } = useUsers();
-  const { updateProject, actionLoading } = useProjects();
+  const { updateProject, actionLoading } = useProject();
 
   const form = useForm<UpdateProjectFormData>({
     resolver: zodResolver(updateProjectFormSchema),
@@ -36,7 +36,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       name: "",
       description: "",
       clientId: "",
-      requirements: "",
+      requirements: [],
       projectType: "",
       timeline: "",
       budget: undefined,
@@ -48,44 +48,19 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
 
       // Enhanced professional CRM fields
       budgetBreakdown: {
-        development: "",
-        design: "",
-        testing: "",
-        deployment: "",
-        maintenance: "",
-        contingency: "",
+        development: undefined,
+        design: undefined,
+        testing: undefined,
+        deployment: undefined,
+        maintenance: undefined,
+        contingency: undefined,
       },
-
-      stakeholders: {
-        projectManager: "",
-        teamMembers: [],
-        clientContacts: [],
-        roles: [],
-      },
-
-      progress: {
-        overallProgress: "",
-        completedTasks: "",
-        totalTasks: "",
-        lastUpdated: "",
-        nextMilestone: "",
-        blockers: "",
-      },
-
+      risks: [],
       resources: {
-        estimatedHours: "",
-        actualHours: "",
-        teamSize: "",
+        estimatedHours: undefined,
+        actualHours: undefined,
         tools: [],
         externalResources: [],
-      },
-
-      qualityMetrics: {
-        requirementsCoverage: "",
-        defectDensity: "",
-        customerSatisfaction: "",
-        onTimeDelivery: false,
-        withinBudget: false,
       },
     },
   });
@@ -93,15 +68,15 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
   // Update form when project data changes
   useEffect(() => {
     if (project) {
-      
+
       form.reset({
         name: project.name,
         description: project.description || "",
         clientId: project.clientId,
-        requirements: project.requirements || "",
+        requirements: project.requirements || [],
         projectType: project.projectType || "",
         timeline: project.timeline || "",
-        budget: project.budget?.toString() || "",
+        budget: project.budget || 0,
         startDate: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : "",
         endDate: project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : "",
         status: project.status,
@@ -110,91 +85,59 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
 
         // Enhanced professional CRM fields
         budgetBreakdown: project.budgetBreakdown ? {
-          development: project.budgetBreakdown.development?.toString() || "",
-          design: project.budgetBreakdown.design?.toString() || "",
-          testing: project.budgetBreakdown.testing?.toString() || "",
-          deployment: project.budgetBreakdown.deployment?.toString() || "",
-          maintenance: project.budgetBreakdown.maintenance?.toString() || "",
-          contingency: project.budgetBreakdown.contingency?.toString() || "",
+          development: project.budgetBreakdown.development || undefined,
+          design: project.budgetBreakdown.design || undefined,
+          testing: project.budgetBreakdown.testing || undefined,
+          deployment: project.budgetBreakdown.deployment || undefined,
+          maintenance: project.budgetBreakdown.maintenance || undefined,
+          contingency: project.budgetBreakdown.contingency || undefined,
         } : {
-          development: "",
-          design: "",
-          testing: "",
-          deployment: "",
-          maintenance: "",
-          contingency: "",
+          development: undefined,
+          design: undefined,
+          testing: undefined,
+          deployment: undefined,
+          maintenance: undefined,
+          contingency: undefined,
         },
-
-        stakeholders: project.stakeholders ? {
-          projectManager: project.stakeholders.projectManager || "",
-          teamMembers: project.stakeholders.teamMembers || [],
-          clientContacts: project.stakeholders.clientContacts || [],
-          roles: project.stakeholders.roles || [],
-        } : {
-          projectManager: "",
-          teamMembers: [],
-          clientContacts: [],
-          roles: [],
-        },
-
-        progress: project.progress ? {
-          overallProgress: project.progress.overallProgress?.toString() || "",
-          completedTasks: project.progress.completedTasks?.toString() || "",
-          totalTasks: project.progress.totalTasks?.toString() || "",
-          lastUpdated: project.progress.lastUpdated ? new Date(project.progress.lastUpdated).toISOString().split('T')[0] : "",
-          nextMilestone: project.progress.nextMilestone || "",
-          blockers: project.progress.blockers || "",
-        } : {
-          overallProgress: "",
-          completedTasks: "",
-          totalTasks: "",
-          lastUpdated: "",
-          nextMilestone: "",
-          blockers: "",
-        },
-
+        risks: project.risks || [],
         resources: project.resources ? {
-          estimatedHours: project.resources.estimatedHours?.toString() || "",
-          actualHours: project.resources.actualHours?.toString() || "",
-          teamSize: project.resources.teamSize?.toString() || "",
+          estimatedHours: project.resources.estimatedHours || undefined,
+          actualHours: project.resources.actualHours || undefined,
           tools: project.resources.tools || [],
           externalResources: project.resources.externalResources || [],
         } : {
-          estimatedHours: "",
-          actualHours: "",
-          teamSize: "",
+          estimatedHours: undefined,
+          actualHours: undefined,
           tools: [],
           externalResources: [],
         },
 
-        qualityMetrics: project.qualityMetrics ? {
-          requirementsCoverage: project.qualityMetrics.requirementsCoverage?.toString() || "",
-          defectDensity: project.qualityMetrics.defectDensity?.toString() || "",
-          customerSatisfaction: project.qualityMetrics.customerSatisfaction?.toString() || "",
-          onTimeDelivery: project.qualityMetrics.onTimeDelivery || false,
-          withinBudget: project.qualityMetrics.withinBudget || false,
-        } : {
-          requirementsCoverage: "",
-          defectDensity: "",
-          customerSatisfaction: "",
-          onTimeDelivery: false,
-          withinBudget: false,
-        },
       });
     }
   }, [project, form]);
 
   const handleSubmit = async (data: UpdateProjectFormData) => {
+    console.log('🚀 Form submission started with data:', data);
+    console.log('🔍 Form validation state:', {
+      isValid: form.formState.isValid,
+      errors: form.formState.errors,
+      isDirty: form.formState.isDirty,
+      isSubmitting: form.formState.isSubmitting
+    });
     setLoading(true);
     try {
       // Validate that at least one field is provided for update
       const hasData = Object.entries(data).some(([key, value]) => {
         if (value === null || value === undefined || value === '') return false;
         if (typeof value === 'object' && !Array.isArray(value)) {
-          return Object.values(value).some(v => v !== null && v !== undefined && v !== '');
+          return Object.values(value).some(v => {
+            if (Array.isArray(v)) return v.length > 0;
+            if (typeof v === 'number') return true;
+            return v !== null && v !== undefined && v !== '';
+          });
         }
         if (Array.isArray(value)) {
-          return value.length > 0;
+          return true; // Empty arrays are valid updates (user might want to clear all items)
         }
         return true;
       });
@@ -208,11 +151,28 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
         return;
       }
 
-      // Filter out fields that are not part of the form schema (handled in dedicated tabs)
-      const { deliverables, ...filteredData } = data as any;
-      
+      // Convert form data to proper API format (strings to numbers, dates, etc.)
+      const apiData: any = { ...data };
+
+      // Budget and budgetBreakdown are now handled by schema transformation
+
+      // Resources are now handled by schema transformation
+
+      // Convert start and end dates
+      if (apiData.startDate && apiData.startDate.trim() !== '') {
+        apiData.startDate = new Date(apiData.startDate);
+      } else {
+        apiData.startDate = undefined;
+      }
+
+      if (apiData.endDate && apiData.endDate.trim() !== '') {
+        apiData.endDate = new Date(apiData.endDate);
+      } else {
+        apiData.endDate = undefined;
+      }
+
       // Use the existing project update hook following the same pattern as other CRUD operations
-      await updateProject(project._id, filteredData);
+      await updateProject(project._id, apiData);
 
       toast({
         title: "Success",
@@ -224,7 +184,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       onProjectUpdate?.();
     } catch (error: any) {
       console.error('Error updating project:', error);
-      
+
       // Handle validation errors specifically
       if (error.message.includes('validation') || error.message.includes('required')) {
         toast({
@@ -244,7 +204,6 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
     }
   };
 
-  // Form fields configuration (excluding phases and milestones)
   const formFields: SubFormConfig[] = [
     {
       subform_title: "Basic Information",
@@ -258,7 +217,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           description: "A clear, descriptive name for the project",
           cols: 12,
           mdCols: 6,
-          lgCols: 3,
+          lgCols: 4,
         },
         {
           name: "status",
@@ -276,7 +235,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           defaultValue: "pending",
           cols: 12,
           mdCols: 6,
-          lgCols: 3,
+          lgCols: 4,
         },
         {
           name: "priority",
@@ -293,7 +252,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           description: "Project priority level",
           cols: 12,
           mdCols: 6,
-          lgCols: 3,
+          lgCols: 4,
         },
         {
           name: "projectType",
@@ -303,28 +262,29 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           description: "The type or category of project",
           cols: 12,
           mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "description",
-          label: "Description",
-          type: "textarea" as const,
-          placeholder: "Describe the project objectives and scope",
-          description: "Detailed project description",
-          cols: 12,
-          mdCols: 6,
           lgCols: 6,
         },
         {
           name: "requirements",
           label: "Requirements",
-          type: "textarea" as const,
+          type: "array-input" as const,
           placeholder: "List project requirements and specifications",
           description: "Detailed project requirements",
           cols: 12,
           mdCols: 6,
           lgCols: 6,
         },
+        {
+          name: "description",
+          label: "Description",
+          type: "rich-text" as const,
+          placeholder: "Describe the project objectives and scope",
+          description: "Detailed project description",
+          cols: 12,
+          mdCols: 12,
+          lgCols: 12,
+        },
+
       ]
     },
     {
@@ -477,56 +437,6 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       ]
     },
     {
-      subform_title: "Stakeholders",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "stakeholders.projectManager",
-          label: "Project Manager",
-          type: "select" as const,
-          searchable: true,
-          options: users?.filter(user => user._id).map(user => ({
-            value: user._id as string,
-            label: user.name
-          })) || [],
-          placeholder: "Select project manager",
-          description: "Assigned project manager",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-        {
-          name: "stakeholders.teamMembers",
-          label: "Team Members",
-          type: "multi-select" as const,
-          options: users?.filter(user => user._id).map(user => ({
-            value: user._id as string,
-            label: user.name
-          })) || [],
-          placeholder: "Select team members",
-          description: "Project team members",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-        {
-          name: "stakeholders.clientContacts",
-          label: "Client Contacts",
-          type: "multi-select" as const,
-          options: clients?.filter(client => client._id).map(client => ({
-            value: client._id as string,
-            label: client.name
-          })) || [],
-          placeholder: "Select client contacts",
-          description: "Main client contacts",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-      ]
-    },
-    {
       subform_title: "Resources",
       collapse: true,
       defaultOpen: false,
@@ -552,142 +462,105 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           lgCols: 4,
         },
         {
-          name: "resources.teamSize",
-          label: "Team Size",
-          type: "number" as const,
-          placeholder: "Number of team members",
-          description: "Size of the project team",
+          name: "resources.tools",
+          label: "Tools & Technologies",
+          type: "array-input" as const,
+          placeholder: "Add tool or technology",
+          description: "Tools and technologies used in the project",
           cols: 12,
           mdCols: 6,
-          lgCols: 4,
+        },
+        {
+          name: "resources.externalResources",
+          label: "External Resources",
+          type: "array-input" as const,
+          placeholder: "Add external resource",
+          description: "External resources and dependencies",
+          cols: 12,
+          mdCols: 6,
         },
       ]
     },
     {
-      subform_title: "Progress Tracking",
+      subform_title: "Risks",
       collapse: true,
       defaultOpen: false,
       fields: [
         {
-          name: "progress.overallProgress",
-          label: "Overall Progress (%)",
-          type: "number" as const,
-          placeholder: "0-100",
-          description: "Overall project completion percentage",
+          name: "risks",
+          label: "Risks",
+          type: "array-object" as const,
+          description: "Project risks",
           cols: 12,
-          mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "progress.completedTasks",
-          label: "Completed Tasks",
-          type: "number" as const,
-          placeholder: "Number of completed tasks",
-          description: "Total completed tasks",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "progress.totalTasks",
-          label: "Total Tasks",
-          type: "number" as const,
-          placeholder: "Total number of tasks",
-          description: "Total number of project tasks",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "progress.lastUpdated",
-          label: "Last Updated",
-          type: "date" as const,
-          description: "When progress was last updated",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "progress.nextMilestone",
-          label: "Next Milestone",
-          type: "text" as const,
-          placeholder: "Upcoming milestone",
-          description: "Next major milestone or deadline",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 3,
-        },
-        {
-          name: "progress.blockers",
-          label: "Current Blockers",
-          type: "textarea" as const,
-          placeholder: "Any current blockers or issues",
-          description: "Current blockers preventing progress",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 12,
+          fields: [
+            {
+              name: "description",
+              label: "Description",
+              type: "text" as const,
+              required: true,
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+            {
+              name: "impact",
+              label: "Impact",
+              type: "select" as const,
+              defaultValue: "medium",
+              options: [
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+                { value: "critical", label: "Critical" },
+              ],
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+            {
+              name: "probability",
+              label: "Probability",
+              type: "select" as const,
+              defaultValue: "medium",
+              options: [
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+              ],
+              cols: 12,
+              mdCols: 6,
+              lgCols: 4,
+            },
+            {
+              name: "mitigation",
+              label: "Mitigation",
+              type: "text" as const,
+              cols: 12,
+              mdCols: 6,
+              lgCols: 4,
+            },
+            {
+              name: "status",
+              label: "Status",
+              type: "select" as const,
+              defaultValue: "identified",
+              options: [
+                { value: "identified", label: "Identified" },
+                { value: "mitigated", label: "Mitigated" },
+                { value: "occurred", label: "Occurred" },
+              ],
+              cols: 12,
+              mdCols: 6,
+              lgCols: 4,
+            },
+          ]
         },
       ]
     },
-    {
-      subform_title: "Quality Metrics",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "qualityMetrics.requirementsCoverage",
-          label: "Requirements Coverage (%)",
-          type: "number" as const,
-          placeholder: "0-100",
-          description: "Percentage of requirements covered",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "qualityMetrics.defectDensity",
-          label: "Defect Density",
-          type: "number" as const,
-          placeholder: "Defects per unit",
-          description: "Number of defects per unit of work",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "qualityMetrics.customerSatisfaction",
-          label: "Customer Satisfaction",
-          type: "number" as const,
-          placeholder: "1-10 rating",
-          description: "Customer satisfaction rating",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 4,
-        },
-        {
-          name: "qualityMetrics.onTimeDelivery",
-          label: "On Time Delivery",
-          type: "checkbox" as const,
-          description: "Project delivered on time",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-        {
-          name: "qualityMetrics.withinBudget",
-          label: "Within Budget",
-          type: "checkbox" as const,
-          description: "Project delivered within budget",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-      ]
-    }
   ];
 
 
-  
+
   return (
     <div className="space-y-6">
       <Card>
@@ -699,7 +572,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
                 Edit Project
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Update project information (phases and milestones managed separately)
+                Update project information 
               </p>
             </div>
             <Badge variant="outline">
@@ -709,7 +582,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            
+
             <GenericForm
               form={form}
               onSubmit={handleSubmit}

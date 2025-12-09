@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useEffect } from 'react'
 import { useQueryClient } from "@tanstack/react-query"
+import { refreshAnalytics } from '@/lib/utils/analytics-refresh'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
   setProjects,
@@ -97,6 +98,16 @@ export function useProjects() {
       // Invalidate queries to refetch data
       queryClient.invalidateQueries({ queryKey: [projectOptions.entityName] })
       queryClient.invalidateQueries({ queryKey: [projectOptions.entityName, id] })
+      
+      // Invalidate analytics queries since project status change affects analytics
+      queryClient.invalidateQueries({ 
+        queryKey: ['analytics'], 
+        type: 'all'
+      })
+      queryClient.invalidateQueries({ 
+        queryKey: ['project-analytics', id],
+        type: 'all'
+      })
     } catch (error) {
       handleAPIError(error, `Failed to approve project`)
       throw error
@@ -109,17 +120,62 @@ export function useProjects() {
   }, [refetchProjects])
 
   // CRUD operations
-  const handleCreateProject = useCallback((projectData: CreateProjectFormData) => {
-    return createMutation.mutateAsync(projectData)
-  }, [createMutation])
+  const handleCreateProject = useCallback(async (projectData: CreateProjectFormData) => {
+    try {
+      const result = await createMutation.mutateAsync(projectData)
+      
+      // Invalidate analytics queries to refresh project statistics
+      await queryClient.invalidateQueries({ 
+        queryKey: ['analytics'] 
+      })
+      // Also invalidate project-specific analytics for the new project
+      if (result.data?._id) {
+        await queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === result.data._id
+          }
+        })
+        // Refetch analytics immediately
+        await queryClient.refetchQueries({
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === result.data._id
+          }
+        })
+      }
+      
+      return result
+    } catch (error) {
+      throw error
+    }
+  }, [createMutation, queryClient])
 
-  const handleUpdateProject = useCallback((id: string, data: UpdateProjectData) => {
-    return updateMutation.mutateAsync({ id, data })
-  }, [updateMutation])
+  const handleUpdateProject = useCallback(async (id: string, data: UpdateProjectData) => {
+    try {
+      const result = await updateMutation.mutateAsync({ id, data })
+      
+      // Trigger analytics refresh
+      refreshAnalytics({ projectId: id, queryClient })
+      
+      return result
+    } catch (error) {
+      throw error
+    }
+  }, [updateMutation, queryClient])
 
-  const handleDeleteProject = useCallback((projectId: string) => {
-    return deleteMutation.mutateAsync(projectId)
-  }, [deleteMutation])
+  const handleDeleteProject = useCallback(async (projectId: string) => {
+    try {
+      const result = await deleteMutation.mutateAsync(projectId)
+      
+      // Trigger analytics refresh
+      refreshAnalytics({ projectId, queryClient })
+      
+      return result
+    } catch (error) {
+      throw error
+    }
+  }, [deleteMutation, queryClient])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<ProjectFilters>) => {
@@ -270,5 +326,102 @@ export function useProjects() {
     canDeleteProject,
     canCategorizeProject,
     canApproveProject,
+  }
+}
+
+// Single project hook - doesn't fetch all projects, only handles individual project operations
+export function useProject(projectId?: string) {
+  const dispatch = useAppDispatch()
+  const queryClient = useQueryClient()
+
+  const {
+    selectedProject,
+    actionLoading,
+    error,
+  } = useAppSelector((state) => state.projects)
+
+  // Define options for generic hooks  
+  const projectOptions: UseGenericQueryOptions<any> = {
+    entityName: 'projects',
+    baseUrl: '/api/projects',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setProjects(entities)),
+      setEntity: (entity) => dispatch(setSelectedProject(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
+  }
+
+  // Use generic hooks for update operations
+  const updateMutation = useGenericUpdate(projectOptions)
+
+  // Fetch single project by ID if provided
+  const { data: fetchedProject, isLoading: queryLoading, refetch: refetchProject } = useGenericQueryById(
+    projectOptions,
+    projectId || '',
+    !!projectId // Only enable query if projectId is provided
+  )
+
+  // Update the selected project when fetched data changes
+  useEffect(() => {
+    if (fetchedProject && projectId) {
+      dispatch(setSelectedProject(fetchedProject))
+    }
+  }, [fetchedProject, projectId, dispatch])
+
+  // CRUD operations - only update and approve needed for project details
+  const handleUpdateProject = useCallback(async (id: string, data: UpdateProjectData) => {
+    try {
+      const result = await updateMutation.mutateAsync({ id, data })
+      // Invalidate and refetch the specific project
+      queryClient.invalidateQueries({ queryKey: [projectOptions.entityName, id] })
+      return result
+    } catch (error) {
+      throw error
+    }
+  }, [updateMutation, queryClient, projectOptions.entityName])
+
+  const handleApproveProject = useCallback(async (id: string) => {
+    try {
+      await apiRequest(`${projectOptions.baseUrl}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ operation: 'approve' })
+      })
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: [projectOptions.entityName, id] })
+    } catch (error) {
+      console.error('Error approving project:', error)
+      throw error
+    }
+  }, [projectOptions.baseUrl, projectOptions.entityName, queryClient])
+
+  // Utility operations
+  const handleClearError = useCallback(() => {
+    dispatch(clearError())
+  }, [dispatch])
+
+  const handleSetSelectedProject = useCallback((project: typeof selectedProject) => {
+    dispatch(setSelectedProject(project))
+  }, [dispatch])
+
+  return {
+    // State
+    project: selectedProject,
+    loading: queryLoading,
+    actionLoading: updateMutation.isPending || actionLoading,
+    error,
+
+    // CRUD operations
+    updateProject: handleUpdateProject,
+    approveProject: handleApproveProject,
+
+    // Utility operations
+    setSelectedProject: handleSetSelectedProject,
+    clearError: handleClearError,
+    refetch: refetchProject,
   }
 }

@@ -17,6 +17,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import Swal from 'sweetalert2';
 import { updateLeadFormSchema } from '@/lib/validations/lead';
 import type { UpdateLeadFormData } from '@/lib/validations/lead';
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function EditLeadPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function EditLeadPage() {
   const { toast } = useToast();
   const { canCreate } = usePermissions();
   const leadId = params?.id as string;
-
+  const { navigateTo, isNavigating } = useNavigation();
   // Generic options for leads
   const genericOptions = {
     entityName: 'leads',
@@ -47,7 +48,7 @@ export default function EditLeadPage() {
       phone: "",
       position: "",
       company: "",
-      website: "",
+      website: undefined,
       industry: "",
       companySize: undefined,
       annualRevenue: "",
@@ -57,6 +58,13 @@ export default function EditLeadPage() {
       priority: "medium",
       nextFollowUpDate: "",
       notes: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "",
+      },
       projectName: "",
       projectType: undefined,
       complexity: undefined,
@@ -64,9 +72,9 @@ export default function EditLeadPage() {
       estimatedHours: "",
       projectTimeline: "",
       projectDescription: "",
-      technologies: "",
-      projectRequirements: "",
-      deliverables: "",
+      technologies: [],
+      projectRequirements: [],
+      customerServices: [],
     },
   });
 
@@ -89,6 +97,13 @@ export default function EditLeadPage() {
         priority: lead.priority,
         nextFollowUpDate: lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate).toISOString().split('T')[0] : "",
         notes: lead.notes || "",
+       address: {
+          street: lead.address?.street || "",
+          city: lead.address?.city || "",
+          state: lead.address?.state || "",
+          zipCode: lead.address?.zipCode || "",
+          country: lead.address?.country || "",
+        },
         projectName: lead.projectName,
         projectType: (lead.projectType && ['web', 'mobile', 'desktop', 'api', 'consulting', 'other'].includes(lead.projectType)) ? lead.projectType as any : undefined,
         complexity: (lead.complexity && ['simple', 'medium', 'complex'].includes(lead.complexity)) ? lead.complexity as any : undefined,
@@ -96,25 +111,18 @@ export default function EditLeadPage() {
         estimatedHours: lead.estimatedHours ? String(lead.estimatedHours) : "",
         projectTimeline: lead.projectTimeline || "",
         projectDescription: lead.projectDescription || "",
-        technologies: lead.technologies ? lead.technologies.join(", ") : "",
-        projectRequirements: lead.projectRequirements ? lead.projectRequirements.join(", ") : "",
-        deliverables: lead.deliverables ? lead.deliverables.join(", ") : "",
+        technologies: lead.technologies || [],
+        projectRequirements: lead.projectRequirements || [],
+        customerServices: lead.customerServices || [],
       });
     }
   }, [lead, form]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      // Cleanup if needed
-    };
-  }, []);
 
   const handleSubmit = async (data: UpdateLeadFormData) => {
     if (!lead || !lead._id) return;
 
     try {
-      console.log('Form data being sent:', data);
 
       // Transform form data to API format
       const cleanedData = {
@@ -130,11 +138,19 @@ export default function EditLeadPage() {
         projectTimeline: data.projectTimeline?.trim() || undefined,
         projectBudget: data.projectBudget ? Number(data.projectBudget) : undefined,
         estimatedHours: data.estimatedHours ? Number(data.estimatedHours) : undefined,
-        technologies: data.technologies ? data.technologies.split(',').map(tech => tech.trim()).filter(tech => tech.length > 0) : undefined,
-        projectRequirements: data.projectRequirements ? data.projectRequirements.split(',').map(req => req.trim()).filter(req => req.length > 0) : undefined,
-        deliverables: data.deliverables ? data.deliverables.split(',').map(del => del.trim()).filter(del => del.length > 0) : undefined,
+        technologies: data.technologies?.filter((tech: string) => tech.trim().length > 0) || undefined,
+        projectRequirements: data.projectRequirements?.filter((req: string) => req.trim().length > 0) || undefined,
+        customerServices: data.customerServices?.filter((service: string) => service.trim().length > 0) || undefined,
         notes: data.notes?.trim() || undefined,
         nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
+         // Address
+        address: data.address ? {
+          street: data.address.street?.trim() || undefined,
+          city: data.address.city?.trim() || undefined,
+          state: data.address.state?.trim() || undefined,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          country: data.address.country?.trim() || undefined,
+        } : undefined,
       };
 
       const result = await updateLead(leadId, cleanedData);
@@ -144,7 +160,7 @@ export default function EditLeadPage() {
         description: "Lead updated successfully",
       });
 
-      router.push("/leads");
+      navigateTo("/leads");
     } catch (error: any) {
       console.error('Update lead error:', error)
 
@@ -172,7 +188,7 @@ export default function EditLeadPage() {
   };
 
   const handleCancel = () => {
-    router.push("/leads");
+    navigateTo("/leads");
   };
 
   const handleCreateClient = async () => {
@@ -181,11 +197,11 @@ export default function EditLeadPage() {
     try {
       // Show confirmation dialog
       const result = await Swal.fire({
-       customClass: {
-        popup: 'swal-bg',
-        title: 'swal-title',
-        htmlContainer: 'swal-content',
-      },
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
         title: 'Create Client from Lead',
         text: `Are you sure you want to create a client account for ${lead.name}? This will qualify the lead and create a new client profile.`,
         icon: 'question',
@@ -209,7 +225,8 @@ export default function EditLeadPage() {
       const responseData = await response.json();
 
       if (!responseData.success) {
-        throw new Error(responseData.error || 'Failed to create client');
+        const details = responseData.details && Array.isArray(responseData.details) ? responseData.details.map((d: any) => d.message || d).join(', ') : ''
+        throw new Error((responseData.error || 'Failed to create client') + (details ? `: ${details}` : ''));
       }
 
       toast({
@@ -218,7 +235,7 @@ export default function EditLeadPage() {
       });
 
       // Navigate to client edit page
-      router.push(`/clients/edit/${responseData.client._id}`);
+      navigateTo(`/clients/edit/${responseData.client._id}`);
 
     } catch (error: any) {
       console.error('Error creating client from lead:', error);
@@ -343,6 +360,58 @@ export default function EditLeadPage() {
       ]
     },
     {
+      subform_title: "Address Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "address.street",
+          label: "Street Address",
+          type: "text" as const,
+          placeholder: "123 Main Street",
+          description: "Street address",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "address.city",
+          label: "City",
+          type: "text" as const,
+          placeholder: "New York",
+          description: "City",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "address.state",
+          label: "State/Province",
+          type: "text" as const,
+          placeholder: "NY",
+          description: "State or province",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "address.zipCode",
+          label: "ZIP/Postal Code",
+          type: "text" as const,
+          placeholder: "10001",
+          description: "ZIP or postal code",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "address.country",
+          label: "Country",
+          type: "text" as const,
+          placeholder: "United States",
+          description: "Country",
+          cols: 12,
+          mdCols: 4,
+        },
+      ]
+    },
+    {
       subform_title: "Source & Follow-up",
       collapse: true,
       defaultOpen: false,
@@ -408,7 +477,7 @@ export default function EditLeadPage() {
         {
           name: "notes",
           label: "Notes",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Add any additional notes about this lead...",
           description: "Internal notes about the lead",
           cols: 12,
@@ -492,37 +561,35 @@ export default function EditLeadPage() {
         {
           name: "projectDescription",
           label: "Project Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Describe the project requirements and goals...",
           description: "Detailed description of the project",
           cols: 12,
           rows: 4,
         },
         {
+          name: "customerServices",
+          label: "Customer Services",
+          type: "array-input" as const,
+          placeholder: "Add Services that Customers Offers in his Business...",
+          description: "Required customer services for the project",
+          cols: 12,
+        },
+        {
           name: "technologies",
           label: "Technologies",
-          type: "text" as const,
-          placeholder: "React, Node.js, MongoDB, etc.",
-          description: "Comma-separated list of required technologies",
-          cols: 12,
+          type: "array-input" as const,
+          placeholder: "Add technology...",
+          description: "Required technologies for the project",
+          cols: 6,
         },
         {
           name: "projectRequirements",
           label: "Key Requirements",
-          type: "textarea" as const,
-          placeholder: "List the main project requirements...",
+          type: "array-input" as const,
+          placeholder: "Add requirement...",
           description: "Key requirements and features needed",
-          cols: 12,
-          rows: 3,
-        },
-        {
-          name: "deliverables",
-          label: "Expected Deliverables",
-          type: "textarea" as const,
-          placeholder: "Website, mobile app, documentation, etc.",
-          description: "Expected deliverables from the project",
-          cols: 12,
-          rows: 3,
+          cols: 6,
         },
       ]
     }
@@ -606,7 +673,7 @@ export default function EditLeadPage() {
                   variant="default"
                   onClick={handleCreateClient}
                   disabled={actionLoading}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
                   Create Client

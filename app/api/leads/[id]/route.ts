@@ -6,6 +6,7 @@ import User from "@/models/User"
 import { updateLeadSchema, leadIdSchema, leadStatusUpdateSchema } from "@/lib/validations/lead"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -120,6 +121,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         throw new Error('Lead not found or has been deleted')
       }
 
+      // Check if lead is deleted
+      if (!isSuperAdmin && (existingLead.status === 'deleted' || existingLead.isDeleted === true)) {
+        throw new Error('Cannot update Deleted entity')
+      }
+
       // Check permissions - sales agents can only update their own leads
       if (!isSuperAdmin) {
         const salesUser = await User.findById(user._id).populate('department', 'name')
@@ -136,6 +142,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
       // Check email uniqueness if email is being changed
       if (validatedData.email && validatedData.email !== existingLead.email) {
+        // Ensure the new email is not already used by another lead
         const existingEmailLead = await Lead.findOne({
           email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') },
           _id: { $ne: validatedParams.id }
@@ -143,6 +150,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (existingEmailLead) {
           throw new Error('A lead with this email already exists')
+        }
+
+        // Also ensure the new email is not used by any registered user
+        const existingEmailUser = await User.findOne({
+          email: { $regex: new RegExp(`^${validatedData.email}$`, 'i') }
+        })
+
+        if (existingEmailUser) {
+          throw new Error('A user with this email already exists')
         }
       }
 
@@ -173,6 +189,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Error updating lead:', error)
+
+    if (error.message === 'Cannot update Deleted entity') {
+      return NextResponse.json({
+        success: false,
+        error: error.message
+      }, { status: 400 })
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({
@@ -215,7 +238,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'leads', 'delete')
 
-    const validatedParams = leadIdSchema.parse({ id: (params as any).id })
+    const resolvedParams = (await params) as { id: string }
+    const validatedParams = leadIdSchema.parse({ id: resolvedParams.id })
 
     // Check permissions and business rules before deletion
     await executeGenericDbQuery(async () => {
@@ -260,10 +284,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const deleteResult = await performSoftDelete('lead', validatedParams.id, userEmail)
 
     if (!deleteResult.success) {
-      return NextResponse.json({
-        success: false,
-        error: deleteResult.message
-      }, { status: 400 })
+      return createErrorResponse(deleteResult.message, 400)
     }
 
     return NextResponse.json({
@@ -319,6 +340,11 @@ async function handleStatusUpdate(leadId: string, statusData: any, user: any, is
 
       if (!existingLead) {
         throw new Error('Lead not found or has been deleted')
+      }
+
+      // Check if lead is deleted
+      if (existingLead.status === 'deleted' || existingLead.isDeleted === true) {
+        throw new Error('Cannot update Deleted entity')
       }
 
       // Check permissions

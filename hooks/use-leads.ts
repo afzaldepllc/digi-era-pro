@@ -117,6 +117,16 @@ export function useLeads() {
     return deleteMutation.mutateAsync(leadId)
   }, [deleteMutation])
 
+  const handleRestoreLead = useCallback(async (leadId: string) => {
+    return await updateMutation.mutateAsync({
+      id: leadId,
+      data: {
+        isDeleted: false,
+        status: 'active'
+      }
+    })
+  }, [updateMutation])
+
   // Status operations with business logic
   const handleUpdateLeadStatus = useCallback(async (id: string, status: string, reason?: string) => {
     const result = await updateMutation.mutateAsync({
@@ -141,6 +151,25 @@ export function useLeads() {
   const handleDeactivateLead = useCallback((id: string) => {
     return handleUpdateLeadStatus(id, 'inactive')
   }, [handleUpdateLeadStatus])
+
+  // Create client from lead operation
+  const handleCreateClientFromLead = useCallback(async (leadId: string) => {
+    const response = await fetch(`/api/leads/${leadId}/create-client`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const responseData = await response.json();
+
+    if (!responseData.success) {
+      const details = responseData.details && Array.isArray(responseData.details) ? responseData.details.map((d: any) => d.message || d).join(', ') : ''
+      throw new Error((responseData.error || 'Failed to create client') + (details ? `: ${details}` : ''));
+    }
+
+    return responseData;
+  }, [])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<LeadFilters>) => {
@@ -238,6 +267,8 @@ export function useLeads() {
     createLead: handleCreateLead,
     updateLead: handleUpdateLead,
     deleteLead: handleDeleteLead,
+    restoreLead: handleRestoreLead,
+    createClientFromLead: handleCreateClientFromLead,
 
     // Status operations
     updateLeadStatus: handleUpdateLeadStatus,

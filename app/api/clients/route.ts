@@ -130,9 +130,9 @@ export async function GET(request: NextRequest) {
           .select('-password -resetPasswordToken -resetPasswordExpire')
           .lean()
       }, cacheKey, CACHE_TTL),
-      
 
-      
+
+
       executeGenericDbQuery(async () => {
         return await User.countDocuments(filter)
       }, `clients-count-${JSON.stringify(filter)}`, CACHE_TTL),
@@ -312,7 +312,7 @@ async function createClientDirectly(data: any, user: any) {
       }
 
       // Find client role - assume there's a role named 'client'
-      const clientRole = await User.findOne({ name: /^client$/i }, { _id: 1 })
+      const clientRole = await Role.findOne({ name: /^client$/i }, { _id: 1 })
       if (!clientRole) {
         throw new Error('Client role not found. Please create a client role first.')
       }

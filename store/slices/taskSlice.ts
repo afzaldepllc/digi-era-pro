@@ -6,6 +6,8 @@ interface TaskState {
   selectedTask: Task | null
   loading: boolean
   actionLoading: boolean
+  actionLoadingTasks: Record<string, boolean>
+  actionLoadingDepartments: Record<string, boolean>
   error: any
   filters: TaskFilters
   sort: TaskSort
@@ -24,10 +26,12 @@ const initialState: TaskState = {
   selectedTask: null,
   loading: false,
   actionLoading: false,
+  actionLoadingTasks: {},
+  actionLoadingDepartments: {},
   error: null,
   filters: {},
   sort: { field: 'createdAt', direction: 'desc' },
-  pagination: { page: 1, limit: 10, total: 0, pages: 0 },
+  pagination: { page: 1, limit: 50, total: 0, pages: 0 },
   stats: null,
   hierarchy: null,
 }
@@ -47,6 +51,16 @@ const taskSlice = createSlice({
     },
     setActionLoading: (state, action: PayloadAction<boolean>) => {
       state.actionLoading = action.payload
+    },
+    setActionLoadingForTask: (state, action: PayloadAction<{ id: string; loading: boolean }>) => {
+      const { id, loading } = action.payload
+      if (loading) state.actionLoadingTasks[id] = true
+      else delete state.actionLoadingTasks[id]
+    },
+    setActionLoadingForDepartment: (state, action: PayloadAction<{ id: string; loading: boolean }>) => {
+      const { id, loading } = action.payload
+      if (loading) state.actionLoadingDepartments[id] = true
+      else delete state.actionLoadingDepartments[id]
     },
     setError: (state, action: PayloadAction<any>) => {
       state.error = action.payload
@@ -78,6 +92,8 @@ export const {
   setSelectedTask,
   setLoading,
   setActionLoading,
+  setActionLoadingForTask,
+  setActionLoadingForDepartment,
   setError,
   clearError,
   setFilters,

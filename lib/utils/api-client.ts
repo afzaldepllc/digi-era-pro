@@ -66,9 +66,14 @@ export function getErrorMessage(error: any): string {
     return error
   }
 
-  // If it has an error property
-  if (error && error.error) {
+  // If it has an error property that is a string
+  if (error && typeof error.error === 'string') {
     return error.error
+  }
+
+  // If it has an error property that is an object with message
+  if (error && error.error && typeof error.error === 'object' && error.error.message) {
+    return error.error.message
   }
 
   // Default fallback

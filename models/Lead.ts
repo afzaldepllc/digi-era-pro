@@ -28,18 +28,12 @@ export interface ILead extends Document {
   projectBudget?: number
   projectTimeline?: string
   projectRequirements?: string[]
+  customerServices?: string[]
   technologies?: string[] // Required technologies/frameworks
   projectType?: 'web' | 'mobile' | 'desktop' | 'api' | 'consulting' | 'other'
   complexity?: 'simple' | 'medium' | 'complex'
 
   // Project Scope & Details
-  deliverables?: string[]
-  milestones?: Array<{
-    title: string
-    description?: string
-    dueDate?: Date
-    completed?: boolean
-  }>
   estimatedHours?: number
 
   // Lead Management
@@ -89,6 +83,10 @@ export interface ILead extends Document {
   // Timestamps
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 
   // Internal tracking for status changes
   _original?: any
@@ -206,6 +204,11 @@ const LeadSchema = new Schema<ILead>(
       trim: true,
       maxlength: [500, "Each requirement cannot exceed 500 characters"],
     }],
+    customerServices: [{
+      type: String,
+      trim: true,
+      maxlength: [500, "Each customer service cannot exceed 500 characters"],
+    }],
     technologies: [{
       type: String,
       trim: true,
@@ -221,17 +224,6 @@ const LeadSchema = new Schema<ILead>(
     },
 
     // Project Scope & Details
-    deliverables: [{
-      type: String,
-      trim: true,
-      maxlength: [500, "Each deliverable cannot exceed 500 characters"],
-    }],
-    milestones: [{
-      title: { type: String, required: true, trim: true, maxlength: [200, "Milestone title cannot exceed 200 characters"] },
-      description: { type: String, trim: true, maxlength: [500, "Milestone description cannot exceed 500 characters"] },
-      dueDate: { type: Date },
-      completed: { type: Boolean, default: false },
-    }],
     estimatedHours: {
       type: Number,
       min: [0, "Estimated hours cannot be negative"],
@@ -370,6 +362,21 @@ const LeadSchema = new Schema<ILead>(
     customFields: {
       type: Schema.Types.Mixed,
       default: {},
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    deletionReason: {
+      type: String,
+      trim: true,
     },
   },
   {

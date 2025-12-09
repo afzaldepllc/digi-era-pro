@@ -7,7 +7,9 @@ export interface ITask extends Document {
   departmentId: mongoose.Types.ObjectId
   parentTaskId?: mongoose.Types.ObjectId // For sub-tasks
   assigneeId?: mongoose.Types.ObjectId
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  
+  
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   type: 'task' | 'sub-task'
 
@@ -17,6 +19,9 @@ export interface ITask extends Document {
   startDate?: Date
   dueDate?: Date
   completedAt?: Date
+
+  // Ordering
+  order?: number
 
   // Meta fields
   createdBy: mongoose.Types.ObjectId
@@ -84,7 +89,7 @@ const TaskSchema = new Schema<ITask>({
   },
   status: {
     type: String,
-    enum: ['pending', 'in-progress', 'completed', 'on-hold', 'cancelled'],
+    enum: ['pending', 'in-progress', 'completed', 'on-hold', 'cancelled', 'closed', 'deleted'],
     default: 'pending',
     // index: true, // Removed - covered by compound indexes
   },
@@ -121,6 +126,13 @@ const TaskSchema = new Schema<ITask>({
     type: Date,
   },
 
+  // Ordering
+  order: {
+    type: Number,
+    default: 0,
+    min: [0, "Order must be non-negative"],
+  },
+
   // Meta fields
   createdBy: {
     type: Schema.Types.ObjectId,
@@ -150,6 +162,9 @@ TaskSchema.index({ createdBy: 1, status: 1 })
 // Compound indexes for efficient queries
 TaskSchema.index({ projectId: 1, departmentId: 1, type: 1 })
 TaskSchema.index({ projectId: 1, type: 1, status: 1 })
+// Index for efficient ordering within departments and statuses
+TaskSchema.index({ departmentId: 1, status: 1, order: 1 })
+TaskSchema.index({ projectId: 1, departmentId: 1, status: 1, order: 1 })
 
 // Text search index
 TaskSchema.index({
@@ -217,6 +232,7 @@ TaskSchema.virtual('subTaskCount', {
   foreignField: 'parentTaskId',
   count: true,
 })
+
 
 // Pre-save validation and logic
 TaskSchema.pre('save', async function (next) {
@@ -320,6 +336,24 @@ TaskSchema.pre('save', async function (next) {
   // Clear completion date if not completed
   if (this.isModified('status') && this.status !== 'completed') {
     this.completedAt = undefined
+  }
+
+  // Auto-assign order for new tasks
+  if (this.isNew && (this.order === undefined || this.order === 0)) {
+    try {
+      // Find the highest order in the same department and status
+      const TaskModel = this.constructor as TaskModel
+      const maxOrderTask = await TaskModel.findOne({
+        departmentId: this.departmentId,
+        status: this.status,
+        _id: { $ne: this._id } // Exclude current task
+      }).sort({ order: -1 }).limit(1)
+
+      this.order = (maxOrderTask?.order || 0) + 1
+    } catch (error) {
+      console.warn('Failed to auto-assign task order:', error)
+      this.order = 1 // Fallback to 1 if query fails
+    }
   }
 
   next()

@@ -1,22 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Department from "@/models/Department"
+import User from "@/models/User"
 import { updateDepartmentSchema, departmentIdSchema } from "@/lib/validations/department"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
+
 
 interface RouteParams {
   params: Promise<{ id: string }>
 }
 
 // Helper to create consistent error responses
-function createErrorResponse(message: string, status: number, details?: any) {
-  return NextResponse.json({
-    success: false,
-    error: message,
-    ...(details && { details })
-  }, { status })
-}
+// function createErrorResponse(message: string, status: number, details?: any) {
+//   return NextResponse.json({
+//     success: false,
+//     error: message,
+//     ...(details && { details })
+//   }, { status })
+// }
 
 // GET /api/departments/[id] - Get department by ID
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -31,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Find department with automatic connection management
     const department = await executeGenericDbQuery(async () => {
       // Apply soft delete filter - only super admins can see deleted departments
-      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin)
+      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin, false)
 
       const dept = await Department.findOne(filter).lean()
 
@@ -69,6 +72,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'update')
+    console.log('Middleware passed for updating department')
 
     // Validate department ID
     const { id } = await params
@@ -85,11 +89,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Update department with automatic connection management
     const updatedDepartment = await executeGenericDbQuery(async () => {
       // Check if department exists (apply soft delete filter - prevent updates on deleted records unless super admin)
-      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin)
+      const filter = addSoftDeleteFilter({ _id: validatedParams.id }, isSuperAdmin, false)
       const existingDepartment = await Department.findOne(filter)
+      // console.log('Existing Department:', existingDepartment)
 
       if (!existingDepartment) {
         throw new Error("Department not found or has been deleted")
+      }
+
+      // Check if department is deleted
+      if (!isSuperAdmin && (existingDepartment.status === 'deleted' || existingDepartment.isDeleted === true)) {
+        throw new Error('Cannot update Deleted entity')
       }
 
       // Check if new name already exists (if name is being updated, exclude deleted departments)
@@ -125,6 +135,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Error updating department:', error)
+    console.log('Error details:', error.message);
+
+    if (error.message === 'Cannot update Deleted entity') {
+      console.log('Handling Cannot update Deleted entity error');
+      return NextResponse.json({
+        success: false,
+        error: error.message
+      }, { status: 400 })
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({
@@ -157,6 +176,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // Validate department ID
     const { id } = await params
     const validatedParams = departmentIdSchema.parse({ id })
+
+    // Get current user for soft delete
+    // const currentUser = await executeGenericDbQuery(async () => {
+    //   return await User.findOne({ email: userEmail }).select('_id').lean()
+    // }, `current-user-${userEmail}`, 60000)
+
+    // if (!currentUser) {
+    //   return createErrorResponse('User not found', 403)
+    // }
 
     // Check if department exists (exclude already deleted departments)
     const existingDepartment = await executeGenericDbQuery(async () => {

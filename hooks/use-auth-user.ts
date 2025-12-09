@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
+import { useCallback } from 'react'
 
-interface LocalUser {
+interface AuthUser {
   id: string
   name: string
   email: string
@@ -11,90 +11,75 @@ interface LocalUser {
   avatar?: string
   image?: string
   permissions?: any[]
+  requiresTwoFactor?: boolean
+  twoFactorVerified?: boolean
   sessionStartTime?: number
   iat?: number
 }
 
-interface UseLocalUserReturn {
-  user: LocalUser | null
+interface UseAuthUserReturn {
+  user: AuthUser | null
   loading: boolean
-  updateUser: (userData: Partial<LocalUser>) => void
-  clearUser: () => void
-  refreshFromSession: () => void
+  status: 'loading' | 'authenticated' | 'unauthenticated'
+  updateUser: (userData: Partial<AuthUser>) => Promise<void>
+  signOut: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
-export function useAuthUser(): UseLocalUserReturn {
-  const { data: session } = useSession()
-  const [user, setUser] = useState<LocalUser | null>(null)
-  const [loading, setLoading] = useState(true)
+export function useAuthUser(): UseAuthUserReturn {
+  const { data: session, status, update } = useSession()
 
-  // Load user data from localStorage on mount
-  useEffect(() => {
-    const loadUserData = () => {
-      try {
-        const storedUser = localStorage.getItem('logged_in_user')
-        if (storedUser) {
-          const userData = JSON.parse(storedUser)
-          setUser(userData)
-        } else if (session?.user) {
-          // Fallback to session if localStorage is empty
-          const sessionUser = session.user as any
-          setUser(sessionUser)
-          // Store in localStorage for future use
-          localStorage.setItem('logged_in_user', JSON.stringify(sessionUser))
-        }
-      } catch (error) {
-        console.error('Error loading user data from localStorage:', error)
-        // Fallback to session on error
-        if (session?.user) {
-          setUser(session.user as any)
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
+  // Extract user from session - this is the single source of truth
+  const user = session?.user ? (session.user as AuthUser) : null
+  const loading = status === 'loading'
 
-    loadUserData()
-  }, [(session?.user as any)?.id]) // Only re-run when user ID changes, not on every session change
-
-  // Update user data in both state and localStorage
-  const updateUser = (userData: Partial<LocalUser>) => {
+  // Update user data via NextAuth session update
+  const updateUser = useCallback(async (userData: Partial<AuthUser>) => {
     try {
-      const updatedUser = { ...user, ...userData } as LocalUser
-      setUser(updatedUser)
-      localStorage.setItem('logged_in_user', JSON.stringify(updatedUser))
-      console.log('Updated user data:', updatedUser)
+      console.log('Updating user session with:', userData)
+      await update({
+        user: { ...user, ...userData },
+        ...userData // Also spread at top level for specific fields like avatar, twoFactorVerified
+      })
+      console.log('User session updated successfully')
     } catch (error) {
-      console.error('Error updating user data:', error)
+      console.error('Error updating user session:', error)
+      throw error
     }
-  }
+  }, [update, user])
 
-  // Clear user data from both state and localStorage
-  const clearUser = () => {
+  // Sign out wrapper
+  const handleSignOut = useCallback(async () => {
     try {
-      setUser(null)
-      localStorage.removeItem('logged_in_user')
-      console.log('Cleared user data from localStorage')
+      console.log('Signing out user')
+      await signOut({
+        callbackUrl: '/auth/login',
+        redirect: true
+      })
     } catch (error) {
-      console.error('Error clearing user data:', error)
+      console.error('Error during sign out:', error)
+      throw error
     }
-  }
+  }, [])
 
-  // Refresh user data from session
-  const refreshFromSession = () => {
-    if (session?.user) {
-      const sessionUser = session.user as any
-      setUser(sessionUser)
-      localStorage.setItem('logged_in_user', JSON.stringify(sessionUser))
-      console.log('Refreshed user data from session:', sessionUser)
+  // Refresh session data from server
+  const refreshSession = useCallback(async () => {
+    try {
+      console.log('Refreshing session from server')
+      await update()
+      console.log('Session refreshed successfully')
+    } catch (error) {
+      console.error('Error refreshing session:', error)
+      throw error
     }
-  }
+  }, [update])
 
   return {
     user,
     loading,
+    status,
     updateUser,
-    clearUser,
-    refreshFromSession,
+    signOut: handleSignOut,
+    refreshSession,
   }
 }

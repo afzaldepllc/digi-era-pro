@@ -40,7 +40,14 @@ export interface UseGenericQueryOptions<T extends GenericEntity> {
 export function useGenericQuery<T extends GenericEntity>(
   options: UseGenericQueryOptions<T>,
   params: FetchParams = {},
-  enabled: boolean = true
+  enabled: boolean = true,
+  queryOptions?: {
+    staleTime?: number
+    cacheTime?: number
+    refetchOnWindowFocus?: boolean
+    refetchOnMount?: boolean
+    retry?: number
+  }
 ) {
   const dispatch = useAppDispatch()
   const { entityName, baseUrl, reduxDispatchers } = options
@@ -56,6 +63,12 @@ export function useGenericQuery<T extends GenericEntity>(
 
   const query = useQuery({
     queryKey,
+    enabled,
+    staleTime: queryOptions?.staleTime ?? 2 * 60 * 1000, // Default 2 minutes
+    cacheTime: queryOptions?.cacheTime ?? 5 * 60 * 1000, // Default 5 minutes
+    refetchOnWindowFocus: queryOptions?.refetchOnWindowFocus ?? false,
+    refetchOnMount: queryOptions?.refetchOnMount ?? false,
+    retry: queryOptions?.retry ?? 1,
     queryFn: async () => {
       try {
         reduxDispatchers?.setLoading?.(true)
@@ -98,16 +111,23 @@ export function useGenericQuery<T extends GenericEntity>(
         let stats = null
 
         if (apiData && typeof apiData === 'object' && !Array.isArray(apiData)) {
-          // Check if data is nested (users/projects pattern)
+          // Handle nested responses like { success: true, data: [...] } where
+          // `data` can either be an array OR an object containing entity arrays
           if (apiData.data && typeof apiData.data === 'object') {
             const nestedData = apiData.data
-            // Look for entity array in nested data
-            entities = nestedData[entityName] || nestedData.users || nestedData.projects || nestedData.departments || []
-            pagination = nestedData.pagination || apiData.pagination
-            stats = nestedData.stats || apiData.stats
+            if (Array.isArray(nestedData)) {
+              entities = nestedData
+              // pagination often sits on the outer response
+              pagination = apiData.pagination || null
+            } else {
+              // Look for entity array in nested data
+              entities = nestedData[entityName] || nestedData.users || nestedData.projects || nestedData.departments || []
+              pagination = nestedData.pagination || apiData.pagination
+              stats = nestedData.stats || apiData.stats
+            }
           } else {
-            // Direct structure (legacy)
-            entities = apiData.departments || apiData[entityName] || apiData || []
+            // Direct structure (legacy) where the top-level object contains the entities
+            entities = apiData[entityName] || apiData.departments || apiData || []
             pagination = apiData.pagination
             stats = apiData.stats
           }
@@ -115,7 +135,10 @@ export function useGenericQuery<T extends GenericEntity>(
           entities = apiData
         }
 
-        const finalEntities = Array.isArray(entities) ? entities : [entities].filter(Boolean)
+        let finalEntities = Array.isArray(entities) ? entities : [entities].filter(Boolean)
+        // Normalize id/_id in returned entities to ensure UI code can reliably
+        // expect _id property. If API returns `id`, copy it to `_id` for consistency.
+        finalEntities = finalEntities.map((ent: any) => ({ ...(ent || {}), _id: ent?._id ?? ent?.id }))
         reduxDispatchers?.setEntities?.(finalEntities)
 
         // Set pagination if available
@@ -137,13 +160,7 @@ export function useGenericQuery<T extends GenericEntity>(
         handleAPIError(error, `Failed to fetch ${entityName}`)
         throw error
       }
-    },
-    enabled,
-    staleTime: 0, // Disable stale time to always fetch fresh data
-    gcTime: 1000 * 60 * 10, // Keep in cache for 10 minutes
-    retry: false, // Disable retries to prevent infinite loops
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnMount: true, // Always refetch on mount
+    }
   })
 
   return {
@@ -187,9 +204,11 @@ export function useGenericQueryById<T extends GenericEntity>(
           // Otherwise, assume apiData is already the entity
         }
 
-        reduxDispatchers?.setEntity?.(entity)
+        // Normalize id for single-entity responses
+        const finalEntity = entity && typeof entity === 'object' ? { ...(entity as any), _id: (entity as any)._id ?? (entity as any).id } : entity
+        reduxDispatchers?.setEntity?.(finalEntity as any)
         reduxDispatchers?.setLoading?.(false)
-        return entity
+        return finalEntity as T
       } catch (error) {
         reduxDispatchers?.setError?.(error)
         reduxDispatchers?.setLoading?.(false)
@@ -199,6 +218,7 @@ export function useGenericQueryById<T extends GenericEntity>(
     },
     enabled: enabled && !!id,
     staleTime: 1000 * 60 * 5,
+    refetchOnMount: true,
   })
 
   return {

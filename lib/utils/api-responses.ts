@@ -199,11 +199,9 @@ export function extractErrorMessage(error: any): string {
 export function handleMiddlewareError(error: any, resource: string, action: string): NextResponse {
   console.error('Middleware error:', error)
   
-  // If it's already a properly formatted Response, try to convert it
+  // If it's already a properly formatted Response, return it
   if (error instanceof Response) {
-    // For now, we'll recreate the response as NextResponse
-    // In practice, you might want to extract the JSON and recreate
-    return APIErrors.INTERNAL_SERVER_ERROR({ originalError: "Response error" })
+    return error as NextResponse
   }
   
   // Determine error type and create appropriate response

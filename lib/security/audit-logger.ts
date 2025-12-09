@@ -274,4 +274,27 @@ export class AuditLogger {
       }
     })
   }
+
+  static async logTwoFactorEvent(params: {
+    userId: string
+    userEmail: string
+    eventType: 'code_sent' | 'verification_success' | 'verification_failed' | 'account_locked' | 'verification_blocked' | 'magic_link_success' | 'magic_link_failed'
+    ipAddress?: string
+    userAgent?: string
+    success: boolean
+    errorMessage?: string
+    details?: Record<string, any>
+  }) {
+    return this.log({
+      userId: params.userId,
+      userEmail: params.userEmail,
+      action: params.eventType,
+      resource: 'two_factor_auth',
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
+      success: params.success,
+      errorMessage: params.errorMessage,
+      details: params.details
+    })
+  }
 }

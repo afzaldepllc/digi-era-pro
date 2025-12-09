@@ -19,13 +19,14 @@ import { useDepartments } from "@/hooks/use-departments";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import CustomModal from "@/components/ui/custom-modal";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function ProjectsPage() {
   console.log('Rendering ProjectsPage component');
   const router = useRouter();
   const { toast } = useToast();
   const { canDelete } = usePermissions();
-
+  const { navigateTo, isNavigating } = useNavigation()
   // Local state
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
@@ -530,7 +531,7 @@ export default function ProjectsPage() {
       <PageHeader
         title="Projects"
         subtitle="Manage client projects and track their progress"
-        onAddClick={() => router.push("/projects/add")}
+        onAddClick={() => navigateTo("/projects/add")}
         addButtonText="Add Project"
 
         // Filter functionality
@@ -609,7 +610,7 @@ export default function ProjectsPage() {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('project-details-active-tab', 'edit');
                 }
-                router.push(`/projects/${project._id}`);
+                navigateTo(`/projects/${project._id}`);
               },
             },
           }}
@@ -623,7 +624,7 @@ export default function ProjectsPage() {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('project-details-active-tab', 'overview');
                 }
-                router.push(`/projects/${project._id}`);
+                navigateTo(`/projects/${project._id}`);
               },
               variant: "default",
               icon: <FileText className="h-4 w-4" />, // Lucide icon for detail
@@ -639,7 +640,7 @@ export default function ProjectsPage() {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('project-details-active-tab', 'categorization');
                 }
-                router.push(`/projects/${project._id}`);
+                navigateTo(`/projects/${project._id}`);
               },
               variant: "default",
               icon: <FolderOpen className="h-4 w-4" />, // Lucide icon for categorization
@@ -668,6 +669,7 @@ export default function ProjectsPage() {
         isOpen={isQuickViewOpen}
         onClose={() => setIsQuickViewOpen(false)}
         title="Project Details"
+        position="top-right"
         modalSize="lg"
       >
         {selectedProject && (
@@ -812,15 +814,6 @@ export default function ProjectsPage() {
                     </div>
                   )}
 
-                  {selectedProject.deliverables && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Deliverables</label>
-                      <div className="mt-2 p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm whitespace-pre-wrap">{selectedProject.deliverables}</p>
-                      </div>
-                    </div>
-                  )}
-
                   {selectedProject.timeline && (
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Timeline</label>
@@ -830,7 +823,7 @@ export default function ProjectsPage() {
                     </div>
                   )}
 
-                  {!selectedProject.requirements && !selectedProject.deliverables && !selectedProject.timeline && (
+                  {!selectedProject.requirements && !selectedProject.timeline && (
                     <div className="text-center py-8">
                       <FileText className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                       <p className="text-muted-foreground">No additional details available</p>
@@ -925,7 +918,7 @@ export default function ProjectsPage() {
               <Button
                 onClick={() => {
                   setIsQuickViewOpen(false);
-                  router.push(`/projects/edit/${selectedProject._id}`);
+                  navigateTo(`/projects/edit/${selectedProject._id}`);
                 }}
               >
                 Edit Project

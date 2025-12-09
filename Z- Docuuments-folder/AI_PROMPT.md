@@ -139,3 +139,25 @@ ensure that the "COMMUNICATION" AND "CLIENT PORTAL" migrated with the new way me
 
 
 
+
+
+
+
+# project and task improvement module :
+
+
+# This is the project and task creation module of this crm app in next js in which many improvement are required 
+1) Progress Tracking and  Quality Metrics should not be handled in the edit tab but should be calculated on the project categorication and task creation and phases and mile stones  and when task assing and update the status of that project by the team member and team lead
+2) The Categorize & Task Creation need many enhancement and it should be user friendly like gitlab collaboration flow like issue/ task creation , task assignment .etc here are these are things which should be enhanced and this module should be working very smoothly without any jerk effect 
+    1) Project categorization should be improved for better UX in which first select the department and than can create task and sub task for the current project 
+    2) Here the task/ sub task  creation and task / sub task assignment is very crucial and must be user friendly and having better UX 
+    3) Task/Subtask assignment(where the assinee should be from department related users) should be handled with the better approach like the github/gitlab smoothly without any jurk effect and there should be label for task/sub task with proper colors like the gitlab using for this one 
+    4) There is the proper way for status update for task and subtask and we can also track the progress of project based on the task and sub task for an assignee 
+    5) There should be task board where the we can drag and drop in easy way smoothly 
+    4) Any collaborator can also  comment on the task or subtask which is also easy to use 
+3) Enhance the Phase module also professional way in which the flow should be smooth and professional 
+3) Enhance the Milestone module also professional way in which the flow should be smooth and professional 
+
+
+# in this crm next js app all these things are implement but there are many problem mentioned above , we need to resolve them properly using the best practices of next js and according to flow of this app using the theme color for them 
+## so here now i want the proper planning to this one properly in the .md format and than i will resolve and implement them one by one using the next js best practices and every things should working well 

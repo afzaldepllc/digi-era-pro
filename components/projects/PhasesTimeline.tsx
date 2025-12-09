@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Calendar,
   Plus,
@@ -31,7 +30,8 @@ import {
   AlertCircle,
   Users,
   RefreshCw,
-  Ban
+  Ban,
+  Filter
 } from "lucide-react";
 import {
   Select,
@@ -48,6 +48,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import CustomModal from "@/components/ui/custom-modal";
+import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
 import { createPhaseFormSchema, updatePhaseFormSchema, getPhaseStatusColor } from "@/lib/validations/phase";
 import type { CreatePhaseFormData, UpdatePhaseFormData } from "@/lib/validations/phase";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +59,11 @@ import { formatDistanceToNow, differenceInDays } from "date-fns";
 import type { IPhase } from "@/models/Phase";
 import RichTextEditor from "../ui/rich-text-editor";
 import HtmlTextRenderer from "../ui/html-text-renderer";
+import {
+  InlinePhaseStatusDropdown,
+  InlinePhaseEndDateInput,
+  phaseStatusColors,
+} from "./InlinePhaseEditUtils";
 
 interface PhasesTimelineProps {
   projectId: string;
@@ -70,8 +76,16 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPhase, setEditingPhase] = useState<IPhase | null>(null);
   const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
+  const [phaseActionLoading, setPhaseActionLoading] = useState<Record<string, boolean>>({});
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   const { toast } = useToast();
+
+  // Helper function to check if a specific phase action is loading
+  const isActionLoadingForPhase = (phaseId: string) => {
+    return phaseActionLoading[phaseId] || false;
+  };
 
   // Get current user for approval actions
   const { user: currentUser } = useAuthUser();
@@ -87,15 +101,109 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
     createPhase,
     updatePhase,
     deletePhase,
+    updatePhaseStatus,
+    updatePhaseEndDate,
+    isPhaseLoading,
+    individualLoading,
     completedPhases,
     activePhases,
     plannedPhases,
     overduePhases,
-    overallProgress
+    overallProgress,
+    setFilters: setBackendFilters,
+    filters: backendFilters,
   } = usePhaseManagement(projectId);
 
   // Get users for dropdowns
   const { users } = useUsers();
+
+  // Filter configuration
+  const phaseFilterConfig: FilterConfig = useMemo(() => ({
+    fields: [
+      { key: 'search', label: 'Search', type: 'text', placeholder: 'Search phase title or description', cols: 12 },
+      {
+        key: 'status', label: 'Status', type: 'select', placeholder: 'All', options: [
+          { value: 'all', label: 'All' },
+          { value: 'planning', label: 'Planning' },
+          { value: 'pending', label: 'Pending' },
+          { value: 'in-progress', label: 'In Progress' },
+          { value: 'on-hold', label: 'On Hold' },
+          { value: 'completed', label: 'Completed' },
+          { value: 'cancelled', label: 'Cancelled' },
+        ], cols: 12
+      },
+      { key: 'startDateFrom', label: 'Start Date From', type: 'date', cols: 6 },
+      { key: 'startDateTo', label: 'Start Date To', type: 'date', cols: 6 },
+      { key: 'endDateFrom', label: 'End Date From', type: 'date', cols: 6 },
+      { key: 'endDateTo', label: 'End Date To', type: 'date', cols: 6 },
+      { key: 'budgetMin', label: 'Min Budget', type: 'number', placeholder: '0', cols: 6 },
+      { key: 'budgetMax', label: 'Max Budget', type: 'number', placeholder: 'Any', cols: 6 },
+    ],
+    defaultValues: { search: '', status: 'all', startDateFrom: '', startDateTo: '', endDateFrom: '', endDateTo: '', budgetMin: '', budgetMax: '' }
+  }), []);
+
+  // Apply filters function - uses backend filtering for supported fields
+  const applyFilters = useCallback((values: any) => {
+    // Build backend filter object for API query
+    const mapped: any = {
+      projectId, // Always filter by project
+    };
+    
+    // Map filters following task pattern
+    if (values.search) mapped.search = values.search;
+    if (values.status && values.status !== 'all') mapped.status = values.status;
+    if (values.startDateFrom) mapped.startDateFrom = values.startDateFrom;
+    if (values.startDateTo) mapped.startDateTo = values.startDateTo;
+    if (values.endDateFrom) mapped.endDateFrom = values.endDateFrom;
+    if (values.endDateTo) mapped.endDateTo = values.endDateTo;
+    if (values.budgetMin) mapped.budgetMin = values.budgetMin;
+    if (values.budgetMax) mapped.budgetMax = values.budgetMax;
+    
+    // Apply backend filters
+    setBackendFilters(mapped);
+  }, [projectId, setBackendFilters]);
+
+  // Compute number of applied filters (ignore defaults and projectId)
+  const filterCount = useMemo(() => {
+    const keys = ['search', 'status', 'startDateFrom', 'startDateTo', 'endDateFrom', 'endDateTo', 'budgetMin', 'budgetMax'];
+    if (!backendFilters) return 0;
+    return keys.reduce((count, k) => {
+      const v = (backendFilters as any)[k];
+      if (v === undefined || v === null) return count;
+      if (v === '' || v === 'all') return count;
+      return count + 1;
+    }, 0);
+  }, [backendFilters]);
+
+  // Filter phases based on applied filters (client-side for search and budget only)
+  const filteredPhases = useMemo(() => {
+    let filtered = [...(phases || [])];
+
+    // Search filter (client-side)
+    const searchValue = (backendFilters as any)?.search || '';
+    if (searchValue && searchValue.trim() !== '') {
+      const searchLower = searchValue.toLowerCase();
+      filtered = filtered.filter((phase: IPhase) =>
+        phase.title.toLowerCase().includes(searchLower) ||
+        (phase.description && phase.description.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // Budget filters (client-side)
+    const budgetMin = (backendFilters as any)?.budgetMin || '';
+    const budgetMax = (backendFilters as any)?.budgetMax || '';
+    if (budgetMin && budgetMin !== '') {
+      const minBudget = parseFloat(budgetMin);
+      filtered = filtered.filter((phase: IPhase) => (phase.budgetAllocation || 0) >= minBudget);
+    }
+
+    if (budgetMax && budgetMax !== '') {
+      const maxBudget = parseFloat(budgetMax);
+      filtered = filtered.filter((phase: IPhase) => (phase.budgetAllocation || 0) <= maxBudget);
+    }
+
+    return filtered;
+  }, [phases, backendFilters]);
 
   // Forms
   const addForm = useForm<CreatePhaseFormData>({
@@ -111,7 +219,7 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
       deliverables: [],
       resources: [],
       risks: [],
-      budgetAllocation: "",
+      budgetAllocation: 0,
       approvalRequired: false,
     },
   });
@@ -128,7 +236,7 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
       deliverables: [],
       resources: [],
       risks: [],
-      budgetAllocation: "",
+      budgetAllocation: 0,
       approvalRequired: false,
     },
   });
@@ -181,7 +289,7 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
         resources: data.resources || [],
         risks: data.risks || [],
         dependencies: [],
-        budgetAllocation: data.budgetAllocation && data.budgetAllocation.trim() !== "" ? parseFloat(data.budgetAllocation) : undefined,
+        budgetAllocation: data.budgetAllocation && data.budgetAllocation !== 0 ? parseFloat(data.budgetAllocation.toString()) : 0,
         approvalRequired: data.approvalRequired || false,
       };
 
@@ -219,7 +327,7 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
       deliverables: phase.deliverables,
       resources: phase.resources || [],
       risks: phase.risks || [],
-      budgetAllocation: phase.budgetAllocation?.toString(),
+      budgetAllocation: phase.budgetAllocation,
       approvalRequired: phase.approvalRequired || false,
     });
   };
@@ -239,15 +347,60 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
         resources: data.resources,
         objectives: data.objectives,
         risks: data.risks,
-        budgetAllocation: data.budgetAllocation ? parseFloat(data.budgetAllocation) : undefined,
+        budgetAllocation: data.budgetAllocation ? parseFloat(data.budgetAllocation.toString()) : 0,
         approvalRequired: data.approvalRequired,
       });
 
+      // Ensure data is refreshed
+      await refetch();
+      
       setEditingPhase(null);
       editForm.reset();
       onPhaseUpdate?.();
     } catch (error) {
       console.error('Error updating phase:', error);
+    }
+  };
+
+  // Inline update handlers for phases with optimistic updates
+  const handleInlinePhaseStatusChange = async (
+    phaseId: string,
+    newStatus: "pending" | "in-progress" | "completed" | "on-hold" | "cancelled" | "planning"
+  ) => {
+    try {
+      await updatePhaseStatus(phaseId, newStatus);
+      onPhaseUpdate?.();
+      
+      toast({
+        title: "Status Updated",
+        description: `Phase status changed to ${newStatus}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update phase status",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+
+  const handleInlinePhaseEndDateChange = async (phaseId: string, newEndDate: string) => {
+    try {
+      await updatePhaseEndDate(phaseId, newEndDate);
+      onPhaseUpdate?.();
+      
+      toast({
+        title: "End Date Updated",
+        description: "Phase end date has been updated",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update phase end date",
+        variant: "destructive",
+      });
     }
   };
 
@@ -361,6 +514,9 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
 
       await updatePhase(phaseId, updateData);
 
+      // Ensure data is refreshed
+      await refetch();
+
       toast({
         title: "Success",
         description: actionMessage,
@@ -380,11 +536,11 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
 
   // Render timeline view
   const renderTimeline = () => (
-    <div className="space-y-6">
-      {(phases || []).map((phase: IPhase, index: number) => (
+    <>
+      {(filteredPhases || []).map((phase: IPhase, index: number) => (
         <div key={phase._id} className="relative">
           {/* Timeline line */}
-          {index < (phases || []).length - 1 && (
+          {index < (filteredPhases || []).length - 1 && (
             <div className="absolute left-6 top-16 w-0.5 h-full bg-border" />
           )}
 
@@ -414,9 +570,15 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h4 className="font-semibold text-lg">{phase.title}</h4>
-                      <Badge className={getPhaseStatusColor(phase.status)}>
-                        {phase.status.replace('-', ' ')}
-                      </Badge>
+                      <div className="flex gap-2">
+                        <InlinePhaseStatusDropdown
+                          phase={phase}
+                          isLoading={isActionLoadingForPhase(phase._id)}
+                          canUpdate={true}
+                          onStatusChange={handleInlinePhaseStatusChange}
+                          isPhaseLoading={isPhaseLoading}
+                        />
+                      </div>
                       <Badge variant="outline" className={
                         phase.approvedBy ? 'border-emerald-500 text-emerald-600' :
                           'border-muted-foreground text-muted-foreground'
@@ -550,7 +712,13 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
                   <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">End Date</div>
                     <div className="text-sm">
-                      {new Date(phase.endDate).toLocaleDateString()}
+                      <InlinePhaseEndDateInput
+                        phase={phase}
+                        isLoading={isActionLoadingForPhase(phase._id)}
+                        canUpdate={true}
+                        onEndDateChange={handleInlinePhaseEndDateChange}
+                        isPhaseLoading={isPhaseLoading}
+                      />
                     </div>
                   </div>
 
@@ -613,9 +781,10 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
           </div>
         </div>
       ))}
-    </div>
+    </>
   );
-  if (loading) {
+  // Show loading only for initial load, not for updates
+  if (loading && (!phases || phases.length === 0)) {
     return (
       <div className="flex items-center justify-center h-64 gap-2">
         <RefreshCw className="h-6 w-6 animate-spin text-primary" />
@@ -632,6 +801,21 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
             <CardTitle className="text-lg">Project Phases Timeline</CardTitle>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              ref={filterButtonRef}
+              variant="outline"
+              size="sm"
+              onClick={() => setFilterOpen(!filterOpen)}
+              className="relative"
+            >
+              <Filter className="h-4 w-4 mr-1" />
+              Filters
+              {filterCount > 0 && (
+                <Badge variant="destructive" className="ml-1 px-1 py-0 h-4 text-xs">
+                  {filterCount}
+                </Badge>
+              )}
+            </Button>
             <Select value={viewMode} onValueChange={(value: any) => setViewMode(value)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -646,6 +830,47 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
               Add Phase
             </Button>
           </div>
+        </div>
+
+        {/* Phase Filters */}
+        <div className="mt-3">
+          {filterOpen && (
+            <GenericFilter
+              config={phaseFilterConfig}
+              values={{
+                search: (backendFilters?.search || '') as string,
+                status: ((backendFilters as any)?.status || 'all') as string,
+                startDateFrom: ((backendFilters as any)?.startDateFrom || '') as string,
+                startDateTo: ((backendFilters as any)?.startDateTo || '') as string,
+                endDateFrom: ((backendFilters as any)?.endDateFrom || '') as string,
+                endDateTo: ((backendFilters as any)?.endDateTo || '') as string,
+                budgetMin: ((backendFilters as any)?.budgetMin || '') as string,
+                budgetMax: ((backendFilters as any)?.budgetMax || '') as string
+              }}
+              onFilterChange={applyFilters}
+              onReset={() => {
+                // Reset backend filters - explicitly clear all fields
+                setBackendFilters({
+                  projectId,
+                  search: '',
+                  status: '',
+                  startDateFrom: '',
+                  startDateTo: '',
+                  endDateFrom: '',
+                  endDateTo: '',
+                  budgetMin: '',
+                  budgetMax: ''
+                });
+                // Trigger refetch to get all data
+                setTimeout(() => refetch(), 100);
+              }}
+              presentation="dropdown"
+              isOpen={filterOpen}
+              onOpenChange={setFilterOpen}
+              anchorRef={filterButtonRef}
+              loading={loading}
+            />
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -685,14 +910,55 @@ export function PhasesTimeline({ projectId, onPhaseUpdate }: PhasesTimelineProps
         <Separator />
 
         {/* Phases Timeline */}
-        {(phases || []).length === 0 ? (
+        {(filteredPhases || []).length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Calendar className="h-16 w-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg">No phases created yet</p>
-            <p className="text-sm">Start by creating your first project phase!</p>
+            {filterCount > 0 ? (
+              <>
+                <p className="text-lg">No phases match your filters</p>
+                <p className="text-sm">Try adjusting your filter criteria</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Reset backend filters - explicitly clear all fields
+                    setBackendFilters({
+                      projectId,
+                      search: '',
+                      status: '',
+                      startDateFrom: '',
+                      startDateTo: '',
+                      endDateFrom: '',
+                      endDateTo: '',
+                      budgetMin: '',
+                      budgetMax: ''
+                    });
+                    // Trigger refetch to get all data
+                    setTimeout(() => refetch(), 100);
+                  }}
+                  className="mt-4"
+                >
+                  Clear Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-lg">No phases created yet</p>
+                <p className="text-sm">Start by creating your first project phase!</p>
+              </>
+            )}
           </div>
         ) : (
-          renderTimeline()
+          <div className="space-y-6">
+            {/* Show loading indicator for bulk operations */}
+            {loading && phases && phases.length > 0 && (
+              <div className="flex items-center justify-center py-2 text-muted-foreground bg-muted/30 rounded-lg">
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                <span className="text-sm">Syncing phases...</span>
+              </div>
+            )}
+            {renderTimeline()}
+          </div>
         )}
 
         {/* Add Phase Modal */}

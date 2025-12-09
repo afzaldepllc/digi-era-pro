@@ -40,17 +40,17 @@ const createPermissionSet = (permissionList: Array<{
 const systemRoles = [
   {
     name: "super_admin",
-    displayName: "Super Administrator", 
+    displayName: "Super Administrator",
     description: "Full system access with all permissions - Cannot be modified or deleted",
     hierarchyLevel: 10,
     isSystemRole: true,
     isImmutable: true,
     permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true } },
-      { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "delete", "assign"]},
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "delete", "assign"] },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["create", "read", "update", "delete", "assign"] },
-      { permission: PERMISSIONS.ROLES_READ, actions: ["create", "read", "update", "delete", "assign"]},
-      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "delete", "assign"]},
+      { permission: PERMISSIONS.ROLES_READ, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "delete", "assign"] },
       { permission: PERMISSIONS.SYSTEM_READ, actions: ["create", "read", "update", "delete", "manage", "configure", "audit", "archive", "export", "import"], conditions: { unrestricted: true } },
       { permission: PERMISSIONS.AUDIT_LOGS_READ, actions: ["read", "export", "archive"] },
       { permission: PERMISSIONS.REPORTS_READ, actions: ["create", "read", "update", "delete", "export"] },
@@ -58,6 +58,13 @@ const systemRoles = [
       { permission: PERMISSIONS.SETTINGS_READ, actions: ["create", "read", "update", "delete"] },
       { permission: PERMISSIONS.BACKUP_READ, actions: ["create", "read", "export", "import"] },
       { permission: PERMISSIONS.PERMISSIONS_READ, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: { resource: 'leads' }, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: { resource: 'projects' }, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: { resource: 'tasks' }, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: { resource: 'proposals' }, actions: ["create", "read", "update", "delete", "assign"] },
+      { permission: { resource: 'email' }, actions: ["create", "read", "update", "delete"], conditions: { unrestricted: true } },
+      { permission: { resource: 'upload' }, actions: ["create", "read", "update", "delete"], conditions: { unrestricted: true } },
+      { permission: { resource: 'client-portal' }, actions: ["create", "read", "update"], conditions: { unrestricted: true } },
     ])
   },
   {
@@ -66,8 +73,8 @@ const systemRoles = [
     description: "Human Resources management with user and department oversight",
     hierarchyLevel: 8,
     isSystemRole: true,
-        permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true } },
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "assign"], conditions: { subordinates: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read", "update"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read", "assign"] },
@@ -83,8 +90,8 @@ const systemRoles = [
     description: "Department leadership with team management and reporting",
     hierarchyLevel: 7,
     isSystemRole: false,
-        permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true } },
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["read", "update"], conditions: { department: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
@@ -99,8 +106,8 @@ const systemRoles = [
     description: "Team leadership with project oversight and team coordination",
     hierarchyLevel: 6,
     isSystemRole: false,
-        permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true } },
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
       { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
       { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
@@ -115,8 +122,8 @@ const systemRoles = [
     description: "External client with limited access to project information",
     hierarchyLevel: 1,
     isSystemRole: false,
-        permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: [ "read", "update"], conditions: { own: true , department: true } },
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true, department: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true } },
       { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["read"] },
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
@@ -128,7 +135,7 @@ const systemRoles = [
 export async function seedSystemRoles() {
   try {
     console.log('🌱 Starting system roles seeding...')
-    
+
     await connectDB()
 
     // Verify system permissions exist
@@ -149,7 +156,7 @@ export async function seedSystemRoles() {
 
     // Get existing roles (both system and department roles)
     const existingRoles = await Role.find({}).lean()
-    
+
     let created = 0
     let updated = 0
     let skipped = 0
@@ -163,7 +170,7 @@ export async function seedSystemRoles() {
     // Process system roles first (these don't need departments)
     for (const roleData of systemRoleTemplates) {
       const existingRole = existingRoles.find(r => r.name === roleData.name && r.isSystemRole)
-      
+
       if (existingRole) {
         // Skip updating super_admin role if it already exists and is marked immutable
         if (roleData.name === 'super_admin' && existingRole.metadata?.isImmutable) {
@@ -173,7 +180,7 @@ export async function seedSystemRoles() {
         }
 
         // Check if permissions have changed
-        const hasChanges = 
+        const hasChanges =
           existingRole.displayName !== roleData.displayName ||
           existingRole.description !== roleData.description ||
           JSON.stringify(existingRole.permissions) !== JSON.stringify(roleData.permissions)
@@ -215,10 +222,10 @@ export async function seedSystemRoles() {
       for (const roleTemplate of departmentRoleTemplates) {
         const roleName = `${roleTemplate.name}_${department.name.toLowerCase().replace(/\s+/g, '_')}`
         const existingDeptRole = existingRoles.find(r => r.name === roleName && !r.isSystemRole)
-        
+
         if (existingDeptRole) {
           // Check if permissions have changed for department role
-          const hasChanges = 
+          const hasChanges =
             existingDeptRole.displayName !== `${roleTemplate.displayName} - ${department.name}` ||
             existingDeptRole.description !== `${roleTemplate.description} (${department.name} Department)` ||
             JSON.stringify(existingDeptRole.permissions) !== JSON.stringify(roleTemplate.permissions)
@@ -268,7 +275,7 @@ export async function seedSystemRoles() {
     let communicationUpdated = 0
 
     for (const role of allRoles) {
-      const hasCommunicationPermission = role.permissions.some((p: any) => 
+      const hasCommunicationPermission = role.permissions.some((p: any) =>
         p.resource === PERMISSIONS.COMMUNICATIONS_READ.resource
       )
 
@@ -321,23 +328,27 @@ export async function seedSystemRoles() {
     const [systemStats, departmentStats] = await Promise.all([
       Role.aggregate([
         { $match: { isSystemRole: true, status: 'active' } },
-        { $group: {
-          _id: null,
-          totalRoles: { $sum: 1 },
-          avgHierarchy: { $avg: '$hierarchyLevel' },
-          maxHierarchy: { $max: '$hierarchyLevel' },
-          minHierarchy: { $min: '$hierarchyLevel' }
-        }}
+        {
+          $group: {
+            _id: null,
+            totalRoles: { $sum: 1 },
+            avgHierarchy: { $avg: '$hierarchyLevel' },
+            maxHierarchy: { $max: '$hierarchyLevel' },
+            minHierarchy: { $min: '$hierarchyLevel' }
+          }
+        }
       ]),
       Role.aggregate([
         { $match: { isSystemRole: false, status: 'active' } },
-        { $group: {
-          _id: null,
-          totalRoles: { $sum: 1 },
-          avgHierarchy: { $avg: '$hierarchyLevel' },
-          maxHierarchy: { $max: '$hierarchyLevel' },
-          minHierarchy: { $min: '$hierarchyLevel' }
-        }}
+        {
+          $group: {
+            _id: null,
+            totalRoles: { $sum: 1 },
+            avgHierarchy: { $avg: '$hierarchyLevel' },
+            maxHierarchy: { $max: '$hierarchyLevel' },
+            minHierarchy: { $min: '$hierarchyLevel' }
+          }
+        }
       ])
     ])
 
@@ -347,7 +358,7 @@ export async function seedSystemRoles() {
       console.log(`   System Roles: ${stats.totalRoles}`)
       console.log(`   System Hierarchy Range: ${stats.minHierarchy} - ${stats.maxHierarchy}`)
     }
-    
+
     if (departmentStats.length > 0) {
       const stats = departmentStats[0]
       console.log(`   Department Roles: ${stats.totalRoles}`)

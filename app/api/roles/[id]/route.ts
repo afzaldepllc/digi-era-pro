@@ -7,6 +7,8 @@ import mongoose, { type Document } from "mongoose"
 import { updateRoleSchema } from "@/lib/validations/role"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
+
 
 // Simple cache for individual role lookups
 const roleCache = new Map<string, { data: any, timestamp: number }>()
@@ -20,13 +22,13 @@ function getClientInfo(request: NextRequest) {
   }
 }
 
-function createErrorResponse(message: string, status: number, details?: any) {
-  return NextResponse.json({
-    success: false,
-    error: message,
-    ...(details && { details })
-  }, { status })
-}
+// function createErrorResponse(message: string, status: number, details?: any) {
+//   return NextResponse.json({
+//     success: false,
+//     error: message,
+//     ...(details && { details })
+//   }, { status })
+// }
 
 // Permission schema for validation
 const permissionSchema = z.object({
@@ -143,9 +145,7 @@ export async function PUT(
     // Validate update data
     const validation = updateRoleSchema.safeParse(body)
     if (!validation.success) {
-      return createErrorResponse("Validation failed", 400, {
-        errors: validation.error.errors
-      })
+      return createErrorResponse("Validation failed", 400, validation.error.errors)
     }
 
     const updateData = validation.data
@@ -162,6 +162,11 @@ export async function PUT(
     }) as IRole | null
     if (!existingRole) {
       return createErrorResponse('Role not found or has been deleted', 404)
+    }
+
+    // Check if role is deleted
+    if (!isSuperAdmin && (existingRole.status === 'deleted' || existingRole.isDeleted === true)) {
+      throw new Error('Cannot update Deleted entity')
     }
 
     // isSuperAdmin already available from middleware
@@ -255,6 +260,10 @@ export async function PUT(
 
   } catch (error: any) {
     console.error('Error in PUT /api/roles/[id]:', error)
+
+    if (error.message === 'Cannot update Deleted entity') {
+      return createErrorResponse(error.message, 400)
+    }
 
     // Handle specific MongoDB errors
     if (error.code === 11000) {

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import FilterToggleButton from "@/components/ui/filter-toggle-button";
 import { usePermissions } from "@/hooks/use-permissions";
 import { usePathname } from "next/navigation";
+import FullscreenToggle from "./FullscreenToggle";
+import HtmlTextRenderer from "./html-text-renderer";
 
 interface PageHeaderProps {
   title: string;
@@ -18,6 +20,7 @@ interface PageHeaderProps {
   showSearch?: boolean;
   showAddButton?: boolean;
   addButtonText?: string;
+  fullScreenMode?: "fullscreen-hide-layout" | "fullscreen-keep-layout" | "hide-layout";
   onAddClick?: () => void;
   actions?: ReactNode;
   className?: string;
@@ -43,6 +46,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   subtitle,
   showAddButton = true,
   addButtonText = "Add New",
+  fullScreenMode = "fullscreen-keep-layout",
   onAddClick,
   actions,
   className,
@@ -72,11 +76,20 @@ const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-foreground">{title}</h1>
           {subtitle && (
-            <p className="text-sm hidden md:block text-muted-foreground">{subtitle}</p>
+            <HtmlTextRenderer
+              content={subtitle}
+              maxLength={120}
+              className="line-clamp-4"
+              fallbackText="No description"
+              showFallback={true}
+              renderAsHtml={true}
+              truncateHtml={true}
+            />
+
           )}
         </div>
         {/* Actions Section */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           {/* Filter Toggle Button */}
           {showFilterButton && onFilterToggle && (
             <FilterToggleButton
@@ -103,8 +116,6 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             </Button>
           )}
 
-          {/* Custom Actions */}
-          {actions}
 
           {/* Add Button */}
           {(showAddButton && canCreate(allowedResources)) && (
@@ -117,11 +128,16 @@ const PageHeader: React.FC<PageHeaderProps> = ({
               {addButtonText}
               {/* {hasActiveFilters && (
                 <span className="ml-1 text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
-                  {activeFiltersCount}
+                {activeFiltersCount}
                 </span>
-              )} */}
+                )} */}
             </Button>
           )}
+
+          {/* Custom Actions */}
+          {actions}
+
+          <FullscreenToggle mode={fullScreenMode} />
         </div>
       </div>
 

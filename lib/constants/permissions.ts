@@ -24,6 +24,9 @@ export const RESOURCES = {
   BACKUP: 'backup',
   COMMUNICATIONS: 'communications',
   PROFILE: 'profile',
+  EMAIL: 'email',
+  UPLOAD: 'upload',
+  CLIENT_PORTAL: 'client_portal',
 } as const
 
 export const ACTIONS = {
@@ -310,6 +313,50 @@ export const COMPREHENSIVE_PERMISSIONS: Record<string, PermissionDefinition> = {
     availableActions: [
       { action: 'read', description: 'View own profile', conditions: ['own'] },
       { action: 'update', description: 'Update own profile', conditions: ['own'] },
+    ]
+  },
+
+  // ===== EMAIL =====
+  EMAIL: {
+    resource: 'email',
+    displayName: 'Email Management',
+    description: 'Send and manage emails through the system',
+    category: 'communication_management',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Send emails', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'read', description: 'View email analytics and logs', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'update', description: 'Update email settings' },
+      { action: 'delete', description: 'Delete email records' },
+    ]
+  },
+
+  // ===== UPLOAD =====
+  UPLOAD: {
+    resource: 'upload',
+    displayName: 'File Upload Management',
+    description: 'Upload and manage files in the system',
+    category: 'system_administration',
+    isCore: true,
+    availableActions: [
+      { action: 'create', description: 'Upload files', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'read', description: 'View uploaded files', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'update', description: 'Update file information' },
+      { action: 'delete', description: 'Delete uploaded files', conditions: ['own', 'department'] },
+    ]
+  },
+
+  // ===== CLIENT PORTAL =====
+  CLIENT_PORTAL: {
+    resource: 'client_portal',
+    displayName: 'Client Portal Access',
+    description: 'Access client portal features and communications',
+    category: 'communication_management',
+    isCore: true,
+    availableActions: [
+      { action: 'read', description: 'Access client portal', conditions: ['own', 'department', 'unrestricted'] },
+      { action: 'create', description: 'Create client portal content' },
+      { action: 'update', description: 'Update client portal settings' },
     ]
   },
 

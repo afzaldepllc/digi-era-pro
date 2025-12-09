@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { CreateDepartmentData, createDepartmentSchema } from '@/lib/validations/department'
 import { handleAPIError } from "@/lib/utils/api-client";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 
 export default function AddDepartmentPage() {
@@ -20,6 +21,7 @@ export default function AddDepartmentPage() {
   const { createDepartment } = useDepartments();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { navigateTo } = useNavigation();
 
   const form = useForm<CreateDepartmentData>({
     resolver: zodResolver(createDepartmentSchema),
@@ -45,7 +47,7 @@ export default function AddDepartmentPage() {
         description: "Department created successfully",
       });
 
-      router.push("/departments");
+      navigateTo("/departments");
     } catch (error: any) {
       handleAPIError(error, "Failed to create department")
     } finally {

@@ -331,7 +331,16 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
     if (!item.allowedResource || !item.allowedActions) {
       return true // Show items without allowedResource/allowedActions requirements
     }
-    return canAccess(item.allowedResource, item.allowedActions)
+    const hasAccess = canAccess(item.allowedResource, item.allowedActions)
+    if (!hasAccess) {
+      console.log('🔧 Sidebar access denied:', {
+        title: item.title,
+        resource: item.allowedResource,
+        actions: item.allowedActions,
+        hasAccess
+      })
+    }
+    return hasAccess
   }, [canAccess])
 
   // Memoized helper function to check if any sub-items are accessible
@@ -431,7 +440,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
       {/* Sidebar - Sticky positioning */}
       <div
         className={cn(
-          "flex flex-col border-r bg-sidebar/95 backdrop-blur-sm transition-all duration-300 ease-in-out",
+          "flex flex-col sidebar border-r bg-sidebar/95 backdrop-blur-sm transition-all duration-300 ease-in-out",
           // Desktop: sticky positioning for always visible during scroll
           "lg:sticky lg:top-0 lg:h-screen lg:max-h-screen",
           // Mobile: fixed positioning for overlay
@@ -476,7 +485,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={toggleCollapsed}
-            className={` ${collapsed ? "h-11 w-11 " : "h-8 w-8 "} p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110`}
+            className={` ${collapsed ? "h-9 w-9 " : "h-8 w-8 "} p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110`}
           >
             <ChevronLeft className={cn(
               "transition-transform duration-300",
@@ -551,7 +560,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                 <CollapsibleTrigger asChild>
                                   <div
                                     className={cn(
-                                      "group flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer",
+                                      "group flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium transition-all duration-300 cursor-pointer",
                                       "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
                                       "border border-transparent",
                                       isActive
@@ -560,7 +569,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                     )}
                                   >
                                     <div className={cn(
-                                      "flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-300 mr-3 shrink-0",
+                                      "flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-300 mr-3 shrink-0",
                                       "transform group-hover:scale-110 group-hover:rotate-3",
                                       isActive
                                         ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
@@ -592,13 +601,13 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                           key={subIndex}
                                           onClick={() => navigateTo(subItem.href)}
                                           className={cn(
-                                            "group flex items-center rounded-md px-3 py-2 text-sm transition-all duration-300 cursor-pointer",
+                                            "group flex items-center rounded-md px-2 py-1.5 text-sm transition-all duration-300 cursor-pointer",
                                             "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
                                             "border-l-2 border-transparent hover:border-sidebar-accent/50",
                                             isSubActive
                                               ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
                                               : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
-                                            isNavigating && "opacity-60 pointer-events-none"
+                                            isNavigating && "opacity-60 cursor-not-allowed"
                                           )}
                                         >
                                           <div className={cn(
@@ -624,20 +633,20 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                 <div
                                   onClick={() => navigateTo(item.href)}
                                   className={cn(
-                                    "group flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer",
+                                    "group flex items-center rounded-lg px-2 py-1.5 text-sm font-medium transition-all duration-300 cursor-pointer",
                                     "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
                                     "border border-transparent",
                                     isActive
                                       ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
                                       : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
                                     collapsed && "justify-center px-2",
-                                    isNavigating && "opacity-60 pointer-events-none"
+                                    isNavigating && "opacity-60 cursor-not-allowed"
                                   )}
                                 >
                                   <div className={cn(
                                     "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
                                     "transform group-hover:scale-110 group-hover:rotate-3",
-                                    collapsed ? "h-8 w-8" : "h-8 w-8 mr-3",
+                                    collapsed ? "h-6 w-6" : "h-6 w-6 mr-3",
                                     isActive
                                       ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
                                       : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"

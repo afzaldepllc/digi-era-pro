@@ -28,24 +28,9 @@ const authSlice = createSlice({
       state.isAuthenticated = false
       state.user = null
       
-      // Clear localStorage when clearing auth state
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('logged_in_user')
-        localStorage.removeItem('user_permissions')
-        localStorage.removeItem('user_role')
-        localStorage.removeItem('user_department')
-        
-        // Clear any other cached user data
-        const keysToRemove = Object.keys(localStorage).filter(key => 
-          key.startsWith('user_') || 
-          key.startsWith('auth_') || 
-          key.startsWith('session_')
-        )
-        keysToRemove.forEach(key => localStorage.removeItem(key))
-        
-        // Clear sessionStorage as well
-        sessionStorage.clear()
-      }
+      // Server-side session management only - no client storage cleanup needed
+      // NextAuth handles all session cleanup automatically
+      console.log('Auth state cleared - NextAuth will handle session cleanup')
     },
   },
 })

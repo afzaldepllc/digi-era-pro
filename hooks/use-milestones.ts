@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useEffect } from 'react'
+import { useCallback, useMemo, useEffect, useState, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { refreshAnalytics } from '@/lib/utils/analytics-refresh'
 import { useAppSelector, useAppDispatch } from './redux'
 import {
   setMilestones,
@@ -28,8 +30,12 @@ import type {
   UpdateMilestoneData,
 } from '@/lib/validations/milestone'
 
+// Extended type for update operations that may need projectId for analytics
+type ExtendedUpdateMilestoneData = UpdateMilestoneData & { projectId?: string }
+
 export function useMilestones() {
   const dispatch = useAppDispatch()
+  const queryClient = useQueryClient()
 
   const {
     milestones,
@@ -93,25 +99,164 @@ export function useMilestones() {
   }, [dispatch, refetchMilestones])
 
   const handleCreateMilestone = useCallback(async (milestoneData: CreateMilestoneData) => {
-    return createMutation.mutateAsync(milestoneData)
-  }, [createMutation])
+    try {
+      const result = await createMutation.mutateAsync(milestoneData)
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchMilestones()
+      
+      // Trigger analytics refresh
+      if (milestoneData.projectId) {
+        refreshAnalytics({ projectId: milestoneData.projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error creating milestone:', error)
+      throw error
+    }
+  }, [createMutation, queryClient])
 
-  const handleUpdateMilestone = useCallback(async (id: string, data: UpdateMilestoneData) => {
-    return updateMutation.mutateAsync({ id, data })
-  }, [updateMutation])
+  const handleUpdateMilestone = useCallback(async (id: string, data: ExtendedUpdateMilestoneData) => {
+    try {
+      const result = await updateMutation.mutateAsync({ id, data })
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchMilestones()
+      
+      // Trigger analytics refresh
+      const currentMilestone = milestones.find((m: any) => m._id === id)
+      const projectId = data?.projectId || currentMilestone?.projectId
+      if (projectId) {
+        refreshAnalytics({ projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error updating milestone:', error)
+      throw error
+    }
+  }, [updateMutation, queryClient, milestones])
 
   const handleDeleteMilestone = useCallback(async (milestoneId: string) => {
-    return deleteMutation.mutateAsync(milestoneId)
-  }, [deleteMutation])
+    try {
+      const milestoneToDelete = milestones.find((m: any) => m._id === milestoneId)
+      const result = await deleteMutation.mutateAsync(milestoneId)
+      
+      // Invalidate and refetch to ensure UI is in sync
+      await refetchMilestones()
+      
+      // Trigger analytics refresh
+      if (milestoneToDelete?.projectId) {
+        refreshAnalytics({ projectId: milestoneToDelete.projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      console.error('Error deleting milestone:', error)
+      throw error
+    }
+  }, [deleteMutation, refetchMilestones, queryClient, milestones])
 
-  // Quick status and progress updates
-  const handleUpdateMilestoneStatus = useCallback((id: string, status: any) => {
-    dispatch(updateMilestoneStatus({ id, status }))
-  }, [dispatch])
+  // Individual milestone loading states
+  const [individualLoading, setIndividualLoading] = useState<Record<string, boolean>>({})
 
-  const handleUpdateMilestoneProgress = useCallback((id: string, progress: number) => {
-    dispatch(updateMilestoneProgress({ id, progress }))
-  }, [dispatch])
+  // Quick status and progress updates with optimistic updates
+  const handleUpdateMilestoneStatus = useCallback(async (id: string, status: 'pending' | 'in-progress' | 'completed' | 'overdue') => {
+    setIndividualLoading(prev => ({ ...prev, [id]: true }))
+    
+    // Optimistic update
+    const currentMilestone = milestones.find((m: any) => m._id === id)
+    if (currentMilestone) {
+      const updatedMilestones = milestones.map((m: any) => 
+        m._id === id ? { ...m, status } : m
+      )
+      dispatch(setMilestones(updatedMilestones))
+    }
+    
+    try {
+      await handleUpdateMilestone(id, { status })
+      // Refetch to ensure sync
+      await refetchMilestones()
+    } catch (error) {
+      // Revert optimistic update on error
+      if (currentMilestone) {
+        const revertedMilestones = milestones.map((m: any) => 
+          m._id === id ? currentMilestone : m
+        )
+        dispatch(setMilestones(revertedMilestones))
+      }
+      throw error
+    } finally {
+      setIndividualLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }, [dispatch, milestones, handleUpdateMilestone, refetchMilestones])
+
+  const handleUpdateMilestoneProgress = useCallback(async (id: string, progress: number) => {
+    setIndividualLoading(prev => ({ ...prev, [id]: true }))
+    
+    // Optimistic update
+    const currentMilestone = milestones.find((m: any) => m._id === id)
+    if (currentMilestone) {
+      const updatedMilestones = milestones.map((m: any) => 
+        m._id === id ? { ...m, progress } : m
+      )
+      dispatch(setMilestones(updatedMilestones))
+    }
+    
+    try {
+      await handleUpdateMilestone(id, { progress })
+      // Refetch to ensure sync
+      await refetchMilestones()
+    } catch (error) {
+      // Revert optimistic update on error
+      if (currentMilestone) {
+        const revertedMilestones = milestones.map((m: any) => 
+          m._id === id ? currentMilestone : m
+        )
+        dispatch(setMilestones(revertedMilestones))
+      }
+      throw error
+    } finally {
+      setIndividualLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }, [dispatch, milestones, handleUpdateMilestone, refetchMilestones])
+
+  // Handle inline due date update
+  const handleUpdateMilestoneDueDate = useCallback(async (id: string, dueDate: string) => {
+    setIndividualLoading(prev => ({ ...prev, [id]: true }))
+    
+    // Optimistic update
+    const currentMilestone = milestones.find((m: any) => m._id === id)
+    if (currentMilestone) {
+      const updatedMilestones = milestones.map((m: any) => 
+        m._id === id ? { ...m, dueDate } : m
+      )
+      dispatch(setMilestones(updatedMilestones))
+    }
+    
+    try {
+      await handleUpdateMilestone(id, { dueDate: new Date(dueDate) })
+      // Refetch to ensure sync
+      await refetchMilestones()
+    } catch (error) {
+      // Revert optimistic update on error
+      if (currentMilestone) {
+        const revertedMilestones = milestones.map((m: any) => 
+          m._id === id ? currentMilestone : m
+        )
+        dispatch(setMilestones(revertedMilestones))
+      }
+      throw error
+    } finally {
+      setIndividualLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }, [dispatch, milestones, handleUpdateMilestone, refetchMilestones])
+
+  // Check if individual milestone is loading
+  const isMilestoneLoading = useCallback((id: string) => {
+    return individualLoading[id] || false
+  }, [individualLoading])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: any) => {
@@ -141,6 +286,103 @@ export function useMilestones() {
       phaseId: filters.phaseId 
     })
   }, [handleFetchMilestones, filters.projectId, filters.phaseId])
+
+  // Progress update operations
+  const handleUpdateMilestoneProgressFromTasks = useCallback(async (milestoneId: string) => {
+    try {
+      dispatch(setActionLoading(true))
+      
+      const response = await fetch('/api/milestones/update-progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ milestoneId }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update milestone progress')
+      }
+
+      // Update milestone progress in local state
+      dispatch(updateMilestoneProgress({ 
+        id: milestoneId, 
+        progress: result.data.progress 
+      }))
+
+      // Update status if it changed
+      if (result.data.status) {
+        dispatch(updateMilestoneStatus({ 
+          id: milestoneId, 
+          status: result.data.status 
+        }))
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch])
+
+  const handleUpdateProjectMilestoneProgress = useCallback(async (projectId: string) => {
+    try {
+      dispatch(setActionLoading(true))
+      
+      const response = await fetch('/api/milestones/update-progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ projectId }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update project milestone progress')
+      }
+
+      // Refresh milestones to get updated data
+      await refreshMilestones()
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, refreshMilestones])
+
+  const handleGetMilestoneProgressSummary = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/milestones/update-progress?projectId=${projectId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get milestone progress summary')
+      }
+
+      return result.data
+
+    } catch (error: any) {
+      dispatch(setError(error.message))
+      throw error
+    }
+  }, [dispatch])
 
   // Computed values
   const hasMilestones = milestones.length > 0
@@ -195,6 +437,12 @@ export function useMilestones() {
     // Quick updates
     updateMilestoneStatus: handleUpdateMilestoneStatus,
     updateMilestoneProgress: handleUpdateMilestoneProgress,
+    updateMilestoneDueDate: handleUpdateMilestoneDueDate,
+    updateMilestoneProgressFromTasks: handleUpdateMilestoneProgressFromTasks,
+    updateProjectMilestoneProgress: handleUpdateProjectMilestoneProgress,
+    getMilestoneProgressSummary: handleGetMilestoneProgressSummary,
+    isMilestoneLoading,
+    individualLoading,
 
     // Filter and sort operations
     setFilters: handleSetFilters,
@@ -244,25 +492,32 @@ export function useProjectMilestones(projectId: string) {
     milestones, 
     setFilters, 
     refreshMilestones,
+    filters,
     ...rest 
   } = useMilestones()
 
+  const initializedRef = useRef(false)
+
   // Filter milestones by project automatically using useEffect
   useEffect(() => {
-    if (projectId && projectId !== rest.filters.projectId) {
+    // Only set filters on first mount or if projectId changes
+    if (projectId && (!initializedRef.current || filters.projectId !== projectId)) {
       setFilters({ projectId })
+      initializedRef.current = true
     }
-  }, [projectId, rest.filters.projectId, setFilters])
+  }, [projectId, filters.projectId, setFilters])
 
   // Don't filter client-side since we're filtering server-side via API
   const projectMilestones = useMemo(() => {
     // Return all milestones since they should already be filtered by the API
     return milestones
-  }, [milestones, rest.filters])
+  }, [milestones])
 
   return {
     milestones: projectMilestones,
+    filters,
     ...rest,
+    setFilters,
     refreshMilestones: () => refreshMilestones(),
   }
 }
@@ -273,15 +528,20 @@ export function usePhaseMilestones(phaseId: string) {
     milestones, 
     setFilters, 
     refreshMilestones,
+    filters,
     ...rest 
   } = useMilestones()
 
-  // Filter milestones by phase automatically
-  useMemo(() => {
-    if (phaseId && phaseId !== rest.filters.phaseId) {
+  const initializedRef = useRef(false)
+
+  // Filter milestones by phase automatically using useEffect
+  useEffect(() => {
+    // Only set filters on first mount or if phaseId changes
+    if (phaseId && (!initializedRef.current || filters.phaseId !== phaseId)) {
       setFilters({ phaseId })
+      initializedRef.current = true
     }
-  }, [phaseId, rest.filters.phaseId, setFilters])
+  }, [phaseId, filters.phaseId, setFilters])
 
   const phaseMilestones = useMemo(() => {
     return milestones.filter((milestone: any) => milestone.phaseId === phaseId)
@@ -289,7 +549,9 @@ export function usePhaseMilestones(phaseId: string) {
 
   return {
     milestones: phaseMilestones,
+    filters,
     ...rest,
+    setFilters,
     refreshMilestones: () => refreshMilestones(),
   }
 }

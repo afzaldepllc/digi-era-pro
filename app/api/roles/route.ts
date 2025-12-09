@@ -12,6 +12,8 @@ import mongoose, { type Document } from "mongoose"
 import { getClientInfo } from "@/lib/security/error-handler"
 import { createAPIErrorResponse, createAPISuccessResponse } from "@/lib/utils/api-responses"
 import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
+import { createErrorResponse } from "@/lib/security/error-handler"
+
 
 
 
@@ -20,13 +22,13 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 
 // Helper to create consistent error responses
-function createErrorResponse(message: string, status: number, details?: any) {
-  return NextResponse.json({
-    success: false,
-    error: message,
-    ...(details && { details })
-  }, { status })
-}
+// function createErrorResponse(message: string, status: number, details?: any) {
+//   return NextResponse.json({
+//     success: false,
+//     error: message,
+//     ...(details && { details })
+//   }, { status })
+// }
 
 // GET /api/roles - List roles with pagination, search, and filters
 export async function GET(request: NextRequest) {

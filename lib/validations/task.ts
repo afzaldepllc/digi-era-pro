@@ -5,7 +5,7 @@ export const TASK_CONSTANTS = {
   TITLE: { MIN_LENGTH: 2, MAX_LENGTH: 300 },
   DESCRIPTION: { MAX_LENGTH: 2000 },
   STATUS: { 
-    VALUES: ['pending', 'in-progress', 'completed', 'on-hold', 'cancelled'] as const, 
+    VALUES: ['pending', 'in-progress', 'completed', 'on-hold', 'cancelled', 'closed', 'deleted'] as const, 
     DEFAULT: 'pending' as const 
   },
   PRIORITY: { 
@@ -45,8 +45,8 @@ export const queryObjectIdSchema = z.string()
 // Base task schema
 export const baseTaskSchema = z.object({
   title: z.string()
-    .min(TASK_CONSTANTS.TITLE.MIN_LENGTH, 'Title too short')
-    .max(TASK_CONSTANTS.TITLE.MAX_LENGTH, 'Title too long')
+    .min(TASK_CONSTANTS.TITLE.MIN_LENGTH, 'Title too short minimum 2 characters required')
+    .max(TASK_CONSTANTS.TITLE.MAX_LENGTH, 'Title too long only 300 characters allowed')
     .transform(val => val.trim())
     .refine(title => title.length > 0, 'Task title is required'),
 
@@ -72,6 +72,10 @@ export const baseTaskSchema = z.object({
 
   type: z.enum(TASK_CONSTANTS.TYPE.VALUES)
     .default(TASK_CONSTANTS.TYPE.DEFAULT),
+
+  labelIds: z.array(objectIdSchema)
+    .optional()
+    .default([]),
 
   estimatedHours: z.number()
     .min(0, 'Estimated hours must be positive')
@@ -111,8 +115,8 @@ export const baseTaskSchema = z.object({
 // Form schemas (with string inputs for form handling)
 export const baseTaskFormSchema = z.object({
   title: z.string()
-    .min(TASK_CONSTANTS.TITLE.MIN_LENGTH, 'Title too short')
-    .max(TASK_CONSTANTS.TITLE.MAX_LENGTH, 'Title too long')
+    .min(TASK_CONSTANTS.TITLE.MIN_LENGTH, 'Title too short minimum 2 characters required')
+    .max(TASK_CONSTANTS.TITLE.MAX_LENGTH, 'Title too long only 300 characters allowed')
     .transform(val => val.trim()),
 
   description: z.string()
@@ -150,6 +154,7 @@ export const baseTaskFormSchema = z.object({
     })
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
+
   status: z.enum(TASK_CONSTANTS.STATUS.VALUES)
     .default(TASK_CONSTANTS.STATUS.DEFAULT),
 
@@ -158,6 +163,11 @@ export const baseTaskFormSchema = z.object({
 
   type: z.enum(TASK_CONSTANTS.TYPE.VALUES)
     .default(TASK_CONSTANTS.TYPE.DEFAULT),
+
+  labelIds: z.array(z.string())
+    .optional()
+    .default([])
+    .transform(arr => arr.filter(id => id && /^[0-9a-fA-F]{24}$/.test(id))),
 
   estimatedHours: z.string()
     .optional()
@@ -172,6 +182,10 @@ export const baseTaskFormSchema = z.object({
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 
   dueDate: z.string()
+    .optional()
+    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+
+  completedAt: z.string()
     .optional()
     .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
 })
@@ -203,6 +217,11 @@ export const createTaskSchema = baseTaskSchema
 export const updateTaskSchema = baseTaskSchema
   .omit({ createdBy: true })
   .partial()
+  .extend({
+    completedAt: z.string()
+      .optional()
+      .transform(val => !val || val === '' ? undefined : val),
+  })
   .strict()
   .refine(data => Object.values(data).some(value => 
     value !== undefined && value !== null && value !== ''
@@ -270,13 +289,15 @@ export const taskQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().optional().transform(val => val?.trim() || ''),
-  status: z.enum(['pending', 'in-progress', 'completed', 'on-hold', 'cancelled', '']).optional(),
+  status: z.enum(['pending', 'in-progress', 'completed', 'on-hold', 'cancelled', 'closed', 'deleted', '']).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent', '']).optional(),
   type: z.enum(['task', 'sub-task', '']).optional(),
   projectId: queryObjectIdSchema,
   departmentId: queryObjectIdSchema,
   assigneeId: queryObjectIdSchema,
   parentTaskId: queryObjectIdSchema,
+  dueDateFrom: z.string().optional(),
+  dueDateTo: z.string().optional(),
   sortBy: z.enum(['title', 'status', 'priority', 'type', 'createdAt', 'updatedAt', 'dueDate']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 })
@@ -321,7 +342,9 @@ export type Task = {
   departmentId: string
   parentTaskId?: string
   assigneeId?: string
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  
+  
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   type: 'task' | 'sub-task'
   estimatedHours?: number
@@ -384,13 +407,15 @@ export interface FetchTasksParams extends Partial<TaskQueryParams> {}
 // Task filter interface
 export interface TaskFilters {
   search?: string
-  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | ''
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'deleted' | 'closed' | 'cancelled' | ''
   priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
   type?: 'task' | 'sub-task' | ''
   projectId?: string
   departmentId?: string
   assigneeId?: string
   parentTaskId?: string
+  dueDateFrom?: string
+  dueDateTo?: string
 }
 
 // Task sort interface
@@ -404,7 +429,7 @@ export interface TaskHierarchy {
   _id: string
   title: string
   description?: string
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'deleted' | 'closed' | 'cancelled'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   departmentId: string
   assigneeId?: string
@@ -428,7 +453,7 @@ export interface TaskHierarchy {
   subTasks: Array<{
     _id: string
     title: string
-    status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+    status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'closed' | 'deleted' | 'cancelled'
     priority: 'low' | 'medium' | 'high' | 'urgent'
     assigneeId?: string
     dueDate?: string

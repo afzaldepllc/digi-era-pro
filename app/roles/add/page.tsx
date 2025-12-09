@@ -17,13 +17,14 @@ import GenericForm from "@/components/ui/generic-form";
 import { handleAPIError } from "@/lib/utils/api-client";
 import { createRoleFormSchema, CreateRoleFormData } from "@/lib/validations/role";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function CreateRolePage() {
   const router = useRouter();
   const { toast } = useToast();
   const { createRole, actionLoading, error, clearError } = useRoles();
   const { departments, allDepartments, fetchDepartments } = useDepartments();
-
+  const { navigateTo } = useNavigation()
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
 
@@ -112,9 +113,9 @@ export default function CreateRolePage() {
 
       // Redirect to permissions page for the newly created role
       if (result && result._id) {
-        router.push(`/roles/permissions/${result._id}`);
+        navigateTo(`/roles/permissions/${result._id}`);
       } else {
-        router.push('/roles');
+        navigateTo('/roles');
       }
     } catch (error: any) {
       console.log('error creating role:', error);
@@ -201,7 +202,7 @@ export default function CreateRolePage() {
         {
           name: "description",
           label: "Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Describe the role's responsibilities and scope...",
           description: "Optional description of the role's purpose and responsibilities",
           rows: 3,

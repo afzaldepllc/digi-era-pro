@@ -1,7 +1,7 @@
  Based on your requirements, I'll outline a professional, generic approach to implement soft delete functionality in your Next.js app using MongoDB/Mongoose. This builds on your existing flow (e.g., API routes with middleware, caching via `executeGenericDbQuery`, and permission checks via `genericApiRoutesMiddleware`). The key principles are:
 
 ### Key Requirements Addressed
-- **Soft Delete Behavior**: Instead of permanent deletion (`findByIdAndDelete`), set the `status` to `'deleted'` (or use a `deletedAt` timestamp for more flexibility). Records with `status: 'deleted'` behave as if permanently deleted:
+- **Soft Delete Behavior**: Instead of permanent deletion (`findByIdAndDelete`), set `isDeleted: true`, `deletedAt: new Date()`, `deletedBy: userId`, and optional `deletionReason`. Records with `isDeleted: true` behave as if permanently deleted:
   - They are **excluded from all GET requests** (lists, details, stats) for non-super-admin users.
   - They are **only visible to super admins** in GET requests (for auditing/debugging).
   - No permanent DB removal—keeps data integrity and allows recovery if needed.
@@ -10,40 +10,48 @@
 - **Existing Flow Integration**: 
   - Use your `genericApiRoutesMiddleware` for permissions (e.g., only allow delete if user has 'delete' permission).
   - Retain caching with `executeGenericDbQuery` and `clearCache`.
-  - Update schemas to include `'deleted'` in the `status` enum (assumes all models use a similar `status` field; if not, we can adapt).
+  - Update schemas to include soft delete fields (`isDeleted`, `deletedAt`, `deletedBy`, `deletionReason`).
   - Ensure consistency across routes (e.g., GET, PUT, DELETE).
 
 ### Assumptions and Design Decisions
-- **Status Enum Update**: All relevant models (e.g., `User`, `Department`) will have `status: 'active' | 'inactive' | 'deleted'`. This is simple and aligns with your existing code (e.g., Department.ts already has 'active' | 'inactive'). If a model lacks `status`, add it.
+- **Soft Delete Fields**: All relevant models (e.g., `User`, `Department`) will have `isDeleted: boolean` (default false), `deletedAt?: Date`, `deletedBy?: ObjectId` (ref User), `deletionReason?: string`. This provides detailed audit trails.
 - **Super Admin Handling**: Use `isSuperAdmin` from middleware to conditionally show/hide deleted records.
 - **Dependency Checks**: Define checks per model (e.g., for Departments, check Users). Use a generic function to make it extensible.
 - **No Hard Deletes**: All DELETE routes become soft deletes. If you need hard deletes later, add a flag or separate endpoint.
 - **Caching**: Soft deletes will invalidate caches (e.g., via `clearCache`) to ensure consistency.
 - **Error Handling**: Use your existing `createErrorResponse` and `createAPIErrorResponse`.
 - **Models Affected**: Based on attachments, focus on `User` and `Department`. Extend to others (e.g., Roles) similarly.
-- **Recovery**: Super admins can "undelete" by updating `status` back to `'active'` via PUT (no special logic needed).
-- **Performance**: Filters are efficient (MongoDB indexes on `status`).
+- **Recovery**: Super admins can "undelete" by updating `isDeleted: false` and clearing delete fields via PUT (no special logic needed).
+- **Performance**: Filters are efficient (MongoDB indexes on `isDeleted`).
 
 ### Step-by-Step Generic Implementation
 
 1. **Update Model Schemas**:
-   - Add `'deleted'` to the `status` enum in all relevant models. This ensures validation and consistency.
+   - Add soft delete fields to all relevant models. This ensures validation and consistency.
    - Example for Department.ts (and similarly for `User.ts`, `Role.ts`, etc.):
 
      ```typescript
      // filepath: e:\DepLLC_Projects\depllc-crm\models\Department.ts
      // ...existing code...
-     status: {
+     isDeleted: {
+       type: Boolean,
+       default: false,
+     },
+     deletedAt: {
+       type: Date,
+     },
+     deletedBy: {
+       type: Schema.Types.ObjectId,
+       ref: 'User',
+     },
+     deletionReason: {
        type: String,
-       enum: ['active', 'inactive', 'deleted'],  // Added 'deleted'
-       default: 'active',
-       index: true,
+       trim: true,
      },
      // ...existing code...
      ```
 
-     - **Why?** Keeps it simple. If you prefer a `deletedAt: Date` field, set it on delete and filter on `{ deletedAt: { $exists: false } }`. But `status` aligns with your existing code.
-     - Run migrations or update existing records: Set `status: 'active'` for current records if needed (via a script or manual update).
+     - **Why?** Provides detailed audit information. Run migrations or update existing records if needed.
 
 2. **Generic Dependency Check Function**:
    - Create a reusable function in a utility file (e.g., `lib/utils/soft-delete.ts`) to check dependencies before soft delete. This is extensible—add checks for new models here.
@@ -57,10 +65,10 @@
      // Define dependencies: model -> array of checks (each check is a function returning a promise<boolean>)
      const dependencyChecks: Record<string, (id: string) => Promise<boolean>> = {
        Department: async (departmentId: string) => {
-         // Check if any active/non-deleted users reference this department
+         // Check if any non-deleted users reference this department
          const count = await User.countDocuments({
            department: departmentId,
-           status: { $ne: 'deleted' },  // Only count non-deleted users
+           isDeleted: false,  // Only count non-deleted users
          });
          return count > 0;  // True if dependencies exist (block delete)
        },
@@ -70,10 +78,10 @@
          return false;  // No dependencies, allow delete
        },
        Role: async (roleId: string) => {
-         // Example: Check if any active users have this role
+         // Example: Check if any non-deleted users have this role
          const count = await User.countDocuments({
            role: roleId,
-           status: { $ne: 'deleted' },
+           isDeleted: false,
          });
          return count > 0;
        },
@@ -120,19 +128,22 @@
              { isClient: false }
            ],
            // NEW: Exclude deleted records for non-super-admins
-           ...(isSuperAdmin ? {} : { status: { $ne: 'deleted' } }),
+           ...(isSuperAdmin ? {} : { isDeleted: false }),
          };
          // ...existing code (search, role, status, department filters)...
          // In the status filter, ensure it doesn't override the deleted exclusion
          if (status && status !== 'all') {
-           filter.status = { $ne: 'deleted', $eq: status };  // Combine with exclusion
+           filter.status = status;  // Status filter as before
+           if (!isSuperAdmin) {
+             filter.isDeleted = false;  // Ensure deleted are excluded
+           }
          } else if (!isSuperAdmin) {
-           filter.status = { $ne: 'deleted' };
+           filter.isDeleted = false;
          }
          // ...existing code (applyFilters, queries, stats)...
          // In stats aggregate, add the same filter
          User.aggregate([
-           { $match: { ...filteredQuery, ...(isSuperAdmin ? {} : { status: { $ne: 'deleted' } }) } },
+           { $match: { ...filteredQuery, ...(isSuperAdmin ? {} : { isDeleted: false }) } },
            // ...existing code...
          ])
          // ...existing code...
@@ -166,11 +177,17 @@
          return createErrorResponse(reason || 'Cannot delete due to dependencies', 400);
        }
 
-       // Soft delete: Update status instead of removing
+       // Soft delete: Update fields instead of removing
        await executeGenericDbQuery(async () => {
          return await Department.findByIdAndUpdate(
            validatedParams.id,
-           { status: 'deleted', updatedAt: new Date() },  // NEW: Soft delete
+           { 
+             isDeleted: true, 
+             deletedAt: new Date(), 
+             deletedBy: userId,  // Assuming userId is available from middleware
+             deletionReason: deletionReason,  // Optional
+             updatedAt: new Date() 
+           },  // NEW: Soft delete
            { new: true }
          );
        });
@@ -198,7 +215,7 @@
      const existingDepartment = await Department.findOne({
        _id: validatedParams.id,
        // NEW: Allow super admins to update deleted records
-       ...(isSuperAdmin ? {} : { status: { $ne: 'deleted' } }),
+       ...(isSuperAdmin ? {} : { isDeleted: false }),
      });
      if (!existingDepartment) {
        throw new Error(isSuperAdmin ? "Department not found" : "Department not found or deleted");
@@ -211,9 +228,9 @@
 6. **Testing and Edge Cases**:
    - **Test Scenarios**: Create/delete entities, check visibility for super/non-super users, attempt deletes with dependencies.
    - **Caching**: Soft deletes clear caches, so no stale data.
-   - **Migrations**: Update existing DB records to `status: 'active'` if needed.
+   - **Migrations**: Update existing DB records if needed.
    - **Audit**: Super admins see deleted records for compliance.
-   - **Performance**: Add indexes on `status` if not present.
+   - **Performance**: Add indexes on `isDeleted` if not present.
 
 This approach is modular, reusable, and integrates seamlessly with your app's flow. Apply the patterns to new models by updating `dependencyChecks` and schemas. If you need code for specific routes or models, provide more details!
 
@@ -227,12 +244,12 @@ Context: I have a Next.js app with MongoDB/Mongoose, using API routes (e.g., /ap
 
 # Requirements:
 
-1. Schemas: Update all models (User, Department, Role, etc.) to include 'deleted' in the status enum (default 'active').
-2. Generic Utility: Create lib/utils/soft-delete.ts with a canSoftDelete(modelName, id) function that checks dependencies (e.g., for Department: check 3. if any non-deleted Users reference it; for User: no checks; for Role: check Users; extensible for new models).
-4. GET Routes: Modify all list/detail GET routes to exclude status: 'deleted' unless isSuperAdmin (from middleware). Update filters, aggregates, and stats accordingly.
-5. DELETE Routes: Change to soft delete (set status: 'deleted'); add dependency checks via canSoftDelete; clear caches.
-6. PUT Routes: Prevent updates on deleted records unless super-admin.
-7. Other: Ensure consistency, no hard deletes, recovery via PUT, and performance (indexes on status).
+1. Schemas: Update all models (User, Department, Role, etc.) to include soft delete fields (`isDeleted`, `deletedAt`, `deletedBy`, `deletionReason`).
+2. Generic Utility: Create lib/utils/soft-delete.ts with a canSoftDelete(modelName, id) function that checks dependencies (e.g., for Department: check if any non-deleted Users reference it; for User: no checks; for Role: check Users; extensible for new models).
+3. GET Routes: Modify all list/detail GET routes to exclude isDeleted: false unless isSuperAdmin (from middleware). Update filters, aggregates, and stats accordingly.
+4. DELETE Routes: Change to soft delete (set isDeleted: true, deletedAt, deletedBy, deletionReason); add dependency checks via canSoftDelete; clear caches.
+5. PUT Routes: Prevent updates on deleted records unless super-admin.
+6. Other: Ensure consistency, no hard deletes, recovery via PUT, and performance (indexes on isDeleted).
 # Instructions for AI:
 
 # Provide code changes in Markdown with filepaths, using // ...existing code... for context.

@@ -38,6 +38,9 @@ export interface PhaseModel extends mongoose.Model<IPhase> {
   calculateProjectPhaseProgress(projectId: string): Promise<number>;
   findActivePhases(): Promise<IPhase[]>;
   reorderPhases(projectId: string, phaseOrders: Array<{ id: string, order: number }>): Promise<void>;
+  getPhaseAnalytics(projectId?: string, departmentId?: string): Promise<any>;
+  getPhaseTimeline(projectId: string): Promise<any[]>;
+  getPhaseTaskAnalytics(phaseId: string): Promise<any>;
 }
 
 const PhaseSchema = new Schema<IPhase>({
@@ -276,6 +279,212 @@ PhaseSchema.statics.reorderPhases = async function (projectId: string, phaseOrde
   } finally {
     await session.endSession();
   }
+};
+
+// Calculate comprehensive phase analytics
+PhaseSchema.statics.getPhaseAnalytics = async function (projectId?: string, departmentId?: string) {
+  const matchQuery: any = { isDeleted: false };
+  
+  if (projectId) {
+    matchQuery.projectId = new mongoose.Types.ObjectId(projectId);
+  }
+  
+  // If departmentId provided, need to filter by projects in that department
+  let projectIds: mongoose.Types.ObjectId[] = [];
+  if (departmentId && !projectId) {
+    const Project = mongoose.models.Project;
+    const departmentProjects = await Project.find({ 
+      departmentId: new mongoose.Types.ObjectId(departmentId),
+      isDeleted: false 
+    }).select('_id');
+    
+    projectIds = departmentProjects.map((p: any) => p._id);
+    matchQuery.projectId = { $in: projectIds };
+  }
+
+  const analytics = await this.aggregate([
+    { $match: matchQuery },
+    {
+      $group: {
+        _id: null,
+        totalPhases: { $sum: 1 },
+        completedPhases: {
+          $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] }
+        },
+        inProgressPhases: {
+          $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] }
+        },
+        pendingPhases: {
+          $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] }
+        },
+        blockedPhases: {
+          $sum: { $cond: [{ $eq: ["$status", "on-hold"] }, 1, 0] }
+        },
+        cancelledPhases: {
+          $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
+        },
+        averageProgress: { $avg: "$progress" },
+        totalBudgetAllocated: { $sum: "$budgetAllocation" },
+        totalActualCost: { $sum: "$actualCost" },
+        overduePhases: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $lt: ["$endDate", new Date()] },
+                  { $ne: ["$status", "completed"] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        }
+      }
+    }
+  ]);
+
+  const result = analytics[0] || {
+    totalPhases: 0,
+    completedPhases: 0,
+    inProgressPhases: 0,
+    pendingPhases: 0,
+    blockedPhases: 0,
+    cancelledPhases: 0,
+    averageProgress: 0,
+    totalBudgetAllocated: 0,
+    totalActualCost: 0,
+    overduePhases: 0
+  };
+
+  // Calculate completion rate and budget variance
+  result.completionRate = result.totalPhases > 0 
+    ? Math.round((result.completedPhases / result.totalPhases) * 100)
+    : 0;
+
+  result.budgetVariance = result.totalBudgetAllocated > 0
+    ? Math.round(((result.totalActualCost - result.totalBudgetAllocated) / result.totalBudgetAllocated) * 100)
+    : 0;
+
+  result.averageProgress = Math.round(result.averageProgress || 0);
+
+  return result;
+};
+
+// Get phase timeline analytics
+PhaseSchema.statics.getPhaseTimeline = async function (projectId: string) {
+  const phases = await this.find({
+    projectId: new mongoose.Types.ObjectId(projectId),
+    isDeleted: false
+  })
+    .sort({ order: 1 })
+    .select('title startDate endDate actualStartDate actualEndDate status progress order');
+
+  const timeline = phases.map((phase: any) => {
+    const plannedDuration = Math.ceil(
+      (new Date(phase.endDate).getTime() - new Date(phase.startDate).getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    let actualDuration = null;
+    if (phase.actualStartDate && phase.actualEndDate) {
+      actualDuration = Math.ceil(
+        (new Date(phase.actualEndDate).getTime() - new Date(phase.actualStartDate).getTime()) / (1000 * 60 * 60 * 24)
+      );
+    }
+
+    const isDelayed = phase.status !== 'completed' && new Date(phase.endDate) < new Date();
+    const delayDays = isDelayed 
+      ? Math.ceil((new Date().getTime() - new Date(phase.endDate).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    return {
+      phaseId: phase._id,
+      title: phase.title,
+      order: phase.order,
+      status: phase.status,
+      progress: phase.progress,
+      startDate: phase.startDate,
+      endDate: phase.endDate,
+      actualStartDate: phase.actualStartDate,
+      actualEndDate: phase.actualEndDate,
+      plannedDuration,
+      actualDuration,
+      isDelayed,
+      delayDays,
+      completionRate: phase.progress,
+    };
+  });
+
+  return timeline;
+};
+
+// Get phase task distribution analytics
+PhaseSchema.statics.getPhaseTaskAnalytics = async function (phaseId: string) {
+  const Task = mongoose.models.Task;
+  
+  if (!Task) {
+    throw new Error('Task model not available');
+  }
+
+  const taskAnalytics = await Task.aggregate([
+    { 
+      $match: { 
+        phaseId: new mongoose.Types.ObjectId(phaseId),
+        status: { $nin: ['deleted', 'cancelled'] }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalTasks: { $sum: 1 },
+        completedTasks: {
+          $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] }
+        },
+        inProgressTasks: {
+          $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] }
+        },
+        pendingTasks: {
+          $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] }
+        },
+        blockedTasks: {
+          $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] }
+        },
+        overdueTasks: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $lt: ["$dueDate", new Date()] },
+                  { $ne: ["$status", "completed"] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        },
+        highPriorityTasks: {
+          $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] }
+        }
+      }
+    }
+  ]);
+
+  const result = taskAnalytics[0] || {
+    totalTasks: 0,
+    completedTasks: 0,
+    inProgressTasks: 0,
+    pendingTasks: 0,
+    blockedTasks: 0,
+    overdueTasks: 0,
+    highPriorityTasks: 0
+  };
+
+  result.taskCompletionRate = result.totalTasks > 0 
+    ? Math.round((result.completedTasks / result.totalTasks) * 100)
+    : 0;
+
+  return result;
 };
 
 // Ensure virtual fields are serialized

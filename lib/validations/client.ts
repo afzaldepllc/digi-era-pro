@@ -6,7 +6,6 @@ import {
   phoneSchema,
   addressSchema,
   socialLinksSchema,
-  preferencesSchema,
   metadataSchema
 } from "./user"
 
@@ -36,6 +35,16 @@ export const CLIENT_CONSTANTS = {
 // Client status validation
 const clientStatusSchema = z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES)
 
+// Theme validation
+const themeSchema = z.enum(['light', 'dark', 'system'])
+
+// Preferences schema
+const preferencesSchema = z.object({
+  theme: themeSchema.default('system'),
+  language: z.string().default('en'),
+  timezone: z.string().default('UTC'),
+}).optional()
+
 // Company validation (required for clients)
 const clientCompanySchema = z
   .string()
@@ -43,15 +52,6 @@ const clientCompanySchema = z
   .max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH, `Company name must not exceed ${CLIENT_CONSTANTS.COMPANY.MAX_LENGTH} characters`)
   .transform((company) => company.trim())
 
-// Project interests validation
-const projectInterestsSchema = z
-  .array(
-    z.string()
-      .max(CLIENT_CONSTANTS.PROJECT_INTERESTS.MAX_LENGTH, `Each project interest must not exceed ${CLIENT_CONSTANTS.PROJECT_INTERESTS.MAX_LENGTH} characters`)
-      .transform((interest) => interest.trim())
-  )
-  .max(CLIENT_CONSTANTS.PROJECT_INTERESTS.MAX_COUNT, `Cannot have more than ${CLIENT_CONSTANTS.PROJECT_INTERESTS.MAX_COUNT} project interests`)
-  .optional()
 
 // Lead ID validation
 const leadIdSchema = objectIdSchema.optional()
@@ -84,7 +84,6 @@ export const baseClientObjectSchema = z.object({
   companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
   annualRevenue: z.string().optional(), // Keep as string for form
   employeeCount: z.string().optional(), // Keep as string for form
-  projectInterests: projectInterestsSchema,
 
   // Optional user fields
   avatar: z.string().url().optional().or(z.literal("")),
@@ -159,6 +158,8 @@ export const updateClientSchema = baseClientObjectSchema.omit({
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
     )
     .optional(),
+  // Allow isDeleted field only when restoring (setting to false)
+  isDeleted: z.literal(false).optional(),
 }).strict().refine((data: any) => {
   // At least one field must be provided for update
   const values = Object.values(data).filter(value =>
@@ -206,7 +207,6 @@ export const createClientFromLeadSchema = z.object({
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
     )
     .optional(),
-  projectInterests: projectInterestsSchema,
   notes: z.string().max(2000, "Notes must not exceed 2000 characters").optional(),
 }).strict()
 
@@ -222,7 +222,7 @@ export const clientQuerySchema = z.object({
 
   // Client-specific filters
   clientStatus: z.enum(['qualified', 'unqualified', '']).optional(),
-  status: z.enum(['active', 'inactive', 'qualified', 'unqualified', '']).optional(),
+  status: z.enum(['active', 'inactive', 'qualified', 'unqualified', 'deleted', '']).optional(),
   hasLead: z.coerce.boolean().optional(), // Filter clients with/without lead association
   company: z.string().optional().transform(val => val?.trim() || ''),
 
@@ -362,9 +362,6 @@ export const createClientFormSchema = z.object({
   clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
   status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
 
-  // Project Interests
-  projectInterests: z.string().optional(), // Comma-separated string for form input
-
   // Address Information
   address: z.object({
     street: z.string().optional(),
@@ -386,11 +383,6 @@ export const createClientFormSchema = z.object({
     theme: z.enum(['light', 'dark', 'system']).default('system'),
     language: z.string().default('en'),
     timezone: z.string().default('UTC'),
-    notifications: z.object({
-      email: z.boolean().default(true),
-      push: z.boolean().default(false),
-      sms: z.boolean().default(false),
-    }).default({ email: true, push: false, sms: false }),
   }).optional(),
 
   // Notes
@@ -416,8 +408,6 @@ export const updateClientFormSchema = z.object({
   clientStatus: z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
   status: z.enum(CLIENT_CONSTANTS.STATUS.VALUES).default(CLIENT_CONSTANTS.STATUS.DEFAULT),
 
-  // Project Interests
-  projectInterests: z.string().optional(), // Comma-separated string for form input
 
   // Address Information
   address: z.object({
@@ -440,11 +430,6 @@ export const updateClientFormSchema = z.object({
     theme: z.enum(['light', 'dark', 'system']).default('system'),
     language: z.string().default('en'),
     timezone: z.string().default('UTC'),
-    notifications: z.object({
-      email: z.boolean().default(true),
-      push: z.boolean().default(false),
-      sms: z.boolean().default(false),
-    }).default({ email: true, push: false, sms: false }),
   }).optional(),
 
   // Notes

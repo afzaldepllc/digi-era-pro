@@ -195,7 +195,11 @@ export const createMilestoneFormSchema = z.object({
   
   dueDate: z.string().min(1, 'Due date is required'),
   
+  status: z.enum(MILESTONE_CONSTANTS.STATUS.VALUES).default('pending'),
+  
   priority: z.enum(MILESTONE_CONSTANTS.PRIORITY.VALUES).default('medium'),
+  
+  progress: z.number().min(0).max(100).default(0),
   
   assigneeId: z.string().optional(),
   
@@ -203,7 +207,16 @@ export const createMilestoneFormSchema = z.object({
   
   successCriteria: z.array(z.string()).default([]),
   
-  budgetAllocation: z.string().optional(),
+  budgetAllocation: z.string()
+    .optional()
+    .transform(val => {
+      if (!val || val.trim() === '') return undefined;
+      const num = parseFloat(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .refine(val => val === undefined || val >= 0, {
+      message: 'Budget allocation cannot be negative'
+    }),
 });
 
 export const updateMilestoneFormSchema = createMilestoneFormSchema.partial();

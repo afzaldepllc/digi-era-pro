@@ -67,12 +67,12 @@ export async function GET(request: NextRequest) {
     // Execute database query with optimized connection and caching
     const result = await executeGenericDbQuery(async () => {
       // Ensure models are registered (fix for populate issues)
-      if (!mongoose.models.Role) {
-        require('@/models/Role')
-      }
-      if (!mongoose.models.Department) {
-        require('@/models/Department')
-      }
+      // if (!mongoose.models.Role) {
+      //   require('@/models/Role')
+      // }
+      // if (!mongoose.models.Department) {
+      //   require('@/models/Department')
+      // }
 
       // Build secure and optimized query
       const filter: any = {
@@ -85,6 +85,9 @@ export async function GET(request: NextRequest) {
 
       // Apply soft delete filter - exclude deleted records unless super admin
       const baseFilter = addSoftDeleteFilter(filter, isSuperAdmin)
+
+      // Create stats base filter (before adding search/role/status/department filters)
+      const statsBaseFilter = { ...baseFilter }
 
       // Secure search implementation
       if (search) {
@@ -183,10 +186,14 @@ export async function GET(request: NextRequest) {
       // 🔥 Apply permission-based filters - THIS IS THE KEY CHANGE
       const filteredQuery = await applyFilters(baseFilter)
 
+      // Apply permission filters to stats base filter (without search/role/status/department filters)
+      const statsQuery = await applyFilters(statsBaseFilter)
+
       console.log('🔥 Users API: Query filtering applied:', {
         isSuperAdmin,
         originalQuery: baseFilter,
         filteredQuery,
+        statsQuery,
         wasFiltered: JSON.stringify(filteredQuery) !== JSON.stringify(baseFilter),
         userPermissions: user.role?.permissions?.map((p: any) => ({
           resource: p.resource,
@@ -200,7 +207,7 @@ export async function GET(request: NextRequest) {
       // Parallel execution with optimized projections and population
       const [users, total, stats] = await Promise.all([
         User.find(filteredQuery) // 🔥 Using filtered query
-          .select('name email role status department position avatar emailVerified lastLogin createdAt updatedAt')
+          .select('name email role status department position avatar emailVerified address lastLogin createdAt updatedAt')
           .populate({
             path: 'role',
             select: 'name displayName hierarchyLevel permissions'
@@ -216,7 +223,7 @@ export async function GET(request: NextRequest) {
           .exec(),
         User.countDocuments(filteredQuery).exec(), // 🔥 Using filtered query
         User.aggregate([
-          { $match: filteredQuery }, // 🔥 Using filtered query for stats too
+          { $match: statsQuery }, // 🔥 Using stats query (without search/role/status/department filters)
           {
             $lookup: {
               from: 'roles',

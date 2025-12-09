@@ -3,7 +3,6 @@
 import type React from "react"
 import { memo, useMemo } from "react"
 import { ProfessionalAuthGuard } from "@/components/auth/professional-auth-guard"
-import { InactivityWarning } from "@/components/auth/inactivity-warning"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { RouteGuard } from "../auth/route-guard"
@@ -52,7 +51,6 @@ export const AdminLayout = memo(function AdminLayout({ children }: AdminLayoutPr
 
   return (
     <ProfessionalAuthGuard>
-      <InactivityWarning />
       <div className="flex min-h-screen bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col min-w-0">

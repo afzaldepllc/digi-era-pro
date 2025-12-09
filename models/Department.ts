@@ -6,6 +6,10 @@ export interface IDepartment extends Document {
   status: 'active' | 'inactive' | 'deleted'
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 }
 
 const DepartmentSchema = new Schema<IDepartment>({
@@ -26,6 +30,21 @@ const DepartmentSchema = new Schema<IDepartment>({
     enum: ['active', 'inactive', 'deleted'],
     default: 'active',
     // index: true, // Removed - covered by compound indexes
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
   },
 }, {
   timestamps: true,

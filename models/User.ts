@@ -14,18 +14,19 @@ export interface IUser extends Document {
   reportsTo?: mongoose.Types.ObjectId // For subordinate relationships
   assignedTo?: mongoose.Types.ObjectId[] // For assignment tracking
   status: "active" | "inactive" | "deleted" | "suspended" | "qualified" | "unqualified" // Extended for clients
-  permissions: string[] // Additional permissions beyond role
 
   // Client-specific fields
   isClient: boolean // Flag to identify client users
   leadId?: mongoose.Types.ObjectId // Reference to Lead model (for clients created from leads)
   clientStatus?: "qualified" | "unqualified" // Client-specific status
   company?: string // Client's company name
-  projectInterests?: string[] // Areas of interest for projects
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
   twoFactorEnabled: boolean
+  twoFactorAttempts: number
+  twoFactorLockedUntil?: Date
+  twoFactorVerified: boolean
   passwordChangedAt?: Date
   resetPasswordToken?: string
   resetPasswordExpire?: Date
@@ -45,11 +46,6 @@ export interface IUser extends Document {
     theme: "light" | "dark" | "system"
     language: string
     timezone: string
-    notifications: {
-      email: boolean
-      push: boolean
-      sms: boolean
-    }
   }
   metadata?: {
     createdBy?: string
@@ -59,6 +55,10 @@ export interface IUser extends Document {
   }
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
   comparePassword(candidatePassword: string): Promise<boolean>
   generatePasswordResetToken(): string
   changedPasswordAfter(JWTTimestamp: number): boolean
@@ -147,10 +147,6 @@ const UserSchema = new Schema<IUser>(
       default: "active",
       // index: true, // Removed - covered by compound indexes
     },
-    permissions: [{
-      type: String,
-      trim: true,
-    }],
 
     // Client-specific fields
     isClient: {
@@ -179,11 +175,6 @@ const UserSchema = new Schema<IUser>(
         return this.isClient; // Company required for clients
       },
     },
-    projectInterests: [{
-      type: String,
-      trim: true,
-      maxlength: [100, "Project interest cannot exceed 100 characters"],
-    }],
     lastLogin: {
       type: Date,
     },
@@ -196,6 +187,19 @@ const UserSchema = new Schema<IUser>(
       default: false,
     },
     twoFactorEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    // 2FA specific fields
+    twoFactorAttempts: {
+      type: Number,
+      default: 0,
+    },
+    twoFactorLockedUntil: {
+      type: Date,
+      default: null,
+    },
+    twoFactorVerified: {
       type: Boolean,
       default: false,
     },
@@ -236,17 +240,27 @@ const UserSchema = new Schema<IUser>(
         type: String,
         default: "UTC",
       },
-      notifications: {
-        email: { type: Boolean, default: true },
-        push: { type: Boolean, default: true },
-        sms: { type: Boolean, default: false },
-      },
     },
     metadata: {
       createdBy: { type: String },
       updatedBy: { type: String },
       notes: { type: String, trim: true },
       tags: [{ type: String, trim: true }],
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    deletionReason: {
+      type: String,
+      trim: true,
     },
   },
   {
@@ -522,7 +536,6 @@ UserSchema.statics.createClientFromLead = async function (leadData: any, created
     emailVerified: false,
     phoneVerified: false,
     twoFactorEnabled: false,
-    projectInterests: leadData.projectRequirements || [],
     metadata: {
       createdBy: createdBy,
       notes: `Created from lead qualification on ${new Date().toISOString()}`
@@ -536,7 +549,6 @@ UserSchema.statics.createClientFromLead = async function (leadData: any, created
 
 UserSchema.statics.getClientStats = async function (filter = {}) {
   const clientFilter = { ...filter, isClient: true }
-
   const stats = await this.aggregate([
     { $match: clientFilter },
     {

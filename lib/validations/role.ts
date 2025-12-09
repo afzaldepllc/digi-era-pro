@@ -178,6 +178,7 @@ export const createRoleSchema = baseRoleSchema.extend({
 // Update role schema (for PUT /api/roles/[id])
 export const updateRoleSchema = baseRoleSchema.partial().extend({
   _id: objectIdSchema.optional(),
+  isDeleted: z.literal(false).optional(),
   permissions: z
     .array(permissionSchema)
     // .min(1, "Role must have at least one permission")

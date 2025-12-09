@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
       departmentId: searchParams.get('departmentId') || '',
       assigneeId: searchParams.get('assigneeId') || '',
       parentTaskId: searchParams.get('parentTaskId') || '',
+      dueDateFrom: searchParams.get('dueDateFrom') || '',
+      dueDateTo: searchParams.get('dueDateTo') || '',
       sortBy: searchParams.get('sortBy') || 'createdAt',
       sortOrder: searchParams.get('sortOrder') || 'desc',
     }
@@ -77,6 +79,29 @@ export async function GET(request: NextRequest) {
     
     if (validatedParams.parentTaskId) {
       filter.parentTaskId = new mongoose.Types.ObjectId(validatedParams.parentTaskId)
+    }
+    
+
+    // Date filtering
+    if (validatedParams.dueDateFrom || validatedParams.dueDateTo) {
+      const dueRange: any = {}
+      if (validatedParams.dueDateFrom) {
+        const from = new Date(validatedParams.dueDateFrom)
+        if (!isNaN(from.getTime())) {
+          dueRange.$gte = from
+        }
+      }
+      if (validatedParams.dueDateTo) {
+        const to = new Date(validatedParams.dueDateTo)
+        if (!isNaN(to.getTime())) {
+          // inclusive end of day adjustment
+          to.setHours(23, 59, 59, 999)
+          dueRange.$lte = to
+        }
+      }
+      if (Object.keys(dueRange).length > 0) {
+        filter.dueDate = dueRange
+      }
     }
 
     // Department-based filtering for non-support users
@@ -281,7 +306,9 @@ export async function GET(request: NextRequest) {
         projectId: validatedParams.projectId,
         departmentId: validatedParams.departmentId,
         assigneeId: validatedParams.assigneeId,
-        parentTaskId: validatedParams.parentTaskId
+        parentTaskId: validatedParams.parentTaskId,
+        dueDateFrom: validatedParams.dueDateFrom,
+        dueDateTo: validatedParams.dueDateTo
       },
       sort: {
         field: validatedParams.sortBy,

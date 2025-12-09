@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,11 +10,12 @@ import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLeads } from "@/hooks/use-leads";
 import { CreateLeadFormData, createLeadFormSchema } from "@/lib/validations/lead";
+import { useNavigation } from "@/components/providers/navigation-provider";
 export default function AddLeadPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { createLead, actionLoading } = useLeads();
-
+  const { navigateTo, isNavigating } = useNavigation()
   const form = useForm<CreateLeadFormData>({
     resolver: zodResolver(createLeadFormSchema),
     defaultValues: {
@@ -25,7 +25,7 @@ export default function AddLeadPage() {
       phone: "",
       position: "",
       company: "",
-      website: "",
+      website: undefined,
       industry: "",
       companySize: undefined,
       annualRevenue: "",
@@ -35,7 +35,14 @@ export default function AddLeadPage() {
       priority: "medium",
       nextFollowUpDate: "",
       notes: "",
-
+        // Address Information
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "",
+      },
       // Project Information
       projectName: "",
       projectType: undefined,
@@ -44,9 +51,9 @@ export default function AddLeadPage() {
       estimatedHours: "",
       projectTimeline: "",
       projectDescription: "",
-      technologies: "",
-      projectRequirements: "",
-      deliverables: "",
+      technologies: [],
+      projectRequirements: [],
+      customerServices: [],
 
       // Arrays
       tags: [],
@@ -70,7 +77,14 @@ export default function AddLeadPage() {
         notes: data.notes?.trim() || undefined,
         nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
         status: data.status || "active", // Ensure status is always set
-
+         // Address
+        address: data.address ? {
+          street: data.address.street?.trim() || undefined,
+          city: data.address.city?.trim() || undefined,
+          state: data.address.state?.trim() || undefined,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          country: data.address.country?.trim() || undefined,
+        } : undefined,
         // Project Information
         projectName: data.projectName?.trim() || '',
         projectType: data.projectType || undefined,
@@ -79,20 +93,12 @@ export default function AddLeadPage() {
         estimatedHours: data.estimatedHours ? Number(data.estimatedHours) : undefined,
         projectTimeline: data.projectTimeline?.trim() || undefined,
         projectDescription: data.projectDescription?.trim() || undefined,
-        technologies: data.technologies?.split(',').map((tech: string) => tech.trim()).filter((tech: string) => tech.length > 0) || [],
-        projectRequirements: data.projectRequirements?.split(',').map((req: string) => req.trim()).filter((req: string) => req.length > 0) || [],
-        deliverables: data.deliverables?.split(',').map((del: string) => del.trim()).filter((del: string) => del.length > 0) || [],
+        technologies: data.technologies?.filter((tech: string) => tech.trim().length > 0) || [],
+        projectRequirements: data.projectRequirements?.filter((req: string) => req.trim().length > 0) || [],
+        customerServices: data.customerServices?.filter((service: string) => service.trim().length > 0) || [],
 
         // Arrays and other fields
         tags: data.tags?.filter((tag: string) => tag.trim().length > 0) || [],
-        milestones: data.milestones?.map((milestone: { title: string; description?: string; dueDate?: Date | string; completed?: boolean }) => ({
-          ...milestone,
-          title: milestone.title?.trim() || '',
-          description: milestone.description?.trim() || undefined,
-          dueDate: milestone.dueDate ? new Date(milestone.dueDate) : undefined,
-          completed: milestone.completed || false,
-        })) || [],
-
         // Default values for required fields
         hotLead: false,
       };
@@ -104,7 +110,7 @@ export default function AddLeadPage() {
         description: "Lead created successfully",
       });
 
-      router.push("/leads");
+      navigateTo("/leads");
     } catch (error: any) {
       console.error('Create lead error:', error)
 
@@ -132,7 +138,7 @@ export default function AddLeadPage() {
   };
 
   const handleCancel = () => {
-    router.push("/leads");
+    navigateTo("/leads");
   };
 
   const formFields = [
@@ -166,7 +172,20 @@ export default function AddLeadPage() {
           placeholder: "+1 (555) 123-4567",
           description: "Phone number with country code",
           cols: 12,
-          mdCols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ],
+          cols: 12,
+          mdCols: 6,
         },
       ]
     },
@@ -248,6 +267,58 @@ export default function AddLeadPage() {
       ]
     },
     {
+      subform_title: "Address Information",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "address.street",
+          label: "Street Address",
+          type: "text" as const,
+          placeholder: "123 Main Street",
+          description: "Street address",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "address.city",
+          label: "City",
+          type: "text" as const,
+          placeholder: "New York",
+          description: "City",
+          cols: 12,
+          mdCols: 6,
+        },
+        {
+          name: "address.state",
+          label: "State/Province",
+          type: "text" as const,
+          placeholder: "NY",
+          description: "State or province",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "address.zipCode",
+          label: "ZIP/Postal Code",
+          type: "text" as const,
+          placeholder: "10001",
+          description: "ZIP or postal code",
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "address.country",
+          label: "Country",
+          type: "text" as const,
+          placeholder: "United States",
+          description: "Country",
+          cols: 12,
+          mdCols: 4,
+        },
+      ]
+    },
+    {
       subform_title: "Source & Follow-up",
       collapse: true,
       defaultOpen: false,
@@ -270,21 +341,9 @@ export default function AddLeadPage() {
             { value: "other", label: "Other" },
           ],
           cols: 12,
-          mdCols: 3,
+          mdCols: 4,
         },
-        {
-          name: "status",
-          label: "Status",
-          type: "select" as const,
-          searchable: true,
-          required: true,
-          options: [
-            { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
-          ],
-          cols: 12,
-          mdCols: 3,
-        },
+        
         {
           name: "priority",
           label: "Priority",
@@ -298,7 +357,7 @@ export default function AddLeadPage() {
             { value: "urgent", label: "Urgent" },
           ],
           cols: 12,
-          mdCols: 3,
+          mdCols: 4,
         },
         {
           name: "nextFollowUpDate",
@@ -306,12 +365,12 @@ export default function AddLeadPage() {
           type: "date" as const,
           description: "Schedule next follow-up date",
           cols: 12,
-          mdCols: 3,
+          mdCols: 4,
         },
         {
           name: "notes",
           label: "Notes",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Add any additional notes about this lead...",
           description: "Internal notes about the lead",
           cols: 12,
@@ -395,37 +454,35 @@ export default function AddLeadPage() {
         {
           name: "projectDescription",
           label: "Project Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Describe the project requirements and goals...",
           description: "Detailed description of the project",
           cols: 12,
           rows: 4,
         },
         {
+          name: "customerServices",
+          label: "Customer Services",
+          type: "array-input" as const,
+          placeholder: "Add Services that Customers Offers in his Business...",
+          description: "Required customer services for the project",
+          cols: 12,
+        },
+        {
           name: "technologies",
           label: "Technologies",
-          type: "text" as const,
-          placeholder: "React, Node.js, MongoDB, etc.",
-          description: "Comma-separated list of required technologies",
-          cols: 12,
+          type: "array-input" as const,
+          placeholder: "Add technology...",
+          description: "Required technologies for the project",
+          cols: 6,
         },
         {
           name: "projectRequirements",
           label: "Key Requirements",
-          type: "textarea" as const,
-          placeholder: "List the main project requirements...",
+          type: "array-input" as const,
+          placeholder: "Add requirement...",
           description: "Key requirements and features needed",
-          cols: 12,
-          rows: 3,
-        },
-        {
-          name: "deliverables",
-          label: "Expected Deliverables",
-          type: "textarea" as const,
-          placeholder: "Website, mobile app, documentation, etc.",
-          description: "Expected deliverables from the project",
-          cols: 12,
-          rows: 3,
+          cols: 6,
         },
       ]
     }

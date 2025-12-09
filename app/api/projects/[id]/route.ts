@@ -17,6 +17,7 @@ function transformProjectTasksByDepartment(project: any) {
     return project
   }
 
+  // Group tasks by department
   const departmentTasks: { [key: string]: any } = {}
   
   // Initialize department structure from project departments OR from tasks if departments not assigned
@@ -85,14 +86,17 @@ function transformProjectTasksByDepartment(project: any) {
   })
 
   // Convert departmentTasks object to array for easier frontend consumption
-  project.departmentTasks = Object.values(departmentTasks)
+  const departmentTasksArray = Object.values(departmentTasks)
+
+  project.departmentTasks = departmentTasksArray
   
-  // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
-  delete project.departments
-  delete project.tasks
+  // Don't delete departments and tasks here - let caller handle it
   
   return project
 }
+
+// Helper function to organize team members by departments
+
 
 // GET /api/projects/[id] - Get project by ID
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -102,7 +106,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const resolvedParams = await params
     const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
 
-    // Fetch project with automatic connection management and caching
+    // Clear cache for this project to ensure fresh data
+    clearCache(`project-${validatedParams.id}`)
+
+    // Fetch project WITHOUT caching to debug
     const project: any = await executeGenericDbQuery(async () => {
       // Department-based filtering for non-support users
       const filter: any = { 
@@ -125,14 +132,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           populate: [
             { path: 'assignee', select: 'name email' },
             { path: 'department', select: 'name' },
-            { path: 'creator', select: 'name email' },
-            { path: 'parentTask', select: 'title' }
+            { path: 'creator', select: 'name email' }
           ]
         })
         .populate('taskCount')
 
       return projectData?.toObject ? projectData.toObject() : projectData
-    }, `project-${validatedParams.id}`, 300000) // 5-minute cache
+    }) // Remove caching temporarily
 
     if (!project) {
       return NextResponse.json({
@@ -141,8 +147,113 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 })
     }
 
-    // Transform project to group tasks by departments
-    transformProjectTasksByDepartment(project)
+    // Debug logging
+    console.log('🔍 Project data before transformation:', {
+      projectId: project._id,
+      hasTasks: !!project.tasks,
+      tasksLength: project.tasks?.length || 0,
+      hasDepartments: !!project.departments,
+      departmentsLength: project.departments?.length || 0,
+      taskSample: project.tasks?.slice(0, 2) || []
+    })
+
+    // Transform project to group tasks by departments (using the same logic as list endpoint)
+    if (!project.tasks || !Array.isArray(project.tasks)) {
+      project.departmentTasks = []
+      console.log('📝 No tasks found, setting empty array')
+    } else {
+      console.log('📝 Processing tasks:', project.tasks.length)
+      
+      // Group tasks by department
+      const departmentTasks: { [key: string]: any } = {}
+      
+      // Initialize department structure from project departments OR from tasks if departments not assigned
+      if (project.departments && Array.isArray(project.departments) && project.departments.length > 0) {
+        console.log('📝 Using project departments:', project.departments.length)
+        // Use project departments if available
+        project.departments.forEach((dept: any) => {
+          departmentTasks[dept._id.toString()] = {
+            departmentId: dept._id,
+            departmentName: dept.name,
+            tasks: [],
+            taskCount: 0,
+            subTaskCount: 0
+          }
+        })
+      } else if (project.tasks && Array.isArray(project.tasks) && project.tasks.length > 0) {
+        console.log('📝 Inferring departments from tasks')
+        // If no departments assigned, infer from tasks
+        const uniqueDepartments = new Map()
+        project.tasks.forEach((task: any) => {
+          if (task.department && task.departmentId) {
+            uniqueDepartments.set(task.departmentId.toString(), {
+              departmentId: task.departmentId,
+              departmentName: task.department.name,
+              tasks: [],
+              taskCount: 0,
+              subTaskCount: 0
+            })
+          }
+        })
+        uniqueDepartments.forEach((value, key) => {
+          departmentTasks[key] = value
+        })
+        console.log('📝 Inferred departments:', Object.keys(departmentTasks))
+      }
+
+      // Process tasks - first add main tasks
+      const mainTasks = project.tasks.filter((task: any) => task.type === 'task')
+      const subTasks = project.tasks.filter((task: any) => task.type === 'sub-task')
+      
+      console.log('📝 Main tasks:', mainTasks.length, 'Sub tasks:', subTasks.length)
+
+      mainTasks.forEach((task: any) => {
+        const deptId = task.departmentId?.toString()
+        console.log('📝 Processing task:', task.title, 'Department ID:', deptId)
+        
+        if (deptId) {
+          // Ensure department exists in departmentTasks
+          if (!departmentTasks[deptId] && task.department) {
+            console.log('📝 Creating department entry for:', task.department.name)
+            departmentTasks[deptId] = {
+              departmentId: task.departmentId,
+              departmentName: task.department.name,
+              tasks: [],
+              taskCount: 0,
+              subTaskCount: 0
+            }
+          }
+
+          if (departmentTasks[deptId]) {
+            // Find sub-tasks for this main task
+            const taskSubTasks = subTasks.filter((subTask: any) => 
+              subTask.parentTaskId?.toString() === task._id.toString()
+            )
+
+            departmentTasks[deptId].tasks.push({
+              ...task,
+              subTasks: taskSubTasks
+            })
+            departmentTasks[deptId].taskCount++
+            departmentTasks[deptId].subTaskCount += taskSubTasks.length
+            
+            console.log('📝 Added task to department:', task.department?.name, 'New count:', departmentTasks[deptId].taskCount)
+          }
+        }
+      })
+
+      // Convert departmentTasks object to array for easier frontend consumption
+      const departmentTasksArray = Object.values(departmentTasks)
+      
+      console.log('📝 Final departmentTasks array:', departmentTasksArray.length, departmentTasksArray)
+
+      project.departmentTasks = departmentTasksArray
+      
+      // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
+      delete project.departments
+      delete project.tasks
+    }
+    
 
     return NextResponse.json({
       success: true,
@@ -152,6 +263,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Error fetching project:', error)
+
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({
@@ -173,7 +289,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'update')
 
-    const validatedParams = projectIdSchema.parse({ id: (params as any).id })
+    // Resolve params (Next.js passes params as a Promise in RouteParams)
+    const resolvedParams = await params
+    const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
     const body = await request.json()
     
     // Handle special operations
@@ -207,43 +325,28 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Convert form data to proper API format
     const validatedData = {
       ...formData,
-      // Convert string fields to proper types
-      budget: formData.budget ? parseFloat(formData.budget as string) : undefined,
+      budget: formData.budget ? formData.budget : 0,
       startDate: formData.startDate ? new Date(formData.startDate as string) : undefined,
       endDate: formData.endDate ? new Date(formData.endDate as string) : undefined,
 
         
       // Transform nested objects with string-to-number conversion
       budgetBreakdown: formData.budgetBreakdown ? {
-        development: formData.budgetBreakdown.development ? parseFloat(formData.budgetBreakdown.development as string) : undefined,
-        design: formData.budgetBreakdown.design ? parseFloat(formData.budgetBreakdown.design as string) : undefined,
-        testing: formData.budgetBreakdown.testing ? parseFloat(formData.budgetBreakdown.testing as string) : undefined,
-        deployment: formData.budgetBreakdown.deployment ? parseFloat(formData.budgetBreakdown.deployment as string) : undefined,
-        maintenance: formData.budgetBreakdown.maintenance ? parseFloat(formData.budgetBreakdown.maintenance as string) : undefined,
-        contingency: formData.budgetBreakdown.contingency ? parseFloat(formData.budgetBreakdown.contingency as string) : undefined,
+        development: formData.budgetBreakdown.development || undefined,
+        design: formData.budgetBreakdown.design || undefined,
+        testing: formData.budgetBreakdown.testing || undefined,
+        deployment: formData.budgetBreakdown.deployment || undefined,
+        maintenance: formData.budgetBreakdown.maintenance || undefined,
+        contingency: formData.budgetBreakdown.contingency || undefined,
       } : undefined,
       
       resources: formData.resources ? {
         ...formData.resources,
-        estimatedHours: formData.resources.estimatedHours ? parseFloat(formData.resources.estimatedHours as string) : undefined,
-        actualHours: formData.resources.actualHours ? parseFloat(formData.resources.actualHours as string) : undefined,
-        teamSize: formData.resources.teamSize ? parseInt(formData.resources.teamSize as string) : undefined,
+        estimatedHours: formData.resources.estimatedHours ? formData.resources.estimatedHours : undefined,
+        actualHours: formData.resources.actualHours ? formData.resources.actualHours : undefined,
       } : undefined,
+
       
-      qualityMetrics: formData.qualityMetrics ? {
-        ...formData.qualityMetrics,
-        requirementsCoverage: formData.qualityMetrics.requirementsCoverage ? parseFloat(formData.qualityMetrics.requirementsCoverage as string) : undefined,
-        defectDensity: formData.qualityMetrics.defectDensity ? parseFloat(formData.qualityMetrics.defectDensity as string) : undefined,
-        customerSatisfaction: formData.qualityMetrics.customerSatisfaction ? parseFloat(formData.qualityMetrics.customerSatisfaction as string) : undefined,
-      } : undefined,
-      
-      progress: formData.progress ? {
-        ...formData.progress,
-        overallProgress: formData.progress.overallProgress ? parseFloat(formData.progress.overallProgress as string) : undefined,
-        completedTasks: formData.progress.completedTasks ? parseInt(formData.progress.completedTasks as string) : undefined,
-        totalTasks: formData.progress.totalTasks ? parseInt(formData.progress.totalTasks as string) : undefined,
-        lastUpdated: formData.progress.lastUpdated ? new Date(formData.progress.lastUpdated as string) : undefined,
-      } : undefined,
     };
 
     // Update project with automatic connection management
@@ -318,6 +421,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Transform project to group tasks by departments
     transformProjectTasksByDepartment(updatedProject)
+    
+    // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
+    delete updatedProject.departments
+    delete updatedProject.tasks
 
     // Clear relevant cache patterns after update
     clearCache('projects')
@@ -331,6 +438,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Error updating project:', error)
+
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
 
     if (error.name === 'ZodError') {
       return NextResponse.json({
@@ -374,12 +486,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'delete')
 
-    const validatedParams = projectIdSchema.parse({ id: (params as any).id })
+    // Resolve params here as well
+    const resolvedParams = await params
+    const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
 
     // Soft delete project with automatic connection management
     const deletedProject = await executeGenericDbQuery(async () => {
       // Only support team can delete projects
-      if (!['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+      if (user.role == 'super_admin' || !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
         throw new Error('Only support team can delete projects')
       }
 
@@ -429,6 +543,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   } catch (error: any) {
     console.error('Error deleting project:', error)
 
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
+
     if (error.name === 'ZodError') {
       return NextResponse.json({
         success: false,
@@ -447,20 +566,32 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 // Helper function to handle department categorization
 async function handleCategorizeDepartments(projectId: string, body: any, user: any) {
   try {
-    const validatedData = categorizeDepartmentsSchema.parse({
-      departmentIds: body.departmentIds
-    })
+    let validatedData: any
+    try {
+      validatedData = categorizeDepartmentsSchema.parse({
+        departmentIds: body.departmentIds
+      })
+    } catch (validationErr: any) {
+      console.error('Validation failed for categorize payload:', validationErr)
+      return NextResponse.json({
+        success: false,
+        error: 'Validation failed',
+        message: validationErr.errors?.[0]?.message || 'Invalid categorize payload',
+        details: validationErr.errors || validationErr.issues || []
+      }, { status: 400 })
+    }
 
     const updatedProject = await executeGenericDbQuery(async () => {
+      console.log("requested users 471",user);
       // Only support team can categorize projects
-      if (!['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-        throw new Error('Only support team can categorize projects')
-      }
+      // if (user.role == 'super_admin' || !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+      //   throw Object.assign(new Error('Only support team can categorize projects'), { statusCode: 403 })
+      // }
 
       const existingProject = await Project.findById(projectId)
       
       if (!existingProject) {
-        throw new Error('Project not found')
+        throw Object.assign(new Error('Project not found'), { statusCode: 404 })
       }
 
       // Verify all departments exist and are active
@@ -470,7 +601,17 @@ async function handleCategorizeDepartments(projectId: string, body: any, user: a
       })
 
       if (departments.length !== validatedData.departmentIds.length) {
-        throw new Error('One or more departments not found or inactive')
+        const notFoundIds = validatedData.departmentIds.filter(
+          (id: string) => !departments.some((d: any) => d._id.toString() === id.toString())
+        )
+        const inactiveDepts = await Department.find({
+          _id: { $in: notFoundIds },
+          status: { $ne: 'active' }
+        })
+        const message = inactiveDepts.length > 0 
+          ? `${inactiveDepts.length} selected department(s) are inactive. Please select only active departments.`
+          : 'One or more selected departments were not found in the system.'
+        throw Object.assign(new Error(message), { statusCode: 400 })
       }
 
       // Update project with departments
@@ -505,6 +646,9 @@ async function handleCategorizeDepartments(projectId: string, body: any, user: a
     // Transform project to group tasks by departments
     if (updatedProject) {
       transformProjectTasksByDepartment(updatedProject)
+      // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
+      delete updatedProject.departments
+      delete updatedProject.tasks
     }
 
     // Clear cache
@@ -519,7 +663,17 @@ async function handleCategorizeDepartments(projectId: string, body: any, user: a
 
   } catch (error: any) {
     console.error('Error categorizing project:', error)
-
+    if (error?.statusCode && typeof error.statusCode === 'number') {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode })
+    }
+    if (error.name === 'ZodError') {
+      return NextResponse.json({
+        success: false,
+        error: 'Validation failed',
+        message: error.errors?.[0]?.message || 'Invalid data',
+        details: error.errors
+      }, { status: 400 })
+    }
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to categorize project'
@@ -585,6 +739,9 @@ async function handleApproveProject(projectId: string, user: any) {
     // Transform project to group tasks by departments
     if (updatedProject) {
       transformProjectTasksByDepartment(updatedProject)
+      // Remove departments and tasks arrays from response (keep only departmentIds and departmentTasks)
+      delete updatedProject.departments
+      delete updatedProject.tasks
     }
 
     // Clear cache

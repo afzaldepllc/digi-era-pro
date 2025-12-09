@@ -10,13 +10,12 @@ export interface Client {
   role: string
   department: string
   position?: string
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   permissions: string[]
   isClient: true
   leadId?: string
   clientStatus: 'qualified' | 'unqualified'
   company: string
-  projectInterests?: string[]
   industry?: string
   companySize?: 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
   annualRevenue?: string
@@ -37,11 +36,6 @@ export interface Client {
     theme: 'light' | 'dark' | 'system'
     language: string
     timezone: string
-    notifications: {
-      email: boolean
-      push: boolean
-      sms: boolean
-    }
   }
   notes?: string
   createdAt: Date
@@ -58,7 +52,6 @@ export interface CreateClientData {
   phone?: string
   leadId?: string
   company: string
-  projectInterests?: string[]
   password?: string
   role?: string
   department?: string
@@ -69,7 +62,7 @@ export interface CreateClientData {
   preferences?: User['preferences']
   metadata?: User['metadata']
   clientStatus?: 'qualified' | 'unqualified'
-  status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
 }
 
 export interface UpdateClientData extends Partial<CreateClientData> {
@@ -122,8 +115,7 @@ export interface CreateClientFormData {
   annualRevenue?: string
   employeeCount?: string
   clientStatus: 'qualified' | 'unqualified'
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
-  projectInterests?: string
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   address?: {
     street?: string
     city?: string
@@ -140,11 +132,6 @@ export interface CreateClientFormData {
     theme: 'light' | 'dark' | 'system'
     language: string
     timezone: string
-    notifications: {
-      email: boolean
-      push: boolean
-      sms: boolean
-    }
   }
   notes?: string
 }
@@ -160,8 +147,7 @@ export interface UpdateClientFormData {
   annualRevenue?: string
   employeeCount?: string
   clientStatus: 'qualified' | 'unqualified'
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
-  projectInterests?: string
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   address?: {
     street?: string
     city?: string
@@ -178,18 +164,13 @@ export interface UpdateClientFormData {
     theme: 'light' | 'dark' | 'system'
     language: string
     timezone: string
-    notifications: {
-      email: boolean
-      push: boolean
-      sms: boolean
-    }
   }
   notes?: string
 }
 
 export interface ClientStatusUpdate {
   clientStatus: 'qualified' | 'unqualified'
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   reason?: string
 }
 
@@ -197,7 +178,6 @@ export interface CreateClientFromLead {
   leadId: string
   createdBy?: string
   password?: string
-  projectInterests?: string[]
   notes?: string
 }
 
@@ -218,17 +198,6 @@ export interface ClientQueryParams {
 
 export interface ClientIdParams {
   id: string
-}
-
-export interface BulkClientOperation {
-  clientIds: string[]
-  operation: 'updateStatus' | 'assignProject' | 'bulkNote'
-  data?: {
-    clientStatus?: 'qualified' | 'unqualified'
-    status?: 'active' | 'inactive' | 'qualified' | 'unqualified'
-    projectId?: string
-    notes?: string
-  }
 }
 
 // Permission interface
@@ -255,7 +224,7 @@ export interface Role {
   permissions: Permission[]
   hierarchyLevel: number
   isSystemRole: boolean
-  status: "active" | "inactive" | "archived"
+  status: "active" | "inactive" | "archived" | "deleted"
   maxUsers?: number
   validityPeriod?: {
     startDate?: Date
@@ -286,7 +255,7 @@ export interface User {
   phone?: string
   department: Department // Reference to Department ID or populated Department object
   position?: string
-  status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" // Extended for clients
+  status: "active" | "inactive" | "suspended" | "qualified" | "unqualified" | "deleted" // Extended for clients
   permissions: string[]
 
   // Client-specific fields (optional for regular users)
@@ -294,7 +263,6 @@ export interface User {
   leadId?: string | Lead // Reference to Lead model (for clients created from leads)
   clientStatus?: "qualified" | "unqualified" // Client-specific status
   company?: string // Client's company name
-  projectInterests?: string[] // Areas of interest for projects
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
@@ -316,11 +284,6 @@ export interface User {
     theme: "light" | "dark" | "system"
     language: string
     timezone: string
-    notifications: {
-      email: boolean
-      push: boolean
-      sms: boolean
-    }
   }
   metadata?: {
     createdBy?: string
@@ -481,18 +444,12 @@ export interface Lead {
   projectBudget?: number
   projectTimeline?: string
   projectRequirements?: string[]
+  customerServices?: string[]
   technologies?: string[] // Required technologies/frameworks
   projectType?: 'web' | 'mobile' | 'desktop' | 'api' | 'consulting' | 'other'
   complexity?: 'simple' | 'medium' | 'complex'
 
   // Project Scope & Details
-  deliverables?: string[]
-  milestones?: Array<{
-    title: string
-    description?: string
-    dueDate?: Date
-    completed?: boolean
-  }>
   estimatedHours?: number
 
   // Lead Management
@@ -563,6 +520,7 @@ export interface CreateLeadData {
   projectBudget?: number
   projectTimeline?: string
   projectRequirements?: string[]
+  customerServices?: string[]
 
   // Lead Management
   status?: 'active' | 'inactive'
@@ -617,7 +575,7 @@ export interface LeadStats {
 }
 
 export interface LeadStatusUpdate {
-  status: 'active' | 'inactive' | 'qualified' | 'unqualified'
+  status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   reason?: string
 }
 
@@ -685,13 +643,14 @@ export interface Project {
   description?: string
   clientId: string
   departmentIds: string[]
-  status: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  status: 'pending' | 'active' | 'completed' | 'approved' | 'inactive' | 'deleted'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   budget?: number
+  actualCost?: number
   startDate?: string
   endDate?: string
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
   createdBy: string
   approvedBy?: string
@@ -701,80 +660,68 @@ export interface Project {
 
   // Professional CRM fields
   budgetBreakdown?: {
-    labor?: number
-    materials?: number
-    equipment?: number
+    development?: number
+    design?: number
+    testing?: number
+    deployment?: number
+    maintenance?: number
     contingency?: number
-    profitMargin?: number
   }
 
-  stakeholders?: {
-    clientContact?: string
-    projectManager?: string
-    teamLead?: string
-    keyStakeholders?: string
-  }
-
-  milestones?: {
-    title: string
-    description?: string
-    dueDate?: Date
-    status: 'pending' | 'in-progress' | 'completed' | 'delayed'
-  }[]
-
-  phases?: {
-    name: string
-    description?: string
-    startDate?: Date
-    endDate?: Date
-    status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
-  }[]
-
-  deliverables?: string
 
   risks?: {
     description: string
     impact: 'low' | 'medium' | 'high' | 'critical'
     probability: 'low' | 'medium' | 'high'
     mitigation?: string
+    status: 'identified' | 'mitigated' | 'occurred'
   }[]
-
-  progress?: {
-    overallProgress?: number
-    completedTasks?: number
-    totalTasks?: number
-    lastUpdated?: Date
-    nextMilestone?: string
-    blockers?: string
-  }
 
   resources?: {
     estimatedHours?: number
     actualHours?: number
-    teamSize?: number
     tools?: string[]
     externalResources?: string[]
   }
 
-  qualityMetrics?: {
-    requirementsCoverage?: number
-    defectDensity?: number
-    customerSatisfaction?: number
-    onTimeDelivery: boolean
-    withinBudget: boolean
-  }
 
   // Virtual fields
   client?: {
     _id: string
-    name: string
+    name: string  
     email: string
+    company?: string
+    phone?: string
+    status?: string
   }
   departments?: Array<{
     _id: string
     name: string
     status: string
+    description?: string
   }>
+  departmentTeamMembers?: Array<{
+    departmentId: string | null
+    departmentName: string
+    teamMembers: Array<{
+      _id: string 
+      name: string
+      email: string
+      avatar?: string
+      role?: string
+      department?: {
+        _id: string
+        name: string
+        status?: string
+        description?: string
+      }
+    }>
+  }>
+  progress?: {
+    overall: number
+    lastUpdated?: string
+    notes?: string
+  }
   departmentTasks?: Array<{
     departmentId: string
     departmentName: string
@@ -783,6 +730,13 @@ export interface Project {
       _id: string
       title: string
       status: string
+      assigneeId?: string
+      assignee?: {
+        _id: string
+        name: string
+        email: string
+      } | null
+      dueDate?: string
     }>
   }>
   creator?: {
@@ -817,7 +771,7 @@ export interface CreateProjectData {
   startDate?: Date
   endDate?: Date
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
 }
 
@@ -828,11 +782,11 @@ export interface CreateProjectFormData {
   departmentIds?: string[]
   status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
   priority?: 'low' | 'medium' | 'high' | 'urgent'
-  budget?: string
+  budget?: number
   startDate?: string
   endDate?: string
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
 }
 
@@ -845,77 +799,39 @@ export interface UpdateProjectFormData {
   departmentIds?: string[]
   status?: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
   priority?: 'low' | 'medium' | 'high' | 'urgent'
-  budget?: string
+  budget?: number
   startDate?: string
   endDate?: string
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
 
   // Professional CRM fields
   budgetBreakdown?: {
-    labor?: string
-    materials?: string
-    equipment?: string
+    development?: string
+    design?: string
+    testing?: string
+    deployment?: string
+    maintenance?: string
     contingency?: string
-    profitMargin?: string
   }
 
-  stakeholders?: {
-    clientContact?: string
-    projectManager?: string
-    teamLead?: string
-    keyStakeholders?: string
-  }
-
-  milestones?: {
-    title: string
-    description?: string
-    dueDate?: string
-    status: 'pending' | 'in-progress' | 'completed' | 'delayed'
-  }[]
-
-  phases?: {
-    name: string
-    description?: string
-    startDate?: string
-    endDate?: string
-    status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
-  }[]
-
-  deliverables?: string
 
   risks?: {
     description: string
     impact: 'low' | 'medium' | 'high' | 'critical'
     probability: 'low' | 'medium' | 'high'
     mitigation?: string
+    status: 'identified' | 'mitigated' | 'occurred'
   }[]
 
-  progress?: {
-    overallProgress?: string
-    completedTasks?: string
-    totalTasks?: string
-    lastUpdated?: string
-    nextMilestone?: string
-    blockers?: string
-  }
-
   resources?: {
-    estimatedHours?: string
-    actualHours?: string
-    teamSize?: string
+    estimatedHours?: number
+    actualHours?: number
     tools?: string[]
     externalResources?: string[]
   }
 
-  qualityMetrics?: {
-    requirementsCoverage?: string
-    defectDensity?: string
-    customerSatisfaction?: string
-    onTimeDelivery: boolean
-    withinBudget: boolean
-  }
 }
 
 export interface DepartmentSort {
@@ -969,7 +885,7 @@ export interface ProjectPrefillData {
   leadId?: string
   name?: string
   projectType?: string
-  requirements?: string
+  requirements?: string[]
   timeline?: string
   budget?: number
 }
@@ -986,14 +902,16 @@ export interface Task {
   departmentId: string
   parentTaskId?: string
   assigneeId?: string
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'  | 'closed' | 'deleted'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   type: 'task' | 'sub-task'
+  labelIds?: string[]
   estimatedHours?: number
   actualHours?: number
   startDate?: string
   dueDate?: string
   completedAt?: string
+  order?: number
   createdBy: string
   assignedBy?: string
   createdAt?: string
@@ -1009,6 +927,12 @@ export interface Task {
     _id: string
     name: string
   }
+  labels?: Array<{
+    _id: string
+    name: string
+    color: string
+    category: string
+  }>
   assignee?: {
     _id: string
     name: string
@@ -1030,17 +954,21 @@ export interface Task {
   }
   subTasks?: Task[]
   subTaskCount?: number
+  
 }
 
 export interface TaskFilters {
   search?: string
-  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | ''
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted' | ''
   priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
   type?: 'task' | 'sub-task' | ''
   projectId?: string
   departmentId?: string
   assigneeId?: string
   parentTaskId?: string
+  // optional due date range filters
+  dueDateFrom?: string
+  dueDateTo?: string
 }
 
 export interface TaskSort {
@@ -1055,13 +983,16 @@ export interface CreateTaskData {
   departmentId: string
   parentTaskId?: string
   assigneeId?: string
-  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted' 
   priority?: 'low' | 'medium' | 'high' | 'urgent'
   type?: 'task' | 'sub-task'
+  labelIds?: string[]
   estimatedHours?: number
   actualHours?: number
-  startDate?: Date
-  dueDate?: Date
+  startDate?: Date | string
+  dueDate?: Date | string
+  completedAt?: Date | string
+  order?: number
 }
 
 export interface UpdateTaskData extends Partial<CreateTaskData> { }
@@ -1070,7 +1001,7 @@ export interface FetchTasksParams {
   page?: number
   limit?: number
   search?: string
-  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | ''
+  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted' | ''
   priority?: 'low' | 'medium' | 'high' | 'urgent' | ''
   type?: 'task' | 'sub-task' | ''
   projectId?: string
@@ -1102,7 +1033,7 @@ export interface TaskHierarchy {
   _id: string
   title: string
   description?: string
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   departmentId: string
   assigneeId?: string
@@ -1126,7 +1057,7 @@ export interface TaskHierarchy {
   subTasks: Array<{
     _id: string
     title: string
-    status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+    status: 'pending' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled' | 'closed' | 'deleted'
     priority: 'low' | 'medium' | 'high' | 'urgent'
     assigneeId?: string
     dueDate?: string

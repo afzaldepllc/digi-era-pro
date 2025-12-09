@@ -14,13 +14,14 @@ import { createProjectFormSchema } from '@/lib/validations/project';
 import { CreateProjectFormData } from '@/types';
 import { useProjects } from '@/hooks/use-projects';
 import { useClients } from '@/hooks/use-clients';
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function AddProjectPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-
+  const { navigateTo } = useNavigation()
   // Get prefill data from URL params (when creating from client page)
   const clientId = searchParams?.get('clientId') || undefined;
   const prefill = searchParams?.get('prefill') === 'true';
@@ -31,7 +32,7 @@ export default function AddProjectPage() {
       name: "",
       description: "",
       clientId: clientId || "",
-      budget: "",
+      budget: 0,
       startDate: "",
       endDate: "",
       status: "pending",
@@ -68,7 +69,7 @@ export default function AddProjectPage() {
       });
 
       // Navigate to project edit page for further configuration
-      router.push(`/projects`);
+      navigateTo(`/projects`);
     } catch (error: any) {
       console.error('Error creating project:', error);
       toast({
@@ -111,6 +112,7 @@ export default function AddProjectPage() {
           description: "A clear, descriptive name for the project",
           cols: 12,
           mdCols: 6,
+          lgCols:4
         },
         {
           name: "clientId",
@@ -125,14 +127,36 @@ export default function AddProjectPage() {
           description: "The client for whom this project is being created",
           cols: 12,
           mdCols: 6,
+          lgCols:4
         },
         {
-          name: "description",
-          label: "Description",
-          type: "textarea" as const,
-          placeholder: "Brief project description",
-          description: "A short description of the project",
+          name: "status",
+          label: "Status",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "pending", label: "Pending" },
+            { value: "active", label: "Active" },
+          ],
+          description: "Initial project status",
           cols: 12,
+          mdCols: 6,
+          lgCols:4
+        },
+        {
+          name: "priority",
+          label: "Priority",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "low", label: "Low" },
+            { value: "medium", label: "Medium" },
+            { value: "high", label: "High" },
+            { value: "urgent", label: "Urgent" },
+          ],
+          description: "Project priority level",
+          cols: 12,
+          mdCols: 6,
         },
         {
           name: "budget",
@@ -159,33 +183,15 @@ export default function AddProjectPage() {
           cols: 12,
           mdCols: 6,
         },
+        
+        
         {
-          name: "priority",
-          label: "Priority",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "low", label: "Low" },
-            { value: "medium", label: "Medium" },
-            { value: "high", label: "High" },
-            { value: "urgent", label: "Urgent" },
-          ],
-          description: "Project priority level",
+          name: "description",
+          label: "Description",
+          type: "rich-text" as const,
+          placeholder: "Brief project description",
+          description: "A short description of the project",
           cols: 12,
-          mdCols: 6,
-        },
-        {
-          name: "status",
-          label: "Status",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "pending", label: "Pending" },
-            { value: "active", label: "Active" },
-          ],
-          description: "Initial project status",
-          cols: 12,
-          mdCols: 6,
         },
       ]
     }

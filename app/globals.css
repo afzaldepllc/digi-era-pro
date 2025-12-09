@@ -20,8 +20,32 @@
 
   html[data-theme-mode="light"] {
     color-scheme: light;
+  } 
+  /* Custom scrollbar using theme colors */
+  ::-webkit-scrollbar {
+    width: 10px;
+    background: hsl(var(--muted));
   }
 
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary));
+    border-radius: 8px;
+    border: 2px solid hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: hsl(var(--muted));
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary)) hsl(var(--muted));
+  }
   /* Hide scrollbar for Chrome, Safari and Opera */
   .scrollbar-hide::-webkit-scrollbar {
     display: none;

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { handleAPIError } from "@/lib/utils/api-client";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { updateDepartmentSchema, UpdateDepartmentData } from '@/lib/validations/department';
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 export default function EditDepartmentPage() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function EditDepartmentPage() {
   const departmentId = params?.id as string;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-
+const { navigateTo } = useNavigation()
   // Use generic query to fetch department
   const genericOptions = {
     entityName: 'departments',
@@ -77,7 +78,7 @@ export default function EditDepartmentPage() {
         description: "Department updated successfully",
       });
 
-      router.push("/departments");
+      navigateTo("/departments");
     } catch (error: any) {
       handleAPIError(error, "Failed to update department");
     } finally {

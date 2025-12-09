@@ -5,6 +5,8 @@ import {
   setSelectedTask,
   setLoading,
   setActionLoading,
+  setActionLoadingForTask,
+  setActionLoadingForDepartment,
   setError,
   clearError,
   setFilters,
@@ -22,7 +24,9 @@ import {
 } from './use-generic-query'
 import { useQueryClient } from "@tanstack/react-query"
 import { apiRequest, handleAPIError } from '@/lib/utils/api-client'
+import { refreshAnalytics } from '@/lib/utils/analytics-refresh'
 import type {
+  Task,
   FetchTasksParams,
   CreateTaskData,
   UpdateTaskData,
@@ -38,6 +42,8 @@ export function useTasks() {
     selectedTask,
     loading,
     actionLoading,
+    actionLoadingTasks,
+    actionLoadingDepartments,
     error,
     filters,
     sort,
@@ -72,11 +78,18 @@ export function useTasks() {
     },
   }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
 
-  // Use generic hooks
+  // Use generic hooks with better caching
   const { data: fetchedTasks, isLoading: queryLoading, refetch: refetchTasks } = useGenericQuery(
     taskOptions,
     queryParams,
-    true
+    true,
+    {
+      staleTime: 10 * 60 * 1000, // 10 minutes - prevent auto-refetch
+      cacheTime: 20 * 60 * 1000, // 20 minutes
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 2,
+    }
   )
 
   const createMutation = useGenericCreate(taskOptions)
@@ -87,69 +100,895 @@ export function useTasks() {
 
   // Fetch operations - Stable function that doesn't change on re-renders
   const handleFetchTasks = useCallback((params?: FetchTasksParams) => {
+    // If params provided, temporarily set filters and refetch for targeted data
+    if (params) {
+      const originalFilters = filters
+      // Omit "deleted" status if present, since TaskFilters does not allow it
+      const { status, ...rest } = params || {}
+      const safeStatus = status === "deleted" ? undefined : status
+      dispatch(setFilters({ ...rest, ...(safeStatus !== undefined ? { status: safeStatus } : {}) }))
+      // We will refetch and then restore filters - but we also leave as is so components remain stable
+      refetchTasks()
+      return
+    }
     refetchTasks()
   }, [refetchTasks])
 
   // CRUD operations
-  const handleCreateTask = useCallback((taskData: CreateTaskData) => {
-    return createMutation.mutateAsync(taskData)
-  }, [createMutation])
+  const handleCreateTask = useCallback(async (taskData: CreateTaskData) => {
+    const departmentId = typeof taskData.departmentId === 'string' ? taskData.departmentId : undefined
+    try {
+      if (departmentId) dispatch(setActionLoadingForDepartment({ id: departmentId, loading: true }))
+      
+      const result = await createMutation.mutateAsync(taskData)
+      
+      // Optimistic update: add the new task to the current task list if it matches current filters
+      const newTask = result?.data || result
+      if (newTask && filters.projectId === taskData.projectId) {
+        const shouldInclude = (
+          (!filters.departmentId || filters.departmentId === departmentId) &&
+          (!filters.status || filters.status === (newTask.status || 'pending')) &&
+          (!filters.assigneeId || filters.assigneeId === taskData.assigneeId) &&
+          (!filters.parentTaskId || filters.parentTaskId === taskData.parentTaskId) &&
+          // Phase and milestone filtering support
+          (!filters.phaseId || filters.phaseId === taskData.phaseId) &&
+          (!filters.milestoneId || filters.milestoneId === taskData.milestoneId)
+        )
+        
+        if (shouldInclude) {
+          const updatedTasks = [newTask, ...tasks]
+          dispatch(setTasks(updatedTasks))
+        }
+      }
+      
+      // Targeted cache invalidation with background refresh including phase/milestone
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey
+          if (!key || key[0] !== taskOptions.entityName) return false
+          const qp = key[1] as any
+          if (!qp?.filters) return true // Invalidate general queries
+          if (departmentId && qp.filters.departmentId === departmentId) return true
+          if (taskData.projectId && qp.filters.projectId === taskData.projectId) return true
+          if (taskData.phaseId && qp.filters.phaseId === taskData.phaseId) return true
+          if (taskData.milestoneId && qp.filters.milestoneId === taskData.milestoneId) return true
+          return false
+        }
+      })
+      
+      // Trigger analytics refresh
+      if (taskData.projectId) {
+        refreshAnalytics({ projectId: taskData.projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      throw error
+    } finally {
+      if (departmentId) dispatch(setActionLoadingForDepartment({ id: departmentId, loading: false }))
+    }
+  }, [createMutation, dispatch, queryClient, taskOptions.entityName, tasks, filters])
 
-  const handleUpdateTask = useCallback((id: string, data: UpdateTaskData) => {
-    return updateMutation.mutateAsync({ id, data })
-  }, [updateMutation])
+  const handleUpdateTask = useCallback(async (id: string, data: UpdateTaskData) => {
+    const existingTask = tasks.find((t: any) => String(t._id) === String(id))
+    
+    try {
+      dispatch(setActionLoadingForTask({ id, loading: true }))
+      if (data?.departmentId) dispatch(setActionLoadingForDepartment({ id: data.departmentId as string, loading: true }))
+      if (existingTask?.departmentId && existingTask.departmentId !== data?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: true }))
+      }
+      
+      // Create optimistic update with current timestamp - ensure all dates are serializable
+      const serializedData = { ...data }
+      if (serializedData.dueDate && typeof serializedData.dueDate === 'object') {
+        serializedData.dueDate = serializedData.dueDate.toISOString()
+      }
+      
+      const optimisticUpdate = { 
+        ...existingTask, 
+        ...serializedData, 
+        updatedAt: new Date().toISOString() 
+      }
+      
+      // Apply optimistic update to Redux state IMMEDIATELY
+      const optimisticTasks = tasks.map((t: any) => 
+        String(t._id) === String(id) ? optimisticUpdate : t
+      )
+      dispatch(setTasks(optimisticTasks))
+      
+      // Update ALL React Query caches IMMEDIATELY to prevent stale data
+      queryClient.setQueriesData(
+        { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+        (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (Array.isArray(oldData)) {
+            return oldData.map((t: any) => 
+              String(t._id) === String(id) ? optimisticUpdate : t
+            )
+          }
+          
+          if (oldData.data && Array.isArray(oldData.data)) {
+            return {
+              ...oldData,
+              data: oldData.data.map((t: any) => 
+                String(t._id) === String(id) ? optimisticUpdate : t
+              )
+            }
+          }
+          
+          return oldData
+        }
+      )
+      
+      // Make API call
+      const result = await updateMutation.mutateAsync({ id, data })
+      
+      // Update with server response if available
+      const serverTaskData = result?.data || result
+      if (serverTaskData) {
+        const finalTask = { ...existingTask, ...serverTaskData }
+        
+        // Update Redux with server data
+        const finalTasks = tasks.map((t: any) => 
+          String(t._id) === String(id) ? finalTask : t
+        )
+        dispatch(setTasks(finalTasks))
+        
+        // Update ALL cached queries with final server data
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? finalTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? finalTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      
+      // Trigger analytics refresh
+      const projectId = existingTask?.projectId
+      if (projectId) {
+        refreshAnalytics({ projectId, queryClient })
+      }
+      
+      return result
+    } catch (error) {
+      // Revert optimistic update on error
+      if (existingTask) {
+        const revertedTasks = tasks.map((t: any) => 
+          String(t._id) === String(id) ? existingTask : t
+        )
+        dispatch(setTasks(revertedTasks))
+        
+        // Revert ALL cached queries
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? existingTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? existingTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      throw error
+    } finally {
+      dispatch(setActionLoadingForTask({ id, loading: false }))
+      if (data?.departmentId) dispatch(setActionLoadingForDepartment({ id: data.departmentId as string, loading: false }))
+      if (existingTask?.departmentId && existingTask.departmentId !== data?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: false }))
+      }
+    }
+  }, [updateMutation, dispatch, queryClient, taskOptions.entityName, tasks])
 
-  const handleDeleteTask = useCallback((taskId: string) => {
-    return deleteMutation.mutateAsync(taskId)
-  }, [deleteMutation])
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    try {
+      const existingTask = tasks.find((t: any) => String(t._id) === String(taskId))
+      if (existingTask?.departmentId) dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: true }))
+      dispatch(setActionLoadingForTask({ id: taskId, loading: true }))
+      
+      const result = await deleteMutation.mutateAsync(taskId)
+      
+      // Optimistic update: remove or update the task in local state
+      if (existingTask) {
+        // @ts-ignore
+        const deletedTaskData = result?.data || result
+        if (deletedTaskData?.status === 'cancelled' || deletedTaskData?.status === 'deleted') {
+          // Update the task with cancelled/deleted status
+          const updatedTask = { ...existingTask, ...deletedTaskData }
+          const updatedTasks = tasks.map((t: any) => String(t._id) === String(taskId) ? updatedTask : t)
+          dispatch(setTasks(updatedTasks))
+        } else {
+          // Remove the task completely if hard deleted
+          const updatedTasks = tasks.filter((t: any) => String(t._id) !== String(taskId))
+          dispatch(setTasks(updatedTasks))
+        }
+      }
+      
+      // Comprehensive cache invalidation
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey
+          if (!key || key[0] !== taskOptions.entityName) return false
+          const qp = key[1] as any
+          if (!qp?.filters) return true // Invalidate general queries
+          if (existingTask?.projectId && qp.filters.projectId === existingTask.projectId) return true
+          if (existingTask?.departmentId && qp.filters.departmentId === existingTask.departmentId) return true
+          if (qp.filters.parentTaskId === taskId) return true // Sub-tasks of this task
+          return false
+        }
+      })
+      
+      // Trigger analytics refresh
+      if (existingTask?.projectId) {
+        refreshAnalytics({ projectId: existingTask.projectId, queryClient })
+      }
+      
+      // Also invalidate specific task queries
+      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName, taskId] })
+      
+      return result
+    } catch (error) {
+      throw error
+    } finally {
+      dispatch(setActionLoadingForTask({ id: taskId, loading: false }))
+      const existingTask = tasks.find((t: any) => String(t._id) === String(taskId))
+      if (existingTask?.departmentId) dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: false }))
+    }
+  }, [deleteMutation, dispatch, queryClient, taskOptions.entityName, tasks])
 
   // Special operations that require direct API calls
   const handleAssignTask = useCallback(async (id: string, assigneeId: string) => {
+    let originalTask: any = null
     try {
-      await apiRequest(`${taskOptions.baseUrl}/${id}`, {
+      const existingTask = tasks.find((t: any) => String(t._id) === String(id))
+      originalTask = existingTask
+      
+      dispatch(setActionLoadingForTask({ id, loading: true }))
+      if (existingTask?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: true }))
+      }
+      
+      // Optimistic update BEFORE API call
+      const optimisticTask = { 
+        ...existingTask, 
+        assigneeId, 
+        updatedAt: new Date().toISOString() 
+      }      
+      // Update Redux state immediately
+      const optimisticTasks = tasks.map((t: any) => String(t._id) === String(id) ? optimisticTask : t)
+      dispatch(setTasks(optimisticTasks))
+      
+      // Update cached queries immediately
+      queryClient.setQueriesData(
+        { queryKey: [taskOptions.entityName] },
+        (oldData: any) => {
+          if (!oldData) return oldData
+          if (Array.isArray(oldData)) {
+            return oldData.map((t: any) => String(t._id) === String(id) ? optimisticTask : t)
+          }
+          if (oldData.data && Array.isArray(oldData.data)) {
+            return {
+              ...oldData,
+              data: oldData.data.map((t: any) => String(t._id) === String(id) ? optimisticTask : t)
+            }
+          }
+          return oldData
+        }
+      )
+      
+      const result = await apiRequest(`${taskOptions.baseUrl}/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ operation: 'assign', assigneeId })
       })
-      // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName] })
-      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName, id] })
+      
+      // Update with server response
+      const serverTaskData = result?.data || result
+      if (serverTaskData) {
+        const finalTask = { ...existingTask, ...serverTaskData }
+        
+        // Update Redux with server data
+        const finalTasks = tasks.map((t: any) => String(t._id) === String(id) ? finalTask : t)
+        dispatch(setTasks(finalTasks))
+        
+        // Update ALL cached queries with final server data
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? finalTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? finalTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      
+      // Invalidate analytics queries to refresh task assignment statistics
+      if (originalTask?.projectId) {
+        // Invalidate all analytics queries
+        await queryClient.invalidateQueries({ 
+          queryKey: ['analytics'] 
+        })
+        // Invalidate project-specific analytics
+        await queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === originalTask.projectId
+          }
+        })
+        // Refetch analytics immediately
+        await queryClient.refetchQueries({
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === originalTask.projectId
+          }
+        })
+      }
+      
+      return result
     } catch (error) {
+      console.error('Error assigning task:', error)
+      
+      // Revert optimistic update on error
+      if (originalTask) {
+        const revertedTasks = tasks.map((t: any) => 
+          String(t._id) === String(id) ? originalTask : t
+        )
+        dispatch(setTasks(revertedTasks))
+        
+        // Revert ALL cached queries
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? originalTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? originalTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      
       handleAPIError(error, `Failed to assign task`)
       throw error
+    } finally {
+      dispatch(setActionLoadingForTask({ id, loading: false }))
+      if (originalTask?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: originalTask.departmentId as string, loading: false }))
+      }
     }
-  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient])
+  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient, tasks, dispatch])
 
   const handleUpdateTaskStatus = useCallback(async (id: string, status: string, actualHours?: number) => {
+    const originalTask = tasks.find((t: any) => String(t._id) === String(id))
+    
     try {
-      await apiRequest(`${taskOptions.baseUrl}/${id}`, {
+      dispatch(setActionLoadingForTask({ id, loading: true }))
+      if (originalTask?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: originalTask.departmentId as string, loading: true }))
+      }
+      
+      // Create optimistic update
+      const optimisticUpdate = { 
+        ...originalTask, 
+        status, 
+        actualHours: actualHours ?? originalTask?.actualHours,
+        completedAt: status === 'completed' ? new Date().toISOString() : 
+                    (status !== 'completed' ? undefined : originalTask?.completedAt),
+        updatedAt: new Date().toISOString()
+      }
+      
+      // Apply optimistic update to Redux IMMEDIATELY
+      const optimisticTasks = tasks.map((t: any) => 
+        String(t._id) === String(id) ? optimisticUpdate : t
+      )
+      dispatch(setTasks(optimisticTasks))
+      
+      // Update ALL React Query caches IMMEDIATELY
+      queryClient.setQueriesData(
+        { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+        (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (Array.isArray(oldData)) {
+            return oldData.map((t: any) => 
+              String(t._id) === String(id) ? optimisticUpdate : t
+            )
+          }
+          
+          if (oldData.data && Array.isArray(oldData.data)) {
+            return {
+              ...oldData,
+              data: oldData.data.map((t: any) => 
+                String(t._id) === String(id) ? optimisticUpdate : t
+              )
+            }
+          }
+          
+          return oldData
+        }
+      )
+      
+      // Make API request
+      const result = await apiRequest(`${taskOptions.baseUrl}/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ operation: 'updateStatus', status, actualHours })
       })
-      // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName] })
-      queryClient.invalidateQueries({ queryKey: [taskOptions.entityName, id] })
+      
+      // Update with server response if available
+      const serverTaskData = result?.data || result
+      if (serverTaskData) {
+        const finalTask = { ...originalTask, ...serverTaskData }
+        
+        // Update Redux with server data
+        const finalTasks = tasks.map((t: any) => 
+          String(t._id) === String(id) ? finalTask : t
+        )
+        dispatch(setTasks(finalTasks))
+        
+        // Update ALL cached queries with final server data
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? finalTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? finalTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      
+      // Invalidate analytics queries to refresh task statistics after status change
+      if (originalTask?.projectId) {
+        // Invalidate all analytics queries
+        await queryClient.invalidateQueries({ 
+          queryKey: ['analytics'] 
+        })
+        // Invalidate project-specific analytics
+        await queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === originalTask.projectId
+          }
+        })
+        // Refetch analytics immediately
+        await queryClient.refetchQueries({
+          predicate: (query) => {
+            const key = query.queryKey
+            return key && key[0] === 'project-analytics' && key[1] === originalTask.projectId
+          }
+        })
+      }
+      
+      return result
     } catch (error) {
+      console.error('Error updating task status:', error)
+      
+      // Revert optimistic update on error
+      if (originalTask) {
+        const revertedTasks = tasks.map((t: any) => 
+          String(t._id) === String(id) ? originalTask : t
+        )
+        dispatch(setTasks(revertedTasks))
+        
+        // Revert ALL cached queries
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return oldData.map((t: any) => 
+                String(t._id) === String(id) ? originalTask : t
+              )
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.map((t: any) => 
+                  String(t._id) === String(id) ? originalTask : t
+                )
+              }
+            }
+            
+            return oldData
+          }
+        )
+      }
+      
       handleAPIError(error, `Failed to update task status`)
       throw error
+    } finally {
+      dispatch(setActionLoadingForTask({ id, loading: false }))
+      if (originalTask?.departmentId) {
+        dispatch(setActionLoadingForDepartment({ id: originalTask.departmentId as string, loading: false }))
+      }
     }
-  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient])
+  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient, tasks, dispatch])
 
   // Fetch task hierarchy for a project
   const fetchTaskHierarchy = useCallback(async (projectId: string) => {
     try {
       const response = await apiRequest(`${taskOptions.baseUrl}?hierarchy=true&projectId=${projectId}`)
-      dispatch(setHierarchy(response))
-      return response
+      const hierarchyData = response?.data || response
+      dispatch(setHierarchy(hierarchyData))
+      return hierarchyData
     } catch (error) {
       handleAPIError(error, `Failed to fetch task hierarchy`)
       throw error
     }
   }, [taskOptions.baseUrl, dispatch])
 
+  // Enhanced bulk order update with cross-column support (no visual glitches)
+  const handleBulkOrderUpdate = useCallback(async (updates: Array<{ id: string, order: number, status?: string }>) => {
+    if (!updates || updates.length === 0) return
+
+    // Store original state for potential rollback
+    const originalTasks = [...tasks]
+    
+    try {
+      // Create update maps for both order and status changes
+      const orderMap = new Map(updates.map(({ id, order }) => [id, order]))
+      const statusMap = new Map(
+        updates.filter(({ status }) => status).map(({ id, status }) => [id, status])
+      )
+      
+      // Create optimistic task list with BOTH order and status changes
+      const optimisticTasks = tasks.map((task: any) => {
+        const taskId = String(task._id)
+        const newOrder = orderMap.get(taskId)
+        const newStatus = statusMap.get(taskId)
+        
+        if (newOrder !== undefined || newStatus !== undefined) {
+          const updatedTask = { 
+            ...task, 
+            updatedAt: new Date().toISOString(),
+            _optimistic: true, // Flag for tracking optimistic updates
+            _lockUpdate: true  // Prevent external cache updates from overriding
+          }
+          
+          // Apply order change if provided
+          if (newOrder !== undefined) {
+            updatedTask.order = newOrder
+          }
+          
+          // Apply status change if provided (for cross-column moves)
+          if (newStatus !== undefined) {
+            updatedTask.status = newStatus
+            // Set completion timestamp for completed status
+            if (newStatus === 'completed' && !task.completedAt) {
+              updatedTask.completedAt = new Date().toISOString()
+            } else if (newStatus !== 'completed') {
+              updatedTask.completedAt = undefined
+            }
+          }
+          
+          return updatedTask
+        }
+        return task
+      })
+      
+      // Sort by order within each status group for proper visual arrangement
+      const sortedOptimisticTasks = [...optimisticTasks].sort((a: any, b: any) => {
+        // First sort by status to group columns
+        if (a.status !== b.status) {
+          const statusOrder = { 'pending': 0, 'in-progress': 1, 'completed': 2, 'on-hold': 3 }
+          return (statusOrder[a.status as keyof typeof statusOrder] || 999) - 
+                 (statusOrder[b.status as keyof typeof statusOrder] || 999)
+        }
+        // Then sort by order within the same status
+        const orderA = a.order !== undefined ? a.order : 999999
+        const orderB = b.order !== undefined ? b.order : 999999
+        return orderA - orderB
+      })
+      
+      // Apply optimistic state to Redux IMMEDIATELY (prevents glitch)
+      dispatch(setTasks(sortedOptimisticTasks))
+      
+      // LOCK all React Query caches to prevent external updates during drag operation
+      queryClient.setQueriesData(
+        { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+        (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (Array.isArray(oldData)) {
+            const updatedArray = oldData.map((task: any) => {
+              // Skip updates for locked optimistic tasks
+              if (task._lockUpdate) return task
+              
+              const taskId = String(task._id)
+              const newOrder = orderMap.get(taskId)
+              const newStatus = statusMap.get(taskId)
+              
+              if (newOrder !== undefined || newStatus !== undefined) {
+                const updatedTask = { 
+                  ...task, 
+                  updatedAt: new Date().toISOString(),
+                  _optimistic: true,
+                  _lockUpdate: true
+                }
+                
+                if (newOrder !== undefined) updatedTask.order = newOrder
+                if (newStatus !== undefined) {
+                  updatedTask.status = newStatus
+                  if (newStatus === 'completed' && !task.completedAt) {
+                    updatedTask.completedAt = new Date().toISOString()
+                  } else if (newStatus !== 'completed') {
+                    updatedTask.completedAt = undefined
+                  }
+                }
+                
+                return updatedTask
+              }
+              return task
+            })
+            
+            return updatedArray.sort((a: any, b: any) => {
+              if (a.status !== b.status) {
+                const statusOrder = { 'pending': 0, 'in-progress': 1, 'completed': 2, 'on-hold': 3 }
+                return (statusOrder[a.status as keyof typeof statusOrder] || 999) - 
+                       (statusOrder[b.status as keyof typeof statusOrder] || 999)
+              }
+              const orderA = a.order !== undefined ? a.order : 999999
+              const orderB = b.order !== undefined ? b.order : 999999
+              return orderA - orderB
+            })
+          }
+          
+          if (oldData.data && Array.isArray(oldData.data)) {
+            const updatedArray = oldData.data.map((task: any) => {
+              if (task._lockUpdate) return task
+              
+              const taskId = String(task._id)
+              const newOrder = orderMap.get(taskId)
+              const newStatus = statusMap.get(taskId)
+              
+              if (newOrder !== undefined || newStatus !== undefined) {
+                const updatedTask = { 
+                  ...task, 
+                  updatedAt: new Date().toISOString(),
+                  _optimistic: true,
+                  _lockUpdate: true
+                }
+                
+                if (newOrder !== undefined) updatedTask.order = newOrder
+                if (newStatus !== undefined) {
+                  updatedTask.status = newStatus
+                  if (newStatus === 'completed' && !task.completedAt) {
+                    updatedTask.completedAt = new Date().toISOString()
+                  } else if (newStatus !== 'completed') {
+                    updatedTask.completedAt = undefined
+                  }
+                }
+                
+                return updatedTask
+              }
+              return task
+            })
+            
+            return {
+              ...oldData,
+              data: updatedArray.sort((a: any, b: any) => {
+                if (a.status !== b.status) {
+                  const statusOrder = { 'pending': 0, 'in-progress': 1, 'completed': 2, 'on-hold': 3 }
+                  return (statusOrder[a.status as keyof typeof statusOrder] || 999) - 
+                         (statusOrder[b.status as keyof typeof statusOrder] || 999)
+                }
+                const orderA = a.order !== undefined ? a.order : 999999
+                const orderB = b.order !== undefined ? b.order : 999999
+                return orderA - orderB
+              })
+            }
+          }
+          
+          return oldData
+        }
+      )
+
+      // Prepare API request body - include status changes for cross-column moves
+      const requestBody = {
+        updates: updates.map(update => ({
+          id: update.id,
+          order: update.order,
+          ...(update.status && { status: update.status })
+        }))
+      }
+
+      // Make API call
+      const response = await apiRequest(`${taskOptions.baseUrl}/bulk-order`, {
+        method: 'PATCH',
+        body: JSON.stringify(requestBody)
+      })
+
+      const serverData = response?.data || response
+      
+      if (serverData && Array.isArray(serverData)) {
+        // Clean server data and unlock updates
+        const cleanServerData = serverData.map((task: any) => {
+          const { _optimistic, _lockUpdate, ...cleanTask } = task
+          return cleanTask
+        }).sort((a: any, b: any) => {
+          // Maintain proper sorting by status then order
+          if (a.status !== b.status) {
+            const statusOrder = { 'pending': 0, 'in-progress': 1, 'completed': 2, 'on-hold': 3 }
+            return (statusOrder[a.status as keyof typeof statusOrder] || 999) - 
+                   (statusOrder[b.status as keyof typeof statusOrder] || 999)
+          }
+          const orderA = a.order !== undefined ? a.order : 999999
+          const orderB = b.order !== undefined ? b.order : 999999
+          return orderA - orderB
+        })
+        
+        // Apply final server state smoothly
+        dispatch(setTasks(cleanServerData))
+        
+        // Unlock and update all caches with clean server data
+        queryClient.setQueriesData(
+          { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+          (oldData: any) => {
+            if (!oldData) return oldData
+            
+            if (Array.isArray(oldData)) {
+              return cleanServerData
+            }
+            
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return { ...oldData, data: cleanServerData }
+            }
+            
+            return oldData
+          }
+        )
+        
+        // Invalidate analytics for affected projects
+        const projectIds = new Set(cleanServerData.map((task: any) => task.projectId).filter(Boolean))
+        if (projectIds.size > 0) {
+          // Invalidate all analytics queries
+          await queryClient.invalidateQueries({ 
+            queryKey: ['analytics'] 
+          })
+          
+          // Invalidate and refetch project-specific analytics
+          for (const projectId of projectIds) {
+            await queryClient.invalidateQueries({ 
+              predicate: (query) => {
+                const key = query.queryKey
+                return key && key[0] === 'project-analytics' && key[1] === projectId
+              }
+            })
+            // Refetch analytics immediately
+            await queryClient.refetchQueries({
+              predicate: (query) => {
+                const key = query.queryKey
+                return key && key[0] === 'project-analytics' && key[1] === projectId
+              }
+            })
+          }
+        }
+      }
+
+      return response
+    } catch (error) {
+      console.error('Bulk order update failed:', error)
+      handleAPIError(error, 'Failed to update task order')
+      
+      // Clean revert to original state (remove optimistic flags)
+      const cleanOriginalTasks = originalTasks.map((task: any) => {
+        const { _optimistic, _lockUpdate, ...cleanTask } = task
+        return cleanTask
+      })
+      
+      dispatch(setTasks(cleanOriginalTasks))
+      
+      // Unlock and revert all cached queries
+      queryClient.setQueriesData(
+        { predicate: (query) => query.queryKey[0] === taskOptions.entityName },
+        (oldData: any) => {
+          if (!oldData) return oldData
+          
+          if (Array.isArray(oldData)) {
+            return cleanOriginalTasks
+          }
+          
+          if (oldData.data && Array.isArray(oldData.data)) {
+            return { ...oldData, data: cleanOriginalTasks }
+          }
+          
+          return oldData
+        }
+      )
+      
+      throw error
+    }
+  }, [taskOptions.baseUrl, taskOptions.entityName, queryClient, tasks, dispatch])
+
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<TaskFilters>) => {
     dispatch(setFilters(newFilters))
   }, [dispatch])
+
+  const isActionLoadingForTask = useCallback((id?: string) => {
+    if (!id) return false
+    return !!actionLoadingTasks?.[id]
+  }, [actionLoadingTasks])
+
+  const isActionLoadingForDepartment = useCallback((id?: string) => {
+    if (!id) return false
+    return !!actionLoadingDepartments?.[id]
+  }, [actionLoadingDepartments])
 
   const handleSetSort = useCallback((newSort: TaskSort) => {
     dispatch(setSort(newSort))
@@ -183,6 +1022,23 @@ export function useTasks() {
   const isLastPage = pagination.page >= pagination.pages
   const totalPages = pagination.pages
   const totalItems = pagination.total
+
+  // Phase and Milestone utility operations
+  const handleSetPhaseFilter = useCallback((phaseId: string | undefined) => {
+    dispatch(setFilters({ phaseId }))
+  }, [dispatch])
+
+  const handleSetMilestoneFilter = useCallback((milestoneId: string | undefined) => {
+    dispatch(setFilters({ milestoneId }))
+  }, [dispatch])
+
+  const handleAssociateWithPhase = useCallback(async (taskId: string, phaseId: string | undefined) => {
+    return handleUpdateTask(taskId, { phaseId })
+  }, [handleUpdateTask])
+
+  const handleAssociateWithMilestone = useCallback(async (taskId: string, milestoneId: string | undefined) => {
+    return handleUpdateTask(taskId, { milestoneId })
+  }, [handleUpdateTask])
 
   // Status-based getters
   const pendingTasks = tasks.filter((t: any) => t.status === 'pending')
@@ -222,6 +1078,19 @@ export function useTasks() {
 
   const getSubTasksByParent = useCallback((parentTaskId: string) => {
     return tasks.filter((t: any) => t.parentTaskId === parentTaskId)
+  }, [tasks])
+
+  // Phase and Milestone specific getters
+  const getTasksByPhase = useCallback((phaseId: string) => {
+    return tasks.filter((t: any) => t.phaseId === phaseId)
+  }, [tasks])
+
+  const getTasksByMilestone = useCallback((milestoneId: string) => {
+    return tasks.filter((t: any) => t.milestoneId === milestoneId)
+  }, [tasks])
+
+  const getUnassociatedTasks = useCallback(() => {
+    return tasks.filter((t: any) => !t.phaseId && !t.milestoneId)
   }, [tasks])
 
   const getMyTasks = useCallback((userId: string) => {
@@ -276,6 +1145,19 @@ export function useTasks() {
     return parentTask && parentTask.type === 'task' && parentTask.status !== 'completed' && parentTask.status !== 'cancelled'
   }, [])
 
+  // Convenience functions for inline operations
+  const updateTaskDueDate = useCallback(async (taskId: string, dueDate: string) => {
+    return handleUpdateTask(taskId, { dueDate: new Date(dueDate).toISOString() })
+  }, [handleUpdateTask])
+
+  const updateTaskPriority = useCallback(async (taskId: string, priority: string) => {
+    return handleUpdateTask(taskId, { priority: priority as any })
+  }, [handleUpdateTask])
+
+  const updateTaskField = useCallback(async (taskId: string, field: string, value: any) => {
+    return handleUpdateTask(taskId, { [field]: value })
+  }, [handleUpdateTask])
+
   return {
     // State
     tasks: fetchedTasks || tasks,
@@ -297,6 +1179,7 @@ export function useTasks() {
     assignTask: handleAssignTask,
     updateTaskStatus: handleUpdateTaskStatus,
     deleteTask: handleDeleteTask,
+    bulkOrderUpdate: handleBulkOrderUpdate,
 
     // Filter and sort operations
     setFilters: handleSetFilters,
@@ -339,6 +1222,20 @@ export function useTasks() {
     getOverdueTasks,
     getTasksCompletionRate,
 
+    // Phase and Milestone specific functions
+    getTasksByPhase,
+    getTasksByMilestone,
+    getUnassociatedTasks,
+    setPhaseFilter: handleSetPhaseFilter,
+    setMilestoneFilter: handleSetMilestoneFilter,
+    associateWithPhase: handleAssociateWithPhase,
+    associateWithMilestone: handleAssociateWithMilestone,
+
+    // Convenience functions for inline editing
+    updateTaskDueDate,
+    updateTaskPriority,
+    updateTaskField,
+
     // Permission checks
     canCreateTask,
     canEditTask,
@@ -346,5 +1243,8 @@ export function useTasks() {
     canAssignTask,
     canUpdateTaskStatus,
     canCreateSubTask,
+    // Loading helpers
+    isActionLoadingForTask,
+    isActionLoadingForDepartment,
   }
 }

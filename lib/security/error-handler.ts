@@ -117,7 +117,7 @@ export class ApiErrorHandler {
     } else if (error instanceof Error) {
       // Check for specific error messages
       const message = error.message.toLowerCase()
-      
+
       if (message.includes("unauthorized") || message.includes("invalid credentials")) {
         apiError = this.createError(
           ErrorCode.AUTHENTICATION_ERROR,
@@ -245,9 +245,9 @@ export class ApiErrorHandler {
 // Utility function to extract client info from request
 export function getClientInfo(request: Request) {
   const headers = request.headers
-  
+
   return {
-    ipAddress: 
+    ipAddress:
       headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       headers.get("x-real-ip") ||
       headers.get("cf-connecting-ip") ||
@@ -260,14 +260,13 @@ export function getClientInfo(request: Request) {
 export function createErrorResponse(
   message: string,
   statusCode: number = 400,
-  code?: ErrorCode,
   details?: any
 ) {
   return NextResponse.json(
     {
       success: false,
       error: {
-        ...(code && { code }),
+        // ...(code && { code }),
         message,
         ...(details && { details }),
       },

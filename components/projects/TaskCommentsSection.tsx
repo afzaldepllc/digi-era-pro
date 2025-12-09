@@ -73,7 +73,7 @@ function CommentItem({
           }
           hover:shadow-lg hover:border-l-primary/70 transition-all duration-300 transform hover:-translate-y-0.5
         `}>
-          <CardContent className="pt-4 pb-4">
+          <CardContent className="p-2">
             {/* Comment Header */}
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ function CommentItem({
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => onDelete(comment._id)}
+                        onClick={() => comment?._id && onDelete(comment._id)}
                         className="text-destructive hover:bg-destructive/10 cursor-pointer"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -173,9 +173,9 @@ function CommentItem({
         {/* Replies */}
         {comment.replies && comment.replies.length > 0 && (
           <div className="mt-3 space-y-2">
-            {comment.replies.map((reply: any) => (
+            {comment.replies.map((reply: any, ridx: number) => (
               <CommentItem
-                key={reply._id}
+                key={reply?._id ?? `reply-${ridx}-${comment._id ?? 'noid'}`}
                 comment={reply}
                 onEdit={onEdit}
                 onDelete={onDelete}
@@ -253,7 +253,6 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
 
       createForm.reset();
       setReplyingTo(null);
-      refetch();
 
       toast({
         title: "Success",
@@ -272,7 +271,6 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
       await updateComment(editingComment._id, data);
       setEditingComment(null);
       updateForm.reset();
-      refetch();
 
       toast({
         title: "Success",
@@ -287,7 +285,6 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
   const handleDeleteComment = async (commentId: string) => {
     try {
       await deleteComment(commentId);
-      refetch();
 
       toast({
         title: "Success",
@@ -343,7 +340,7 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
 
   return (
     <Card className="border-primary/20 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-primary/10">
+      <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-primary/10 py-2 px-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -359,7 +356,7 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 px-4">
         {/* Comment Form */}
         <div className="space-y-4">
           {replyingTo && (
@@ -409,11 +406,11 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
               ? updateForm.handleSubmit(handleUpdateComment)
               : createForm.handleSubmit(handleCreateComment)
             }
-            className="space-y-3"
+            className="mt-4"
           >
             <div>
-              <Label htmlFor="comment">
-                {editingComment ? 'Update your comment' : 'Add a comment'}
+              <Label htmlFor="comment" className="mb-4">
+                {editingComment ? 'Update your comment' : 'Add a comment'}:
               </Label>
               <RichTextEditor
                 value={(editingComment ? updateForm.watch('content') : createForm.watch('content')) || ''}
@@ -430,7 +427,7 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
               />
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mt-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <AtSign className="h-3 w-3" />
                 <span>Use @ to mention team members</span>
@@ -460,21 +457,24 @@ export function TaskCommentsSection({ taskId, projectId, departmentId }: TaskCom
         {/* Comments List */}
         <div className="space-y-4">
           {comments.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-4 text-muted-foreground">
               <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No comments yet</p>
               <p className="text-sm">Be the first to add a comment!</p>
             </div>
           ) : (
-            comments.map((comment: any) => (
-              <CommentItem
-                key={comment._id}
+            comments.filter(Boolean).map((comment: any, idx: number) => (
+             <div className="col-span-6" key={comment?._id ?? `comment-wrapper-${idx}`}>
+               <CommentItem
+                key={comment?._id ?? `comment-${idx}`}
                 comment={comment}
                 onEdit={handleEdit}
                 onDelete={handleDeleteComment}
                 onReply={handleReply}
                 currentUserId={currentUser?.id || ''}
+               
               />
+             </div>
             ))
           )}
         </div>

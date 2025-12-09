@@ -15,6 +15,7 @@ const inter = Inter({
   display: 'swap',
   preload: true,
   adjustFontFallback: true, // Reduce CLS
+  fallback: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'], // Better fallbacks
 })
 
 export const metadata: Metadata = {
@@ -27,20 +28,24 @@ export const metadata: Metadata = {
     apple: '/digi-era-logo.webp',
   }
 }
-
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+      <html lang="en" suppressHydrationWarning>
       <head>
         {/* Preload critical resources for faster navigation */}
-        <link rel="preload" href="/digi-era-logo.webp" as="image" />
+        <link rel="preload" href="/digi-era-logo.webp" as="image" type="image/webp" />
         <link rel="dns-prefetch" href="//fonts.gstatic.com" />
+        <link rel="dns-prefetch" href="//fonts.googleapis.com" />
         {/* Optimize resource loading */}
         <link rel="preconnect" href="//fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="//fonts.googleapis.com" crossOrigin="anonymous" />
+        {/* Performance hints */}
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
       <body className={cn(inter.variable, "font-sans antialiased")} suppressHydrationWarning>
         <ThemeProvider

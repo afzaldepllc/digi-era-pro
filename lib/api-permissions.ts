@@ -7,8 +7,6 @@ import User from '@/models/User'
 // PermissionCheck is now imported from constants/permissions
 
 export interface ApiPermissionOptions {
-  /** Super admin email that bypasses all permission checks */
-  superAdminEmail?: string
   /** Fallback roles for legacy compatibility */
   fallbackRoles?: string[]
   /** Additional custom validation function */
@@ -31,7 +29,6 @@ export interface PermissionResult {
  */
 export class ApiPermissionManager {
   private static defaultOptions: ApiPermissionOptions = {
-    superAdminEmail: 'superadmin@gmail.com',
     fallbackRoles: ['admin', 'super_admin'],
     enableLogging: true
   }
@@ -81,7 +78,7 @@ export class ApiPermissionManager {
       const userId = sessionUser?.id || sessionUser?._id || sessionUser?.user?.id
 
       // Super admin bypass
-      if (opts.superAdminEmail && userEmail === opts.superAdminEmail) {
+      if (sessionUser?.role?.name === 'super_admin') {
         if (opts.enableLogging) {
           console.log(`Super admin access granted: ${userEmail} -> ${permission.resource}:${permission.action}`)
         }
@@ -175,7 +172,7 @@ export class ApiPermissionManager {
       const userId = sessionUser?.id || sessionUser?._id || sessionUser?.user?.id
 
       // Super admin bypass
-      if (opts.superAdminEmail && userEmail === opts.superAdminEmail) {
+      if (sessionUser?.role?.name === 'super_admin' || sessionUser?.role === 'super_admin') {
         if (opts.enableLogging) {
           console.log(`Super admin access granted: ${userEmail}`)
         }
@@ -255,7 +252,7 @@ export class ApiPermissionManager {
       const userId = sessionUser?.id || sessionUser?._id || sessionUser?.user?.id
 
       // Super admin bypass
-      if (opts.superAdminEmail && userEmail === opts.superAdminEmail) {
+      if (sessionUser?.role?.name === 'super_admin' || sessionUser?.role === 'super_admin') {
         if (opts.enableLogging) {
           console.log(`Super admin access granted: ${userEmail}`)
         }
@@ -420,52 +417,6 @@ export function createPermissionErrorResponse(result: PermissionResult) {
   )
 }
 
-// COMMON_PERMISSIONS is now imported from constants/permissions
-// This maintains backward compatibility while using the centralized system
-
-/**
- * Legacy compatibility helpers
- */
-export const LegacyPermissionHelpers = {
-  /**
-   * Check if user has admin-level access (for backward compatibility)
-   */
-  isAdmin: (sessionUser: any): boolean => {
-    const userEmail = sessionUser?.email || sessionUser?.user?.email
-    const userRole = sessionUser?.role || sessionUser?.user?.role
-    
-    return (
-      userEmail === 'superadmin@gmail.com' ||
-      userRole === 'admin' ||
-      userRole === 'super_admin'
-    )
-  },
-
-  /**
-   * Check if user has HR-level access (for backward compatibility)
-   */
-  isHR: (sessionUser: any): boolean => {
-    const userRole = sessionUser?.role || sessionUser?.user?.role
-    return ['admin', 'hr', 'manager'].includes(userRole)
-  },
-
-  /**
-   * Get user role for logging
-   */
-  getUserRole: (sessionUser: any): string => {
-    return sessionUser?.role || sessionUser?.user?.role || 'unknown'
-  },
-
-  /**
-   * Get user email for logging
-   */
-  getUserEmail: (sessionUser: any): string => {
-    return sessionUser?.email || sessionUser?.user?.email || 'unknown'
-  }
-}
-
-
-
 
 //utility functions for permission checks
 
@@ -485,14 +436,11 @@ export async function hasPermission(
   try {
     await connectDB()
 
-    // Find the user and populate their role with permissions
+    // Find the user and populate their role (permissions are embedded, not referenced)
     const user = await User.findById(userId)
       .populate({
         path: 'role',
-        populate: {
-          path: 'permissions',
-          model: 'SystemPermission'
-        }
+        select: 'name displayName hierarchyLevel permissions'
       })
       .lean()
 
@@ -502,7 +450,7 @@ export async function hasPermission(
     }
 
     // CRITICAL: Super admin bypass - grants ALL permissions automatically
-    if (user.email === 'superadmin@gmail.com') {
+    if (user.role && (user.role as any).name === 'super_admin') {
       console.log(`Super admin access granted for ${resource}:${action}`)
       return true
     }
@@ -521,14 +469,16 @@ export async function hasPermission(
       return false
     }
 
-    // Check if any of the role's permissions match the requested resource and action
+    // Check if any of the role's embedded permissions match the requested resource and action
     const hasAccess = userRole.permissions.some((permission: any) => {
-      // Handle both string-based and object-based permissions
-      if (typeof permission === 'string') {
-        return permission === `${resource}:${action}` || permission === `${resource}:*` || permission === '*:*'
-      }
-
+      // Permissions are embedded objects from Role model with structure: { resource, actions, conditions }
       if (permission && typeof permission === 'object') {
+        // Check embedded permission structure (from Role model)
+        if (permission.resource && Array.isArray(permission.actions)) {
+          return permission.resource === resource && permission.actions.includes(action)
+        }
+        
+        // Legacy fallback for other permission structures
         const permResource = permission.resource || permission.name?.split(':')[0] || permission.name?.split('_')[0]
         const permAction = permission.action || permission.name?.split(':')[1] || permission.name?.split('_')[1]
 
@@ -542,6 +492,11 @@ export async function hasPermission(
           permission.name === `${resource}:*` ||
           permission.name === '*:*'
         )
+      }
+      
+      // Fallback for string-based permissions
+      if (typeof permission === 'string') {
+        return permission === `${resource}:${action}` || permission === `${resource}:*` || permission === '*:*'
       }
 
       return false

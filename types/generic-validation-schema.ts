@@ -136,15 +136,6 @@ export const userValidationSchema = z.object({
     theme: z.enum(["light", "dark", "system"]).default("system"),
     language: z.string().default("en"),
     timezone: z.string().default("UTC"),
-    notifications: z.object({
-      email: z.boolean().default(true),
-      push: z.boolean().default(true),
-      sms: z.boolean().default(false),
-    }).default({
-      email: true,
-      push: true,
-      sms: false,
-    }),
   }).optional(),
 });
 

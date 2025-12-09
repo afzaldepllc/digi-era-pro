@@ -12,6 +12,7 @@ export interface IUserSeed {
   roleName?: string
   phone?: string
   status: 'active' | 'inactive' | 'archived'
+  twoFactorEnabled?: boolean
 }
 
 export const userSeeds: IUserSeed[] = [
@@ -23,7 +24,19 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'admin',
     departmentName: 'System',
     roleName: 'super_admin',
-    phone: '+1000000000',
+    phone: '1234567801',
+    status: 'active',
+    twoFactorEnabled: false
+  },
+  // Super Admin
+  {
+    name: 'Super Administrator Depllc',
+    email: 'crmdepllc@gmail.com',
+    password: 'Depllc@123',
+    legacyRole: 'admin',
+    departmentName: 'System',
+    roleName: 'super_admin',
+    phone: '1234567801',
     status: 'active'
   },
 
@@ -36,7 +49,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'admin',
     departmentName: 'HR',
     roleName: 'hr_manager',
-    phone: '+1234567803',
+    phone: '1234567803',
     status: 'active'
   },
 
@@ -48,7 +61,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Web Development',
     roleName: 'department_head',
-    phone: '+1234567804',
+    phone: '1234567804',
     status: 'active'
   },
   {
@@ -58,7 +71,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Graphics',
     roleName: 'department_head',
-    phone: '+1234567805',
+    phone: '1234567805',
     status: 'active'
   },
   {
@@ -68,7 +81,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'SEO',
     roleName: 'department_head',
-    phone: '+1234567806',
+    phone: '1234567806',
     status: 'active'
   },
   {
@@ -78,7 +91,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Sales',
     roleName: 'department_head',
-    phone: '+1234567807',
+    phone: '1234567807',
     status: 'active'
   },
   {
@@ -88,7 +101,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Support',
     roleName: 'department_head',
-    phone: '+1234567808',
+    phone: '1234567808',
     status: 'active'
   },
 
@@ -100,7 +113,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Web Development',
     roleName: 'team_lead',
-    phone: '+1234567809',
+    phone: '1234567809',
     status: 'active'
   },
   {
@@ -110,7 +123,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Graphics',
     roleName: 'team_lead',
-    phone: '+1234567810',
+    phone: '1234567810',
     status: 'active'
   },
   {
@@ -120,7 +133,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'manager',
     departmentName: 'Social Media',
     roleName: 'team_lead',
-    phone: '+1234567811',
+    phone: '1234567811',
     status: 'active'
   },
 
@@ -132,7 +145,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'user',
     departmentName: 'Sales',
     roleName: 'client',
-    phone: '+1234567829',
+    phone: '1234567829',
     status: 'active'
   },
   {
@@ -142,7 +155,7 @@ export const userSeeds: IUserSeed[] = [
     legacyRole: 'user',
     departmentName: 'Sales',
     roleName: 'client',
-    phone: '+1234567830',
+    phone: '1234567830',
     status: 'active'
   }
 ]
@@ -152,14 +165,11 @@ async function seedUsers() {
     await connectToDatabase()
     console.log('🌱 Starting user seeding...')
 
-    // Clear existing users
-    const existingCount = await User.countDocuments()
-    if (existingCount > 0) {
-      await User.deleteMany({})
-      console.log(`✅ Cleared ${existingCount} existing users`)
-    } else {
-      console.log('✅ No existing users to clear')
-    }
+    // Get existing users to check for duplicates
+    const existingUsers = await User.find({}).select('email').lean()
+    const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()))
+    
+    console.log(`📋 Found ${existingUsers.length} existing users in database`)
 
     // Get all roles (both system and department roles)
     const allRoles = await Role.find({ status: 'active' })
@@ -249,40 +259,92 @@ async function seedUsers() {
         status: 'active',
         emailVerified: true,
         phoneVerified: false,
-        twoFactorEnabled: false,
+        twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
         permissions: [],
         preferences: {
           theme: 'system',
           language: 'en',
           timezone: 'UTC',
-          notifications: {
-            email: true,
-            push: true,
-            sms: false
-          }
         },
         metadata: {
           tags: ['seeded'],
           createdBy: 'system_seeder',
-          isSuperAdmin: userData.email === 'superadmin@gmail.com',
+          isSuperAdmin: userData.roleName === 'super_admin',
           roleHierarchy: finalRole.hierarchyLevel
         }
       }
     })
 
-    // Create users in batches for better performance
-    const batchSize = 10
+    // Create or update users to prevent duplicates
     const createdUsers = []
+    let created = 0
+    let updated = 0
+    let skipped = 0
 
-    for (let i = 0; i < usersToCreate.length; i += batchSize) {
-      const batch = usersToCreate.slice(i, i + batchSize)
-      const batchResult = await User.create(batch)
-      createdUsers.push(...batchResult)
-      console.log(`✅ Created batch ${Math.ceil((i + 1) / batchSize)} - ${batchResult.length} users`)
+    for (const userData of usersToCreate) {
+      const emailLower = userData.email.toLowerCase()
+      
+      if (existingEmails.has(emailLower)) {
+        // Update existing user
+        const existingUser = await User.findOne({ email: emailLower })
+        if (existingUser) {
+          // Only update if there are meaningful changes
+          const hasChanges = 
+            existingUser.name !== userData.name ||
+            existingUser.role?.toString() !== userData.role.toString() ||
+            existingUser.department?.toString() !== userData.department?.toString() ||
+            existingUser.status !== userData.status ||
+            existingUser.twoFactorEnabled !== (userData.email === 'superadmin@gmail.com' ? false : true)
+
+          if (hasChanges) {
+            await User.findByIdAndUpdate(existingUser._id, {
+              name: userData.name,
+              role: userData.role,
+              legacyRole: userData.legacyRole,
+              department: userData.department,
+              phone: userData.phone,
+              status: userData.status,
+              emailVerified: userData.emailVerified,
+              phoneVerified: userData.phoneVerified,
+              twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
+              permissions: userData.permissions,
+              preferences: userData.preferences,
+              'metadata.updatedBy': 'system_seeder',
+              'metadata.tags': userData.metadata.tags
+            })
+            createdUsers.push(existingUser)
+            updated++
+            console.log(`📝 Updated user: ${userData.email}`)
+          } else {
+            createdUsers.push(existingUser)
+            skipped++
+            console.log(`⏭️  Skipped user (no changes): ${userData.email}`)
+          }
+        }
+      } else {
+        // Create new user
+        try {
+          const newUser = await User.create(userData)
+          createdUsers.push(newUser)
+          created++
+          console.log(`✅ Created user: ${userData.email}`)
+        } catch (error: any) {
+          if (error.code === 11000) {
+            // Duplicate key error - user already exists
+            console.warn(`⚠️  User already exists: ${userData.email}`)
+            skipped++
+          } else {
+            throw error
+          }
+        }
+      }
     }
 
-    console.log(`\n� User Seeding Summary:`)
-    console.log(`✅ Total Users Created: ${createdUsers.length}`)
+    console.log(`\n📊 User Seeding Summary:`)
+    console.log(`✅ Created: ${created}`)
+    console.log(`📝 Updated: ${updated}`)
+    console.log(`⏭️  Skipped: ${skipped}`)
+    console.log(`📊 Total Users: ${createdUsers.length}`)
 
     // Group users by role and department for summary
     const roleStats = new Map()
@@ -342,6 +404,19 @@ async function seedUsers() {
     console.error('❌ Error seeding users:', error)
     throw error
   }
+}
+
+// Run directly if called as script
+if (require.main === module) {
+  seedUsers()
+    .then(() => {
+      console.log('User seeding completed!')
+      process.exit(0)
+    })
+    .catch((error) => {
+      console.error('User seeding failed:', error)
+      process.exit(1)
+    })
 }
 
 export default seedUsers

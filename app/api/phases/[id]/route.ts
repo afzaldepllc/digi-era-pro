@@ -113,6 +113,7 @@ export async function PUT(
     // Check permissions - only creator, admin, or super_admin can update
     const canUpdate = currentUserRole.name === 'admin' || 
                      currentUserRole.name === 'super_admin' ||
+                     currentUserRole === 'super_admin' ||
                      existingPhase.createdBy.toString() === currentUser._id
 
     if (!canUpdate) {
@@ -186,7 +187,7 @@ export async function DELETE(
     // For now, allow super_admin and admin roles to delete phases, plus the creator
     const currentUserRole = currentUser.role as any
     const allowedRoles = ['super_admin', 'admin'];
-    const canDelete = allowedRoles.includes(currentUserRole.name) || 
+    const canDelete = allowedRoles.includes(currentUserRole.name) ||  allowedRoles.includes(currentUserRole) || 
                      existingPhase.createdBy.toString() === currentUser._id
 
     if (!canDelete) {

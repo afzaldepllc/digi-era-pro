@@ -6,6 +6,7 @@ import { usePermissions } from '@/hooks/use-permissions'
 import { useToast } from '@/hooks/use-toast'
 import { PermissionError } from '@/components/ui/error-display'
 import { ProfessionalLoader } from '../ui/professional-loader'
+import { useNavigation } from '../providers/navigation-provider'
 
 interface RouteGuardProps {
   children: React.ReactNode
@@ -32,7 +33,8 @@ export function RouteGuard({
   const { toast } = useToast()
   const [shouldRedirect, setShouldRedirect] = useState(false)
   const [hasCheckedPermissions, setHasCheckedPermissions] = useState(false)
-
+    const { navigateTo, isNavigating } = useNavigation()
+  
   useEffect(() => {
     // Don't check permissions until loading is complete and we have actually checked
     if (loading) {
@@ -58,7 +60,7 @@ export function RouteGuard({
           setShouldRedirect(true)
           // Add a delay to prevent immediate navigation conflicts
           setTimeout(() => {
-            router.push(redirectTo)
+            navigateTo(redirectTo)
           }, 200)
         }
       } else {

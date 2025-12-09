@@ -1,100 +1,64 @@
 /**
- * Utility functions for managing session and cache cleanup
+ * Utility functions for managing session cleanup
+ * Updated for server-side session management with NextAuth
  */
 
 export const SessionUtils = {
   /**
-   * Clear all authentication-related data from browser storage
+   * @deprecated Clear auth data from browser storage - NextAuth handles this automatically
    */
   clearAllAuthData(): void {
+    console.warn('clearAllAuthData is deprecated. NextAuth handles session cleanup automatically.')
+    
     if (typeof window === 'undefined') return
 
     try {
-      // Clear localStorage
-      localStorage.removeItem('logged_in_user')
-      localStorage.removeItem('user_permissions')
-      localStorage.removeItem('user_role')
-      localStorage.removeItem('user_department')
+      // Only clear legacy data that might remain from old system
+      const legacyKeys = [
+        'logged_in_user', 'user_permissions', 'user_role', 'user_department'
+      ]
       
-      // Clear any other cached user data
-      const keysToRemove = Object.keys(localStorage).filter(key => 
-        key.startsWith('user_') || 
-        key.startsWith('auth_') || 
-        key.startsWith('session_') ||
-        key.startsWith('next-auth.')
-      )
-      keysToRemove.forEach(key => localStorage.removeItem(key))
-      
-      // Clear sessionStorage
-      sessionStorage.clear()
+      legacyKeys.forEach(key => {
+        if (localStorage.getItem(key)) {
+          localStorage.removeItem(key)
+          console.log(`Cleaned up legacy key: ${key}`)
+        }
+      })
 
-      console.log('✅ All authentication data cleared from browser storage')
+      console.log('✅ Legacy authentication data cleanup completed')
     } catch (error) {
-      console.error('❌ Error clearing authentication data:', error)
+      console.error('❌ Error during legacy cleanup:', error)
     }
   },
 
   /**
-   * Validate current session and clear invalid data
+   * @deprecated Validate session - NextAuth handles session validation automatically
    */
   validateAndCleanSession(): boolean {
+    console.warn('validateAndCleanSession is deprecated. NextAuth handles session validation automatically.')
+    
     if (typeof window === 'undefined') return false
 
     try {
-      const storedUser = localStorage.getItem('logged_in_user')
-      const storedPermissions = localStorage.getItem('user_permissions')
-
-      // If we have user data but no session, clear everything
-      if (storedUser && !document.cookie.includes('next-auth.session-token')) {
-        console.warn('⚠️ Found stored user data but no valid session token, cleaning up...')
-        this.clearAllAuthData()
-        return false
-      }
-
-      // Validate stored user data structure
-      if (storedUser) {
-        const userData = JSON.parse(storedUser)
-        if (!userData.id || !userData.email) {
-          console.warn('⚠️ Invalid user data structure, cleaning up...')
-          this.clearAllAuthData()
-          return false
-        }
-      }
-
+      // Only clean up legacy data if it exists
+      this.clearAllAuthData()
       return true
     } catch (error) {
-      console.error('❌ Error validating session:', error)
-      this.clearAllAuthData()
+      console.error('❌ Error during session validation:', error)
       return false
     }
   },
 
-
   /**
-   * Initialize session validation on app start
+   * @deprecated Initialize session validation - NextAuth handles this automatically
    */
   initializeSessionValidation(): void {
+    console.warn('initializeSessionValidation is deprecated. NextAuth handles session management automatically.')
+    
     if (typeof window === 'undefined') return
 
-    // Validate session on page load
-    this.validateAndCleanSession()
-
-    // Listen for storage changes (logout in other tabs)
-    window.addEventListener('storage', (event) => {
-      if (event.key === 'logged_in_user' && event.newValue === null) {
-        // User logged out in another tab
-        console.log('🔄 Logout detected in another tab, syncing...')
-        this.clearAllAuthData()
-        window.location.href = '/auth/login'
-      }
-    })
-
-    // Periodic session validation (every 5 minutes)
-    setInterval(() => {
-      if (!this.validateAndCleanSession()) {
-        window.location.href = '/auth/login'
-      }
-    }, 5 * 60 * 1000) // 5 minutes
+    // Only perform one-time legacy cleanup
+    this.clearAllAuthData()
   }
 }
 

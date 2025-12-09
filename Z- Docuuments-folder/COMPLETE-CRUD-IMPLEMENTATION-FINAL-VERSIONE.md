@@ -1045,6 +1045,7 @@ searchable: true,
         const statusColors = {
           active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
           inactive: 'bg-muted text-muted-foreground border-border',
+          deleted: 'text-muted bg-red-600 border-white-200'
         };
 
         return (

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode,
 import { useSession, signOut } from 'next-auth/react'
 import { useDispatch } from 'react-redux'
 import { setAuth, clearAuth } from '@/store/slices/authSlice'
-import { SessionManager } from '@/lib/session/session-manager'
+import { ServerSessionManager } from '@/lib/session/server-session-manager'
 import { useRouter } from 'next/navigation'
 
 interface ProfessionalSessionContextType {
@@ -41,8 +41,8 @@ function ProfessionalSessionProviderComponent({ children }: ProfessionalSessionP
    */
   const logout = useCallback(async () => {
     try {
-      // Clear session data first (signals other tabs)
-      SessionManager.clearSession()
+      // Clean up session manager
+      ServerSessionManager.cleanup()
       
       // Clear Redux state
       dispatch(clearAuth())
@@ -67,7 +67,7 @@ function ProfessionalSessionProviderComponent({ children }: ProfessionalSessionP
    */
   const extendSession = useCallback(() => {
     if (isAuthenticated) {
-      SessionManager.updateActivity()
+      ServerSessionManager.updateActivity()
     }
   }, [isAuthenticated])
 
@@ -88,8 +88,8 @@ function ProfessionalSessionProviderComponent({ children }: ProfessionalSessionP
         sessionStart: Date.now()
       }
 
-      // Initialize session manager
-      SessionManager.initialize(sessionData)
+      // Initialize server session manager
+      ServerSessionManager.initialize()
 
       // Update Redux store
       dispatch(setAuth({
@@ -102,40 +102,27 @@ function ProfessionalSessionProviderComponent({ children }: ProfessionalSessionP
 
       setIsInitialized(true)
     } else if (status === 'unauthenticated') {
-      // Clear everything if not authenticated
-      SessionManager.clearSession()
+      // Clean up server session manager
+      ServerSessionManager.cleanup()
       dispatch(clearAuth())
       setIsInitialized(true)
     }
   }, [session, status, dispatch])
 
   /**
-   * Setup cross-tab synchronization
+   * Cross-tab synchronization is now handled automatically by NextAuth
    */
   useEffect(() => {
-    const cleanup = SessionManager.setupCrossTabSync({
-      onLogin: () => {
-        // Another tab logged in - refresh this tab's session
-        if (!session) {
-          window.location.reload()
-        }
-      },
-      onLogout: () => {
-        // Another tab logged out - logout this tab immediately
-        if (session) {
-          logout()
-        }
-      },
-      onSessionExpired: () => {
-        // Session expired due to inactivity - logout
-        if (session) {
-          logout()
-        }
+    // NextAuth handles cross-tab sync automatically via JWT tokens
+    // No manual setup needed for cross-tab communication
+    
+    return () => {
+      // Cleanup on unmount
+      if (status !== 'authenticated') {
+        ServerSessionManager.cleanup()
       }
-    })
-
-    return cleanup
-  }, [session, logout])
+    }
+  }, [status])
 
   /**
    * OPTIMIZED: Update time until expiry - less frequent checks for better performance
@@ -147,11 +134,11 @@ function ProfessionalSessionProviderComponent({ children }: ProfessionalSessionP
     }
 
     const updateTimer = () => {
-      const timeRemaining = SessionManager.getTimeUntilExpiry()
+      const timeRemaining = ServerSessionManager.getTimeUntilTimeout()
       setTimeUntilExpiry(timeRemaining)
       
-      // Auto-logout if expired
-      if (timeRemaining <= 0 && SessionManager.getSessionData()) {
+      // Auto-logout if session expires soon
+      if (timeRemaining <= 0) {
         logout()
       }
     }

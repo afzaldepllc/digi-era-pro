@@ -17,6 +17,7 @@ import GenericForm from "@/components/ui/generic-form";
 import { useNavigationLoading } from "@/hooks/use-navigation-loading";
 import { updateRoleSchema, UpdateRoleData } from "@/lib/validations/role";
 import { handleAPIError } from "@/lib/utils/api-client";
+import { useNavigation } from "@/components/providers/navigation-provider";
 
 
 export default function EditRolePage() {
@@ -25,7 +26,7 @@ export default function EditRolePage() {
   const { toast } = useToast();
   const roleId = params?.id as string;
 
-
+  const { navigateTo } = useNavigation()
   const {
     roles,
     selectedRole,
@@ -56,14 +57,14 @@ export default function EditRolePage() {
   });
 
 
-  // Load data on mount
+  // Load data once on mount — fetchRoles can change identity from hooks, so avoid
+  // adding it to the dependency array which can cause re-triggering in some cases.
   useEffect(() => {
-
-
     const loadData = async () => {
       try {
         await Promise.all([
           fetchRoles(),
+          fetchDepartments?.(),
         ]);
       } catch (error) {
         toast({
@@ -74,31 +75,38 @@ export default function EditRolePage() {
       }
     };
     loadData();
-  }, [router, fetchRoles, toast]);
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Load specific role data
+  // Load specific role data when roles / roleId change. Only set selected role
+  // when it differs to avoid unnecessary redux updates that can lead to loops.
   useEffect(() => {
-    if (roles.length > 0 && roleId) {
-      const role = roles.find((r) => r._id === roleId);
-      if (role) {
-        setSelectedRole(role);
+    if (!roleId || roles.length === 0) return;
 
-        // Ensure permissions is always an array
-        const rolePermissions = Array.isArray(role.permissions) ? role.permissions : [];
+    const role = roles.find((r) => r._id === roleId);
+    if (!role) return;
 
-        // Reset form with role data
-        form.reset({
-          name: role.name || "",
-          displayName: role.displayName || "",
-          description: role.description || "",
-          department: typeof role.department === 'string' ? role.department : role.department?._id || "",
-          hierarchyLevel: role.hierarchyLevel || 1,
-          maxUsers: role.maxUsers ? role.maxUsers.toString() : "", // Convert to string or empty string
-          status: role.status || "active",
-        });
-      }
+    // Avoid dispatching setSelectedRole if the selected role is already that role
+    // (helps prevent repeated state updates that could cause re-renders)
+    if (!selectedRole || selectedRole._id !== role._id) {
+      setSelectedRole(role);
     }
-  }, [roles, roleId, setSelectedRole, form]);
+
+    // Ensure permissions is always an array
+    const rolePermissions = Array.isArray(role.permissions) ? role.permissions : [];
+
+    // Reset form with role data
+    form.reset({
+      name: role.name || "",
+      displayName: role.displayName || "",
+      description: role.description || "",
+      department: typeof role.department === 'string' ? role.department : role.department?._id || "",
+      hierarchyLevel: role.hierarchyLevel || 1,
+      maxUsers: role.maxUsers ? role.maxUsers.toString() : "", // Convert to string or empty string
+      status: role.status || "active",
+    });
+  }, [roles, roleId, selectedRole, setSelectedRole, form]);
 
   // Handle form submission
   const onSubmit = async (data: UpdateRoleData) => {
@@ -117,43 +125,21 @@ export default function EditRolePage() {
         status: data.status,
       };
 
-      await updateRole(transformedData).unwrap();
+      await updateRole(selectedRole._id, transformedData);
 
       toast({
         title: "Success",
         description: "Role updated successfully",
       });
 
-      router.push("/roles");
+      navigateTo("/roles");
     } catch (error: any) {
       handleAPIError(error, "Failed to update role");
     }
   };
 
-  // Fetch available departments for filter
-  const fetchAvailableDepartments = useCallback(async () => {
-    try {
-      // Use allDepartments from the hook instead of fetching
-      const currentAllDepartments = allDepartments;
-      if (currentAllDepartments && currentAllDepartments.length > 0) {
-        const departmentOptions = currentAllDepartments.map((dept: any) => ({
-          value: dept._id,
-          label: dept.name,
-        })) || [];
-        setAvailableDepartments(departmentOptions);
-      }
-    } catch (error) {
-      console.error('Failed to fetch departments for filter:', error);
-      handleAPIError(error, "Failed to load departments for filtering");
-    }
-  }, []); // Remove allDepartments from dependencies to prevent infinite re-runs
-
-  // Fetch roles and departments for filters on mount
-  useEffect(() => {
-    if (availableDepartments.length === 0) {
-      fetchAvailableDepartments();
-    }
-  }, [fetchAvailableDepartments]);
+  // Ensure available departments are set from allDepartments when it changes
+  // and on mount if the data is already populated.
 
   // Update available departments when allDepartments changes
   useEffect(() => {
@@ -276,7 +262,7 @@ export default function EditRolePage() {
         {
           name: "description",
           label: "Description",
-          type: "textarea" as const,
+          type: "rich-text" as const,
           placeholder: "Describe the role's purpose and responsibilities...",
           description: "Optional description of the role's purpose and responsibilities",
           disabled: isProtectedRole,

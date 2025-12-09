@@ -129,6 +129,16 @@ export function useRoles() {
     return deleteMutation.mutateAsync(roleId)
   }, [deleteMutation])
 
+  const handleRestoreRole = useCallback(async (roleId: string) => {
+    return await updateMutation.mutateAsync({
+      id: roleId,
+      data: {
+        isDeleted: false,
+        status: 'active'
+      }
+    })
+  }, [updateMutation])
+
   // Role-specific operations
   const handleFetchRoleById = useCallback(async (roleId: string) => {
     try {
@@ -150,7 +160,7 @@ export function useRoles() {
     try {
       dispatch(setLoading(true))
       const response = await apiRequest(`/api/departments/${departmentId}/roles`)
-      const data = response.data || response
+      const data = response?.data || response || []
       dispatch(setLoading(false))
       return data
     } catch (error) {
@@ -271,6 +281,7 @@ export function useRoles() {
     updateRole: handleUpdateRole,
     updateRolePermissions: handleUpdateRolePermissions,
     deleteRole: handleDeleteRole,
+    restoreRole: handleRestoreRole,
 
     // Filters and pagination
     setFilters: handleSetFilters,
