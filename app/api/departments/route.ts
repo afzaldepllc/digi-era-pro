@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       limit: searchParams.get('limit') || '10',
       search: searchParams.get('search') || '',
       status: searchParams.get('status') || '',
+      category: searchParams.get('category') || '',
       sortBy: searchParams.get('sortBy') || 'createdAt',
       sortOrder: searchParams.get('sortOrder') || 'desc',
     }
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       limit: parseInt(queryParams.limit),
       search: queryParams.search.trim(),
       status: queryParams.status.trim(),
+      category: queryParams.category.trim(),
       sortBy: queryParams.sortBy,
       sortOrder: queryParams.sortOrder as 'asc' | 'desc',
     }
@@ -96,6 +98,11 @@ export async function GET(request: NextRequest) {
         filter.status = validatedParams.status
         console.log('status is 95', filter)
       }
+    }
+
+    // Category filter
+    if (validatedParams.category) {
+      filter.category = validatedParams.category
     }
 
     console.log('Final query before execution:', JSON.stringify(filter, null, 2))

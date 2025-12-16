@@ -103,11 +103,10 @@ const addressSchema = z.object({
 }).optional()
 
 // Social links schema
-const socialLinksSchema = z.object({
-  linkedin: urlSchema,
-  twitter: urlSchema,
-  github: urlSchema,
-}).optional()
+const socialLinksSchema = z.array(z.object({
+  linkName: z.string().min(1, "Social media platform name is required").max(50, "Platform name must not exceed 50 characters"),
+  linkUrl: urlSchema,
+})).optional()
 
 
 
@@ -222,12 +221,6 @@ export const updateUserFormSchema = z.object({
   // Emergency contact (nested structure)
   emergencyContact: emergencyContactSchema.optional(),
 
-  // Preferences (nested structure)
-  preferences: z.object({
-    theme: themeSchema.optional(),
-    language: z.string().optional(),
-    timezone: z.string().optional(),
-  }).optional(),
 }).transform((data) => {
   // Transform form data to API structure
   const transformed: any = { ...data }
@@ -368,14 +361,6 @@ export const transformApiToForm = (apiData: any) => {
     }
   }
 
-  // Keep preferences nested
-  if (apiData.preferences) {
-    transformed.preferences = {
-      theme: apiData.preferences.theme || "system",
-      language: apiData.preferences.language || "en",
-      timezone: apiData.preferences.timezone || "UTC",
-    }
-  }
 
   // Handle bio from metadata
   if (apiData.metadata?.notes) {

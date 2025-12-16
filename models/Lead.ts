@@ -15,6 +15,10 @@ export interface ILead extends Document {
     zipCode?: string
     country?: string
   }
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl?: string
+  }>
 
   // Company Details
   industry?: string
@@ -71,10 +75,6 @@ export interface ILead extends Document {
   hotLead?: boolean
   conversionProbability?: number // Percentage
 
-  // Preferences & Communication
-  preferredContactMethod?: 'email' | 'phone' | 'meeting' | 'chat'
-  timezone?: string
-  language?: string
 
   // Metadata
   tags?: string[]
@@ -156,6 +156,10 @@ const LeadSchema = new Schema<ILead>(
       zipCode: { type: String, trim: true, maxlength: [20, "Zip code cannot exceed 20 characters"] },
       country: { type: String, trim: true, maxlength: [100, "Country cannot exceed 100 characters"] },
     },
+    socialLinks: [{
+      linkName: { type: String, required: true, trim: true, maxlength: [50, "Platform name cannot exceed 50 characters"] },
+      linkUrl: { type: String, trim: true, match: [/^https?:\/\/.*/, "Link URL must be a valid URL"] },
+    }],
 
     // Company Details
     industry: {
@@ -337,21 +341,6 @@ const LeadSchema = new Schema<ILead>(
       max: [100, "Conversion probability cannot exceed 100"],
     },
 
-    // Preferences & Communication
-    preferredContactMethod: {
-      type: String,
-      enum: ['email', 'phone', 'meeting', 'chat'],
-    },
-    timezone: {
-      type: String,
-      trim: true,
-      maxlength: [50, "Timezone cannot exceed 50 characters"],
-    },
-    language: {
-      type: String,
-      trim: true,
-      maxlength: [50, "Language cannot exceed 50 characters"],
-    },
 
     // Metadata
     tags: [{

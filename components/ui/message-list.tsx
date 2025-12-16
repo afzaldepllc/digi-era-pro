@@ -15,7 +15,7 @@ import {
   Edit
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ICommunication, ITypingIndicator, IParticipant } from "@/types/communication"
+import { ICommunication, ITypingIndicator, IParticipant, IAttachment } from "@/types/communication"
 import { formatDistanceToNow, format } from "date-fns"
 import {
   DropdownMenu,
@@ -30,6 +30,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+import { IReadReceipt } from "@/types/communication"
+
 interface MessageListProps {
   messages: ICommunication[]
   typingUsers: ITypingIndicator[]
@@ -39,6 +41,8 @@ interface MessageListProps {
   onEdit?: (message: ICommunication) => void
   onDelete?: (messageId: string) => void
   className?: string
+  readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
+  participants?: IParticipant[] // For showing who read
 }
 
 export function MessageList({
@@ -49,7 +53,9 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
-  className
+  className,
+  readReceipts = [],
+  participants = []
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -75,8 +81,8 @@ export function MessageList({
               setVisibleMessages(prev => new Set([...prev, messageId]))
 
               // Mark as read if not from current user
-              const message = messages.find(m => m._id === messageId)
-              if (message && message.senderId !== currentUserId && !message.isRead && onMessageRead) {
+              const message = messages.find(m => m.id === messageId)
+              if (message && message.mongo_sender_id !== currentUserId && !message.read_receipts?.length && onMessageRead) {
                 onMessageRead(messageId)
               }
             }
@@ -105,35 +111,32 @@ export function MessageList({
       return format(messageDate, 'MMM d, HH:mm')
     }
   }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'destructive'
-      case 'medium': return 'default'
-      case 'low': return 'secondary'
-      default: return 'default'
-    }
-  }
   console.log('Rendering MessageList with messages118:', messages);
-  const renderAttachment = (attachment: string, index: number) => {
-    const fileName = attachment.split('/').pop() || attachment
-    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)
+  // file_name: string
+  // file_url?: string
+  // s3_key?: string
+  // s3_bucket?: string
+  // file_size?: number
+  // file_type?: string
+  const renderAttachment = (attachment: IAttachment, index: number) => {
+    const fileName = attachment.file_name;
+    const isImage = attachment.file_type?.startsWith('image/')       
 
     return (
       <div key={index} className="mt-2">
         {isImage ? (
           <div className="relative max-w-xs">
             <img
-              src={attachment}
+              src={attachment.file_url}
               alt={fileName}
               className="rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90"
-              onClick={() => window.open(attachment, '_blank')}
+              onClick={() => window.open(attachment.file_url, '_blank')}
             />
             <Button
               variant="secondary"
               size="sm"
               className="absolute top-2 right-2 opacity-80 hover:opacity-100"
-              onClick={() => window.open(attachment, '_blank')}
+              onClick={() => window.open(attachment.file_url, '_blank')}
             >
               <ExternalLink className="h-3 w-3" />
             </Button>
@@ -152,11 +155,22 @@ export function MessageList({
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
-    const sender = message.senderId as unknown as IParticipant
+    const sender = message.mongo_sender_id as unknown as IParticipant
+
+    // Find all read receipts for this message (excluding sender)
+    const receipts = readReceipts.filter(r => r.message_id === message.id && r.mongo_user_id !== message.mongo_sender_id)
+
+    // For current user, check if this message is read
+    const isReadByCurrentUser = receipts.some(r => r.mongo_user_id === currentUserId)
+
+    // For sender, show who has read
+    const readers = participants.filter(p =>
+      receipts.some(r => r.mongo_user_id === p.mongo_member_id)
+    )
 
     return (
       <div
-        data-message-id={message._id}
+        data-message-id={message.id}
         className={cn(
           "flex gap-3 p-3 hover:bg-muted/50 group",
           isOwn && "flex-row-reverse"
@@ -167,15 +181,15 @@ export function MessageList({
           <Avatar className="h-8 w-8">
             <AvatarImage src={sender?.avatar} alt={sender?.name} />
             <AvatarFallback className="text-xs">
-              {sender?.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+              {sender?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
             </AvatarFallback>
           </Avatar>
         </div>
 
         {/* Message content */}
-        <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}>
+        <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}> 
           {/* Header */}
-          <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}>
+          <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}> 
             <span className="font-medium text-sm">{sender?.name}</span>
 
             {sender?.role && (
@@ -184,14 +198,8 @@ export function MessageList({
               </Badge>
             )}
 
-            {message.priority !== 'medium' && (
-              <Badge variant={getPriorityColor(message.priority) as any} className="text-xs">
-                {message.priority}
-              </Badge>
-            )}
-
             <span className="text-xs text-muted-foreground">
-              {formatMessageTime(new Date(message.createdAt))}
+              {formatMessageTime(new Date(message.created_at))}
             </span>
 
             {/* Message actions (visible on hover) */}
@@ -217,7 +225,7 @@ export function MessageList({
                   )}
                   {isOwn && onDelete && (
                     <DropdownMenuItem
-                      onClick={() => onDelete(message._id)}
+                      onClick={() => onDelete(message.id)}
                       className="text-destructive"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -235,7 +243,7 @@ export function MessageList({
             isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
           )}>
             <p className="text-sm whitespace-pre-wrap break-words break-all">
-              {message.message}
+              {message.content}
             </p>
 
             {/* Attachments */}
@@ -244,29 +252,42 @@ export function MessageList({
             )}
           </div>
 
-          {/* Read receipt */}
-          <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>
+          {/* Read receipts UI */}
+          <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}> 
             {isOwn && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
-                    {message.isRead ? (
+                    {readers.length > 0 ? (
                       <CheckCheck className="h-3 w-3 text-primary" />
                     ) : (
                       <Check className="h-3 w-3" />
                     )}
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{message.isRead ? 'Read' : 'Sent'}</p>
-                    {message.readAt && (
-                      <p className="text-xs">{format(new Date(message.readAt), 'PPpp')}</p>
+                    <p>{readers.length > 0 ? `Read by ${readers.length}` : 'Sent'}</p>
+                    {readers.length > 0 && (
+                      <div className="flex flex-col gap-1 mt-1">
+                        {readers.map(r => (
+                          <span key={r.mongo_member_id} className="flex items-center gap-1">
+                            {r.name}
+                            {/* Optionally show time: */}
+                            {(() => {
+                              const receipt = receipts.find(rr => rr.mongo_user_id === r.mongo_member_id)
+                              return receipt ? (
+                                <span className="ml-1 text-muted-foreground">{format(new Date(receipt.read_at), 'PPpp')}</span>
+                              ) : null
+                            })()}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
 
-            {message.updatedAt && message.updatedAt !== message.createdAt && (
+            {message.edited_at && message.edited_at !== message.created_at && (
               <span className="italic">(edited)</span>
             )}
           </div>
@@ -291,9 +312,9 @@ export function MessageList({
             <>
               {messages.map((message) => (
                 <MessageItem
-                  key={message._id}
+                  key={message.id}
                   message={message}
-                  isOwn={(message.senderId as any)?._id === currentUserId}
+                  isOwn={message.mongo_sender_id === currentUserId}
                 />
               ))}
 

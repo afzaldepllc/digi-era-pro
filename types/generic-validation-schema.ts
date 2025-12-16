@@ -132,11 +132,6 @@ export const userValidationSchema = z.object({
     country: z.string().optional(),
     zipCode: z.string().optional(),
   }).optional(),
-  preferences: z.object({
-    theme: z.enum(["light", "dark", "system"]).default("system"),
-    language: z.string().default("en"),
-    timezone: z.string().default("UTC"),
-  }).optional(),
 });
 
 export const createUserSchema = userValidationSchema.extend({

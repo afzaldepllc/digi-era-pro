@@ -34,6 +34,7 @@ import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2';
 import { useNavigation } from "@/components/providers/navigation-provider";
 import GenericReportExporter from "@/components/shared/GenericReportExporter";
+import { PRIORITY_COLORS, STATUS_COLORS } from '@/lib/colorConstants';
 
 export default function LeadsPage() {
   const router = useRouter();
@@ -221,16 +222,8 @@ export default function LeadsPage() {
       label: 'Status',
       sortable: true,
       render: (value) => {
-        const statusColors = {
-          active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800',
-          inactive: 'bg-muted text-muted-foreground border-border',
-          qualified: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
-          unqualified: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
-          deleted: 'text-muted bg-red-600 border-white-200'
-        };
-
         return (
-          <Badge className={`${statusColors[value as keyof typeof statusColors]} border`}>
+          <Badge className={`${STATUS_COLORS[value as keyof typeof STATUS_COLORS] || STATUS_COLORS.inactive} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
         );
@@ -247,15 +240,8 @@ export default function LeadsPage() {
       label: 'Priority',
       sortable: true,
       render: (value) => {
-        const priorityColors = {
-          low: 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300 border-gray-200 dark:border-gray-800',
-          medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
-          high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300 border-orange-200 dark:border-orange-800',
-          urgent: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
-        };
-
         return (
-          <Badge className={`${priorityColors[value as keyof typeof priorityColors]} border`}>
+          <Badge className={`${PRIORITY_COLORS[value as keyof typeof PRIORITY_COLORS] || PRIORITY_COLORS.low} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
         );

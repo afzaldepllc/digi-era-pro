@@ -1,6 +1,6 @@
 # Real-Time Communication System Implementation
 
-This document outlines the complete implementation of the real-time communication system for the DepLLC CRM using Socket.io and WebRTC foundation.
+This document outlines the complete implementation of the real-time communication system for the Digi Era Pro CRM using Socket.io and WebRTC foundation.
 
 ## 🚀 Overview
 
@@ -9,9 +9,9 @@ The communication system provides comprehensive real-time messaging capabilities
 ## 📋 Features Implemented
 
 ### ✅ Core Communication Features
-- **Real-time messaging** with Socket.io
+- **Real-time messaging** 
 - **Multiple channel types**: DM, Department, Project, General, Group
-- **Message persistence** with MongoDB
+- **Message persistence** with supabase
 - **Read receipts** and delivery status
 - **Typing indicators** with auto-timeout
 - **Online presence** with heartbeat tracking

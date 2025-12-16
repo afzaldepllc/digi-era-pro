@@ -20,9 +20,8 @@ import {
   X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ChatWindowProps, CreateMessageData, ICommunication, ITypingIndicator } from "@/types/communication"
+import { ChatWindowProps, CreateMessageData, ICommunication, ITypingIndicator, IParticipant } from "@/types/communication"
 import { useCommunications } from "@/hooks/use-communications"
-import { useAuthUser } from "@/hooks/use-auth-user"
 import { format } from "date-fns"
 import {
   DropdownMenu, 
@@ -41,7 +40,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded }: ChatWindowProps) {
-  const { user: currentUser } = useAuthUser()
   const {
     selectedChannel,
     messages,
@@ -56,26 +54,27 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     setTyping,
     removeTyping,
     toggleContextPanel,
-    setError
+    setError,
+    mockCurrentUser
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
 
   // Handle typing indicators
   const handleTyping = () => {
-    if (currentUser && channelId) {
+    if (mockCurrentUser && channelId) {
       setTyping({
         channelId,
-        userId: currentUser.id,
-        userName: currentUser.name || 'Unknown',
+        userId: mockCurrentUser?._id,
+        userName: mockCurrentUser.name || 'Unknown',
         timestamp: new Date().toISOString()
       })
     }
   }
 
   const handleStopTyping = () => {
-    if (currentUser && channelId) {
-      removeTyping(channelId, currentUser.id)
+    if (mockCurrentUser && channelId) {
+      removeTyping(channelId, mockCurrentUser?._id)
     }
   }
 
@@ -128,16 +127,16 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }
 
   const getChannelTitle = () => {
-    if (selectedChannel.type === 'dm' && currentUser) {
-      const otherParticipant = selectedChannel.participants.find(p => p._id !== currentUser.id)
+    if (selectedChannel.type === 'dm' && mockCurrentUser) {
+      const otherParticipant = selectedChannel.participants.find(p => p.mongo_member_id !== mockCurrentUser._id)
       return otherParticipant?.name || 'Unknown User'
     }
     return selectedChannel.name
   }
 
   const getChannelSubtitle = () => {
-    if (selectedChannel.type === 'dm' && currentUser) {
-      const otherParticipant = selectedChannel.participants.find(p => p._id !== currentUser.id)
+    if (selectedChannel.type === 'dm' && mockCurrentUser) {
+      const otherParticipant = selectedChannel.participants.find(p => p.mongo_member_id !== mockCurrentUser._id)
       if (otherParticipant) {
         const status = otherParticipant.isOnline ? 'Online' : 'Offline'
         const role = otherParticipant.role ? ` • ${otherParticipant.role}` : ''
@@ -188,7 +187,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     <Badge variant="secondary" className="shrink-0">Client Support</Badge>
                   )}
                   
-                  {!selectedChannel.isInternal && (
+                  {!selectedChannel.is_private && (
                     <Badge variant="destructive" className="shrink-0">External</Badge>
                   )}
                 </div>
@@ -202,7 +201,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               {selectedChannel.participants.length > 2 && (
                 <div className="shrink-0">
                   <OnlineIndicator 
-                    users={selectedChannel.participants} 
+                    users={selectedChannel.participants as IParticipant[]} 
                     maxVisible={3}
                     size="sm"
                   />
@@ -348,7 +347,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
             )}
 
             {/* Messages */}
-            {!messagesLoading && currentUser && (
+            {!messagesLoading && mockCurrentUser && (
               <div className="flex-1 min-h-0 h-full">
                 {(() => {
                   const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
@@ -358,9 +357,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   console.log('ChatWindow - channelMessages length:358', channelMessages.length)
                   return (
                     <MessageList
-                      messages={messages}
+                      messages={channelMessages}
                       typingUsers={typingUsers}
-                      currentUserId={currentUser.id}
+                      currentUserId={mockCurrentUser._id}
                       onMessageRead={handleMessageRead}
                       onReply={handleReply}
                       onEdit={handleEdit}

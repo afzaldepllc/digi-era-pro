@@ -25,7 +25,7 @@ export default function EditClientPage() {
 
   const { updateClient, actionLoading, fetchClientById, selectedClient, clientByIdLoading, setSelectedClient } = useClients();
 
-  const form = useForm<UpdateClientFormData>({
+  const form = useForm({
     resolver: zodResolver(updateClientFormSchema),
     defaultValues: {
       name: "",
@@ -33,6 +33,7 @@ export default function EditClientPage() {
       phone: "",
       position: "",
       company: "",
+      website: "",
       industry: "",
       companySize: "",
       annualRevenue: "",
@@ -46,16 +47,7 @@ export default function EditClientPage() {
         zipCode: "",
         country: "",
       },
-      socialLinks: {
-        linkedin: "",
-        twitter: "",
-        github: "",
-      },
-      preferences: {
-        theme: "system",
-        language: "en",
-        timezone: "UTC",
-      },
+      socialLinks: [] as { linkName: string; linkUrl: string }[],
       notes: "",
     },
   });
@@ -70,36 +62,82 @@ export default function EditClientPage() {
   // Populate form when client data is loaded
   useEffect(() => {
     if (selectedClient) {
+      interface Address {
+        street: string;
+        city: string;
+        state: string;
+        zipCode: string;
+        country: string;
+      }
+
+      interface SocialLink {
+        linkName: string;
+        linkUrl: string;
+      }
+
+      interface SelectedClient {
+        name?: string;
+        email?: string;
+        phone?: string;
+        position?: string;
+        company?: string;
+        website?: string;
+        industry?: string;
+        companySize?: "startup" | "small" | "medium" | "large" | "enterprise";
+        annualRevenue?: string | number;
+        employeeCount?: string | number;
+        clientStatus?: string;
+        status?: string;
+        address?: Address;
+        socialLinks?: SocialLink[];
+        notes?: string;
+        _id?: string;
+      }
+
       form.reset({
-        name: selectedClient.name || "",
-        email: selectedClient.email || "",
-        phone: selectedClient.phone || "",
-        position: selectedClient.position || "",
-        company: selectedClient.company || "",
-        industry: (selectedClient as any).industry || "",
-        companySize: (selectedClient as any).companySize && ['startup', 'small', 'medium', 'large', 'enterprise'].includes((selectedClient as any).companySize) ? (selectedClient as any).companySize as "startup" | "small" | "medium" | "large" | "enterprise" : "",
-        annualRevenue: (selectedClient as any).annualRevenue ? String((selectedClient as any).annualRevenue) : "",
-        employeeCount: (selectedClient as any).employeeCount ? String((selectedClient as any).employeeCount) : "",
-        clientStatus: selectedClient.clientStatus || "qualified",
-        status: selectedClient.status || "active",
+        name: (selectedClient as SelectedClient).name || "",
+        email: (selectedClient as SelectedClient).email || "",
+        phone: (selectedClient as SelectedClient).phone || "",
+        position: (selectedClient as SelectedClient).position || "",
+        company: (selectedClient as SelectedClient).company || "",
+        website: (selectedClient as SelectedClient).website || "",
+        industry: (selectedClient as SelectedClient).industry || "",
+        companySize:
+          (selectedClient as SelectedClient).companySize &&
+          ["startup", "small", "medium", "large", "enterprise"].includes(
+        (selectedClient as SelectedClient).companySize as string
+          )
+        ? ((selectedClient as SelectedClient).companySize as
+            | "startup"
+            | "small"
+            | "medium"
+            | "large"
+            | "enterprise")
+        : "",
+        annualRevenue: (selectedClient as SelectedClient).annualRevenue
+          ? String((selectedClient as SelectedClient).annualRevenue)
+          : "",
+        employeeCount: (selectedClient as SelectedClient).employeeCount
+          ? String((selectedClient as SelectedClient).employeeCount)
+          : "",
+        clientStatus: (selectedClient as SelectedClient).clientStatus || "qualified",
+        status: (selectedClient as SelectedClient).status || "active",
         address: {
-          street: selectedClient.address?.street || "",
-          city: selectedClient.address?.city || "",
-          state: selectedClient.address?.state || "",
-          zipCode: selectedClient.address?.zipCode || "",
-          country: selectedClient.address?.country || "",
+          street: (selectedClient as SelectedClient).address?.street || "",
+          city: (selectedClient as SelectedClient).address?.city || "",
+          state: (selectedClient as SelectedClient).address?.state || "",
+          zipCode: (selectedClient as SelectedClient).address?.zipCode || "",
+          country: (selectedClient as SelectedClient).address?.country || "",
         },
-        socialLinks: {
-          linkedin: selectedClient.socialLinks?.linkedin || "",
-          twitter: selectedClient.socialLinks?.twitter || "",
-          github: selectedClient.socialLinks?.github || "",
-        },
-        preferences: {
-          theme: selectedClient.preferences?.theme || "system",
-          language: selectedClient.preferences?.language || "en",
-          timezone: selectedClient.preferences?.timezone || "UTC"
-        },
-        notes: (selectedClient as any).notes || "",
+        socialLinks: Array.isArray((selectedClient as SelectedClient).socialLinks)
+          ? ((selectedClient as SelectedClient).socialLinks as SocialLink[]).map(
+          (link: SocialLink | undefined) =>
+            link && typeof link === "object"
+          ? { linkName: link.linkName || "", linkUrl: link.linkUrl || "" }
+          : { linkName: "", linkUrl: "" }
+        )
+          : ([] as SocialLink[]),
+        notes: (selectedClient as SelectedClient).notes || "",
       });
     }
   }, [selectedClient, form]);
@@ -121,18 +159,16 @@ export default function EditClientPage() {
       console.log('Form data being sent:', data);
 
       // Clean up data
-      const cleanedData: UpdateClientData = {
+      const cleanedData = {
         ...data,
         phone: data.phone?.trim() || undefined,
         companySize: (data.companySize && data.companySize.length > 0) ? data.companySize as "startup" | "small" | "medium" | "large" | "enterprise" : undefined,
         annualRevenue: data.annualRevenue || undefined,
         employeeCount: data.employeeCount || undefined,
-        preferences: data.preferences ? {
-          // ensure required preference fields are present with sensible defaults
-          theme: data.preferences.theme ?? "system",
-          language: data.preferences.language ?? "en",
-          timezone: data.preferences.timezone ?? "UTC"
-        } : undefined,
+        socialLinks: data.socialLinks ? data.socialLinks.map(item => ({
+          linkName: item.linkName,
+          linkUrl: item.linkUrl as string,
+        })) : undefined,
       };
 
       const result = await updateClient(selectedClient._id, cleanedData);
@@ -262,7 +298,17 @@ export default function EditClientPage() {
           placeholder: "Enter company name",
           description: "Company or organization name",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
+        },
+        {
+          name: "website",
+          label: "Company Website",
+          type: "url" as const,
+          required: true,
+          placeholder: "Enter company website url",
+          description: "Company or organization website URL",
+          cols: 12,
+          mdCols: 4,
         },
         {
           name: "industry",
@@ -271,7 +317,7 @@ export default function EditClientPage() {
           placeholder: "Technology, Healthcare, Finance, etc.",
           description: "Industry or sector the company operates in",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
         },
         {
           name: "companySize",
@@ -367,70 +413,34 @@ export default function EditClientPage() {
       defaultOpen: false,
       fields: [
         {
-          name: "socialLinks.linkedin",
-          label: "LinkedIn",
-          type: "text" as const,
-          placeholder: "https://linkedin.com/in/username",
-          description: "LinkedIn profile URL",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "socialLinks.twitter",
-          label: "Twitter",
-          type: "text" as const,
-          placeholder: "https://twitter.com/username",
-          description: "Twitter profile URL",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "socialLinks.github",
-          label: "GitHub",
-          type: "text" as const,
-          placeholder: "https://github.com/username",
-          description: "GitHub profile URL",
-          cols: 12,
-          mdCols: 4,
-        },
-      ]
-    },
-    {
-      subform_title: "Preferences",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "preferences.theme",
-          label: "Theme",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-            { value: "system", label: "System" },
+          name: "socialLinks",
+          label: "Social Links",
+          type: "array-object" as const,
+          required: false,
+          fields: [
+            {
+              name: "linkName",
+              label: "Platform",
+              type: "text" as const,
+              required: true,
+              placeholder: "LinkedIn, Twitter, GitHub, etc.",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+            {
+              name: "linkUrl",
+              label: "URL",
+              type: "url" as const,
+              required: true,
+              placeholder: "https://...",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
           ],
-          description: "Preferred theme",
+          description: "Add social media profiles and links",
           cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "preferences.language",
-          label: "Language",
-          type: "text" as const,
-          placeholder: "en",
-          description: "Preferred language code",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "preferences.timezone",
-          label: "Timezone",
-          type: "text" as const,
-          placeholder: "UTC",
-          description: "Preferred timezone",
-          cols: 12,
-          mdCols: 4,
         },
       ]
     },

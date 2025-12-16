@@ -43,7 +43,7 @@ const systemRoles = [
     displayName: "Super Administrator",
     description: "Full system access with all permissions - Cannot be modified or deleted",
     hierarchyLevel: 10,
-    isSystemRole: true,
+    isSystemRole: true, // Changed to department role
     isImmutable: true,
     permissions: createPermissionSet([
       { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
@@ -72,7 +72,7 @@ const systemRoles = [
     displayName: "HR Manager",
     description: "Human Resources management with user and department oversight",
     hierarchyLevel: 8,
-    isSystemRole: true,
+    isSystemRole: true, // Changed to department role
     permissions: createPermissionSet([
       { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
       { permission: PERMISSIONS.USERS_READ, actions: ["create", "read", "update", "assign"], conditions: { subordinates: true } },
@@ -116,20 +116,98 @@ const systemRoles = [
       { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
     ])
   },
+   {
+    name: "team_member",
+    displayName: "Team Member",
+    description: "Team member with project tasks and collaboration capabilities",
+    hierarchyLevel: 5,
+    isSystemRole: false,
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
+      { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
+      { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
+      { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
+      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
+    ])
+  },
+  {
+    name: "sales_manager",
+    displayName: "Sales Manager",
+    description: "Sales leadership with project oversight and team coordination",
+    hierarchyLevel: 6,
+    isSystemRole: false,
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
+      { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
+      { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
+      { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
+      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
+    ])
+  },
+  {
+    name: "sales_closer",
+    displayName: "Sales Closer",
+    description: "Sales closing with project oversight and team coordination",
+    hierarchyLevel: 6,
+    isSystemRole: false,
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
+      { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
+      { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
+      { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
+      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
+    ])
+  },
+  {
+    name: "sales_agent",
+    displayName: "Sales Agent",
+    description: "Sales agent with project oversight and team coordination",
+    hierarchyLevel: 6,
+    isSystemRole: false,
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
+      { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
+      { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
+      { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
+      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
+    ])
+  },
+  {
+    name: "accountant",
+    displayName: "Accountant",
+    description: "Financial management and accounting operations",
+    hierarchyLevel: 5,
+    isSystemRole: false,
+    permissions: createPermissionSet([
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true, department: true } },
+      { permission: PERMISSIONS.DEPARTMENTS_READ, actions: ["read"] },
+      { permission: PERMISSIONS.ROLES_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read", "update", "assign"] },
+      { permission: PERMISSIONS.REPORTS_READ, actions: ["read", "export"] },
+      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
+    ])
+  },
   {
     name: "client",
     displayName: "Client",
-    description: "External client with limited access to project information",
+    description: "External client with limited access to client portal",
     hierarchyLevel: 1,
     isSystemRole: false,
     permissions: createPermissionSet([
-      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true, department: true } },
-      { permission: PERMISSIONS.USERS_READ, actions: ["read"], conditions: { own: true } },
-      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["read"] },
-      { permission: PERMISSIONS.DASHBOARD_READ, actions: ["read"] },
-      { permission: PERMISSIONS.REPORTS_READ, actions: ["read"], conditions: { own: true } },
+      { permission: PERMISSIONS.PROFILE_READ, actions: ["read", "update"], conditions: { own: true } },
+      { permission: PERMISSIONS.CLIENT_PORTAL_READ, actions: ["read"] },
+      { permission: PERMISSIONS.COMMUNICATIONS_READ, actions: ["create", "read"], conditions: { own: true } },
     ])
-  }
+  },
 ]
 
 export async function seedSystemRoles() {
@@ -147,7 +225,11 @@ export async function seedSystemRoles() {
     console.log(`📋 Found ${systemPermissions.length} system permissions`)
 
     // Get all departments for department-specific roles
-    const departments = await Department.find({ status: 'active' }).lean()
+    const departments = await Department.find({ status: 'active' }).lean() as unknown as Array<{
+      _id: string;
+      name: string;
+      category: 'sales' | 'support' | 'it' | 'management';
+    }>
     if (departments.length === 0) {
       throw new Error('Departments must be seeded first. Run department seeder.')
     }
@@ -167,7 +249,7 @@ export async function seedSystemRoles() {
 
     console.log(`📋 Processing ${systemRoleTemplates.length} system role templates and ${departmentRoleTemplates.length} department role templates`)
 
-    // Process system roles first (these don't need departments)
+    // Process system roles first (these don't need departments, except for specific ones)
     for (const roleData of systemRoleTemplates) {
       const existingRole = existingRoles.find(r => r.name === roleData.name && r.isSystemRole)
 
@@ -201,10 +283,20 @@ export async function seedSystemRoles() {
           console.log(`⏭️  Skipped system role (no changes): ${roleData.name}`)
         }
       } else {
+        // Assign departments to specific system roles
+        let departmentId = null
+        if (roleData.name === 'super_admin') {
+          const systemDept = departments.find(d => d.name === 'System')
+          departmentId = systemDept?._id || null
+        } else if (roleData.name === 'hr_manager') {
+          const hrDept = departments.find(d => d.name === 'HR')
+          departmentId = hrDept?._id || null
+        }
+
         // Create new system role
         const role = new Role({
           ...roleData,
-          department: null, // System roles don't belong to departments
+          department: departmentId, // Assign department for specific system roles
           status: 'active',
           metadata: {
             createdBy: 'system_seeder',
@@ -213,43 +305,60 @@ export async function seedSystemRoles() {
         })
         await role.save()
         created++
-        console.log(`✅ Created system role: ${roleData.name}`)
+        console.log(`✅ Created system role: ${roleData.name}${departmentId ? ` (assigned to ${departments.find(d => d._id.toString() === departmentId?.toString())?.name})` : ''}`)
       }
     }
 
-    // Process department roles - create one for each department
+    // Define which roles to create for each department by name
+    const departmentRolesMap: Record<string, string[]> = {
+      'Web Development': ['team_lead', 'team_member'],
+      'Graphics': ['team_lead', 'team_member'],
+      'SEO': ['team_lead', 'team_member'],
+      'GMB': ['team_lead', 'team_member'], // IT category
+      'Sales': ['team_lead', 'sales_manager', 'sales_closer', 'sales_agent'],
+      'Social Media': ['department_head', 'team_lead','team_member'],
+      'Support': ['department_head', 'team_lead', 'team_member'],
+      'Accounting': ['accountant'],
+      'General': ['client']
+    }
+
+    // Process department roles - create appropriate roles for each department based on name
     for (const department of departments) {
-      for (const roleTemplate of departmentRoleTemplates) {
-        const roleName = `${roleTemplate.name}_${department.name.toLowerCase().replace(/\s+/g, '_')}`
-        const existingDeptRole = existingRoles.find(r => r.name === roleName && !r.isSystemRole)
+      const rolesToCreate = departmentRolesMap[department.name] || []
+      
+      for (const roleName of rolesToCreate) {
+        const roleTemplate = departmentRoleTemplates.find(rt => rt.name === roleName)
+        if (!roleTemplate) continue
+
+        const existingDeptRole = existingRoles.find(r => r.name === roleName && r.department?.toString() === department._id.toString() && !r.isSystemRole)
 
         if (existingDeptRole) {
           // Check if permissions have changed for department role
           const hasChanges =
-            existingDeptRole.displayName !== `${roleTemplate.displayName} - ${department.name}` ||
-            existingDeptRole.description !== `${roleTemplate.description} (${department.name} Department)` ||
+            existingDeptRole.displayName !== roleTemplate.displayName ||
+            existingDeptRole.description !== roleTemplate.description ||
             JSON.stringify(existingDeptRole.permissions) !== JSON.stringify(roleTemplate.permissions)
 
           if (hasChanges) {
             await Role.findByIdAndUpdate(existingDeptRole._id, {
-              displayName: `${roleTemplate.displayName} - ${department.name}`,
-              description: `${roleTemplate.description} (${department.name} Department)`,
+              displayName: roleTemplate.displayName,
+              description: roleTemplate.description,
               permissions: roleTemplate.permissions,
               hierarchyLevel: roleTemplate.hierarchyLevel,
               'metadata.updatedBy': 'system_seeder'
             })
             updated++
-            console.log(`📝 Updated department role: ${roleName}`)
+            console.log(`📝 Updated department role: ${roleName} (${department.name})`)
           } else {
             skipped++
-            console.log(`⏭️  Skipped department role (no changes): ${roleName}`)
+            console.log(`⏭️  Skipped department role (no changes): ${roleName} (${department.name})`)
           }
         } else {
           // Create new department role
           const role = new Role({
             name: roleName,
-            displayName: `${roleTemplate.displayName} - ${department.name}`,
-            description: `${roleTemplate.description} (${department.name} Department)`,
+            displayName: roleTemplate.displayName,
+            description: roleTemplate.description,
             department: department._id,
             permissions: roleTemplate.permissions,
             hierarchyLevel: roleTemplate.hierarchyLevel,
@@ -261,7 +370,7 @@ export async function seedSystemRoles() {
           })
           await role.save()
           created++
-          console.log(`✅ Created department role: ${roleName}`)
+          console.log(`✅ Created department role: ${roleName} (${department.name})`)
         }
       }
     }

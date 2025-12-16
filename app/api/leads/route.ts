@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       source: searchParams.get('source') || '',
       priority: searchParams.get('priority') || '',
       createdBy: searchParams.get('createdBy') || undefined,
+      clientId: searchParams.get('clientId') || '',
       sortBy: searchParams.get('sortBy') || 'createdAt',
       sortOrder: searchParams.get('sortOrder') || 'desc',
       createdAfter: searchParams.get('createdAfter') || undefined,
@@ -91,6 +92,11 @@ export async function GET(request: NextRequest) {
     // Created by filter (for admin/manager views)
     if (validatedParams.createdBy && isSuperAdmin) {
       filter.createdBy = validatedParams.createdBy
+    }
+
+    // Client ID filter
+    if (validatedParams.clientId) {
+      filter.clientId = validatedParams.clientId
     }
 
     // Date range filters

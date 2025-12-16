@@ -4,13 +4,14 @@ import Project from "@/models/Project"
 import User from "@/models/User"
 import { createProjectFormSchema, projectQuerySchema } from "@/lib/validations/project"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 import mongoose from 'mongoose'
 
 // GET /api/projects - List with pagination and filtering
 export async function GET(request: NextRequest) {
   try {
     // Security & Authentication - Support team can read projects
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'projects', 'read')
 
     // Parse & validate query parameters
     const searchParams = request.nextUrl.searchParams
@@ -52,13 +53,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (validatedParams.departmentId) {
-      filter.departmentIds = new mongoose.Types.ObjectId(validatedParams.departmentId)
+      filter.departmentIds = { $in: [new mongoose.Types.ObjectId(validatedParams.departmentId)] }
     }
 
     // Department-based filtering for non-support users
     if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-      filter.departmentIds = user.departmentId
+      filter.departmentIds = { $in: [user.departmentId] }
     }
+
+    // Apply soft delete filter - only super admins can see deleted projects
+    const finalFilter = addSoftDeleteFilter(filter, isSuperAdmin, true)
 
     // Build sort
     const sort: any = {}
@@ -67,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Execute parallel queries with automatic connection management and caching
     const [projectsRaw, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
-        return await Project.find(filter)
+        return await Project.find(finalFilter)
           .populate('client', 'name email status')
           .populate('departments', 'name status')
           .populate('creator', 'name email')
@@ -87,12 +91,12 @@ export async function GET(request: NextRequest) {
       }, `projects-list-${JSON.stringify({ filter, sort, page: validatedParams.page, limit: validatedParams.limit })}`, 60000), // 1-minute cache
 
       executeGenericDbQuery(async () => {
-        return await Project.countDocuments(filter)
-      }, `projects-count-${JSON.stringify(filter)}`, 60000), // 1-minute cache
+        return await Project.countDocuments(finalFilter)
+      }, `projects-count-${JSON.stringify(finalFilter)}`, 60000), // 1-minute cache
 
       executeGenericDbQuery(async () => {
         const pipeline = [
-          { $match: filter },
+          { $match: finalFilter },
           {
             $group: {
               _id: null,

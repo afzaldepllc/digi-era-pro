@@ -9,7 +9,7 @@ import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import CustomModal from "@/components/ui/custom-modal";
-import { Client, ClientFilters, ClientSort } from "@/types";
+import { Client, ClientFilters, ClientSort, Project } from "@/types";
 import { Building2, Users, User, Mail, Phone, FolderPlus, MapPin, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ import Swal from 'sweetalert2';
 import { handleAPIError } from "@/lib/utils/api-client";
 import { useNavigation } from "@/components/providers/navigation-provider";
 import GenericReportExporter from "@/components/shared/GenericReportExporter";
+import { STATUS_COLORS } from '@/lib/colorConstants';
 
 export default function ClientsPage() {
   const router = useRouter();
@@ -89,6 +90,13 @@ export default function ClientsPage() {
     search: filters.search || '',
     status: filters.status || 'all',
   }), [filters.search, filters.status]);
+  const navigateToProject = useCallback((projectId: string) => {
+    // Navigate to edit tab of project detail page
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('project-details-active-tab', 'overview');
+    }
+    navigateTo(`/projects/${projectId}`);
+  }, [navigateTo]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: Record<string, any>) => {
@@ -153,18 +161,32 @@ export default function ClientsPage() {
       label: 'Status',
       sortable: true,
       render: (value) => {
-        const statusColors = {
-          qualified: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
-          active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800',
-          unqualified: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
-          inactive: 'bg-muted text-muted-foreground border-border',
-          deleted: 'text-muted bg-red-600 border-white-200',
-        };
-
         return (
-          <Badge className={`${statusColors[value as keyof typeof statusColors]} border`}>
+          <Badge className={`${STATUS_COLORS[value as keyof typeof STATUS_COLORS] || STATUS_COLORS.inactive} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
+        );
+      },
+    },
+    {
+      key: "projects" as any,
+      label: "Projects",
+      render: (value: any, row: Client) => {
+        return (
+          <div className="flex flex-wrap gap-1">
+            {row.projects?.length == 0 && (<span className="text-muted-foreground">No projects yet</span>
+            )}
+            {row.projects?.slice(0, 2).map((project) => (
+              <Badge onClick={() => navigateToProject(project._id)} key={project._id} variant="outline" className="text-xs cursor-pointer hover:bg-accent hover:text-accent-foreground">
+                {project.name}
+              </Badge>
+            ))}
+            {(row.projects?.length || 0) > 2 && (
+              <Badge variant="outline" className="text-xs">
+                +{(row.projects?.length || 0) - 2} more
+              </Badge>
+            )}
+          </div>
         );
       },
     },
@@ -201,7 +223,7 @@ export default function ClientsPage() {
       const params = new URLSearchParams();
       params.set('clientId', client._id);
       params.set('prefill', 'true');
-
+      
       navigateTo(`/projects/add?${params.toString()}`);
 
     } catch (error: any) {
@@ -220,7 +242,7 @@ export default function ClientsPage() {
       label: "Create Project",
       icon: <FolderPlus className="h-4 w-4" />,
       onClick: handleCreateProjectFromClient,
-      disabled: (client: Client) => client.status !== 'qualified',
+      disabled: (client: Client) => client?.leadId?._id == '' || (client as any).projects.length !=0,
       hasPermission: () => canCreate('projects'),
       hideIfNoPermission: true,
     },
@@ -453,7 +475,6 @@ export default function ClientsPage() {
       }
     ];
   }, [stats]);
-
   return (
     <div className="space-y-6">
       <PageHeader

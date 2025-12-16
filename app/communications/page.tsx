@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
 import { useDepartments } from "@/hooks/use-departments"
 import { usePermissions } from "@/hooks/use-permissions"
-import { useUsers } from "@/hooks/use-users"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -50,7 +49,7 @@ export default function CommunicationsPage() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
   const { canCreate } = usePermissions()
   const lastChannelParam = useRef<string | null>(null)
-  
+ 
   // Department integration for filtering
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([])
   const { allDepartments } = useDepartments()
@@ -70,7 +69,9 @@ export default function CommunicationsPage() {
     createChannel,
     setError,
     setFilters,
-    filters
+    filters,
+    mockUsers,
+    mockCurrentUser
   } = useCommunications()
   
   // Handle URL params for direct channel access
@@ -162,17 +163,16 @@ export default function CommunicationsPage() {
 
   const handleDepartmentFilter = (departmentId: string) => {
     if (departmentId === 'all') {
-      setFilters({ ...filters, departmentId: undefined })
+      setFilters({ ...filters, mongoDepartmentId: undefined })
     } else {
-      setFilters({ ...filters, departmentId })
+      setFilters({ ...filters, mongoDepartmentId: departmentId })
     }
   }
 
   const [channelName, setChannelName] = useState("")
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   // const [users, setUsers] = useState<{ _id: string, name: string, email: string }[]>([])
-  const { users } = useUsers()
-  const [chat_users, setChatUsers] = useState<any[]>(users)
+  const [chat_users, setChatUsers] = useState<any[]>(mockUsers)
   const [usersLoading, setUsersLoading] = useState(false)
 
 
@@ -202,7 +202,7 @@ export default function CommunicationsPage() {
                   channels={channels}
                   activeChannelId={activeChannelId}
                   onChannelSelect={handleChannelSelect}
-                  currentUserId={currentUser?._id || ''}
+                  currentUserId={mockCurrentUser?._id || ''}
                   onCreateChannel={handleCreateChannel}
                   loading={loading}
                 />
@@ -266,7 +266,7 @@ export default function CommunicationsPage() {
             channels={channels}
             activeChannelId={activeChannelId}
             onChannelSelect={handleChannelSelect}
-            currentUserId={currentUser?._id || ''}
+            currentUserId={mockCurrentUser?._id || ''}
             onCreateChannel={handleCreateChannel}
             loading={loading}
           />
@@ -361,15 +361,16 @@ export default function CommunicationsPage() {
               try {
                 const channel = await createChannel({
                   type: 'dm',
-                  participants: [userId]
+                  participants: [userId],
+                  is_private: true
                 })
 
                 if (channel) {
                   setIsCreateChannelOpen(false)
-                  selectChannel(channel.channelId)
+                  selectChannel(channel.id)
                   // Update URL
                   const url = new URL(window.location.href)
-                  url.searchParams.set('channel', channel.channelId)
+                  url.searchParams.set('channel', channel.id)
                   window.history.replaceState({}, '', url.toString())
                 }
               } catch (error) {

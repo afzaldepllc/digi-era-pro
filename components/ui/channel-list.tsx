@@ -74,15 +74,15 @@ export function ChannelList({
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
       // For DM, show the other participant's name
-      const otherParticipant = channel.participants.find(p => p._id !== currentUserId)
+      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
-    return channel.name
+    return channel.name || 'Unnamed Channel'
   }
 
   const getChannelSubtitle = (channel: IChannel) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find(p => p._id !== currentUserId)
+      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
       return otherParticipant?.role || otherParticipant?.userType || ''
     }
     
@@ -99,7 +99,7 @@ export function ChannelList({
 
   const getChannelAvatar = (channel: IChannel): IParticipant | null => {
     if (channel.type === 'dm') {
-      return channel.participants.find(p => p._id !== currentUserId) || null
+      return channel.participants.find(p => p.mongo_member_id !== currentUserId) as IParticipant || null
     }
     return null
   }
@@ -117,7 +117,7 @@ export function ChannelList({
       const matchesParticipants = channel.participants.some(p => 
         p.name.toLowerCase().includes(query)
       )
-      const matchesLastMessage = channel.lastMessage?.message.toLowerCase().includes(query)
+      const matchesLastMessage = channel.last_message?.content.toLowerCase().includes(query)
       
       if (!matchesName && !matchesParticipants && !matchesLastMessage) {
         return false
@@ -133,15 +133,15 @@ export function ChannelList({
   })
 
   const ChannelItem = ({ channel }: { channel: IChannel }) => {
-    const isActive = channel.channelId === activeChannelId
+    const isActive = channel.id === activeChannelId
     const avatar = getChannelAvatar(channel)
     const displayName = getChannelDisplayName(channel)
     const subtitle = getChannelSubtitle(channel)
-    const hasUnread = channel.unreadCount > 0
+    const hasUnread = (channel.unreadCount || 0) > 0
 
     return (
       <div
-        onClick={() => onChannelSelect(channel.channelId)}
+        onClick={() => onChannelSelect(channel.id)}
         className={cn(
           "flex items-center gap-4 p-2 cursor-pointer transition-all duration-300 rounded-md group relative",
           "hover:shadow-lg hover:scale-[1.02]",
@@ -174,7 +174,7 @@ export function ChannelList({
 
         {/* Channel info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between">
             <h3 className={cn(
               "font-semibold text-base truncate tracking-tight transition-colors",
               hasUnread && "font-bold text-primary",
@@ -183,12 +183,12 @@ export function ChannelList({
               {displayName}
             </h3>
             
-            {channel.lastMessage && (
+            {channel.last_message && (
               <span className={cn(
                 "text-xs font-medium ml-3 shrink-0 transition-colors",
                 hasUnread ? "text-primary" : "text-muted-foreground"
               )}>
-                {formatLastMessageTime(channel.lastMessage.createdAt)}
+                {formatLastMessageTime(channel.last_message.created_at)}
               </span>
             )}
           </div>
@@ -196,12 +196,12 @@ export function ChannelList({
           <div className="flex items-center justify-between">
             {/* Subtitle or last message */}
             <div className="flex-1 min-w-0">
-              {channel.lastMessage ? (
+              {channel.last_message ? (
                 <p className={cn(
                   "text-sm truncate leading-tight transition-colors",
                   hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
                 )}>
-                  {channel.lastMessage.message}
+                  {channel.last_message.content}
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground/60 font-medium">
@@ -216,18 +216,18 @@ export function ChannelList({
                 variant="default" 
                 className="ml-3 h-6 min-w-[24px] flex items-center justify-center text-xs font-bold bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md animate-pulse hover:animate-none transition-all hover:scale-110"
               >
-                {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
+                {(channel.unreadCount || 0) > 99 ? '99+' : (channel.unreadCount || 0)}
               </Badge>
             )}
           </div>
 
           {/* Channel type indicator */}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-1">
             <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 bg-gradient-to-r from-background to-accent/20 border-accent/30">
               {channel.type === 'dm' ? 'Direct' : channel.type === 'client-support' ? 'Support' : channel.type.replace('-', ' ')}
             </Badge>
             
-            {!channel.isInternal && (
+            {!channel.is_private && (
               <Badge variant="secondary" className="text-xs">
                 External
               </Badge>
@@ -344,14 +344,14 @@ export function ChannelList({
               <>
                 {/* Unread channels first */}
                 {filteredChannels
-                  .filter(channel => channel.unreadCount > 0)
+                  .filter(channel => (channel.unreadCount || 0) > 0)
                   .map((channel) => (
-                    <ChannelItem key={channel._id} channel={channel} />
+                    <ChannelItem key={channel.id} channel={channel} />
                   ))
                 }
                 
                 {/* Separator if there are both unread and read channels */}
-                {filteredChannels.some(c => c.unreadCount > 0) && 
+                {filteredChannels.some(c => (c.unreadCount || 0) > 0) && 
                  filteredChannels.some(c => c.unreadCount === 0) && (
                   <div className="py-3 px-2">
                     <div className="relative">
@@ -369,7 +369,7 @@ export function ChannelList({
                 {filteredChannels
                   .filter(channel => channel.unreadCount === 0)
                   .map((channel) => (
-                    <ChannelItem key={channel._id} channel={channel} />
+                    <ChannelItem key={channel.id} channel={channel} />
                   ))
                 }
               </>

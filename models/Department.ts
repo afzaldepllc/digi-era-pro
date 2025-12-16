@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose'
 
 export interface IDepartment extends Document {
   name: string
+  category: 'sales' | 'support' | 'it' | 'management'
   description?: string
   status: 'active' | 'inactive' | 'deleted'
   createdAt: Date
@@ -19,6 +20,13 @@ const DepartmentSchema = new Schema<IDepartment>({
     trim: true,
     maxlength: [100, "Name cannot exceed 100 characters"],
     unique: true, // This already creates an index, so remove index: true
+  },
+  category: {
+    type: String,
+    required: [true, "Department category is required"],
+    trim: true,
+    maxlength: [100, "Category cannot exceed 100 characters"],
+    enum: ['sales', 'support', 'it', 'management'],
   },
   description: {
     type: String,
@@ -54,6 +62,7 @@ const DepartmentSchema = new Schema<IDepartment>({
 
 // Compound indexes for better query performance
 DepartmentSchema.index({ status: 1, createdAt: -1 })
+DepartmentSchema.index({ category: 1, createdAt: -1 })
 
 // Text search index
 DepartmentSchema.index({

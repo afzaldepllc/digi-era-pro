@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
-import { useSocket } from '@/components/providers/socket-provider'
+import type { User } from '@/types'
 import {
   setActiveChannel,
   clearActiveChannel,
@@ -27,12 +27,6 @@ import {
   clearNotifications,
   resetState
 } from '@/store/slices/communicationSlice'
-import {
-  useGenericQuery,
-  useGenericCreate,
-  useGenericUpdate,
-  type UseGenericQueryOptions,
-} from './use-generic-query'
 import type {
   FetchMessagesParams,
   CreateMessageData,
@@ -45,11 +39,905 @@ import type {
   IChannel
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
+import { apiRequest } from '@/lib/utils/api-client'
+import { getRealtimeManager } from '@/lib/realtime-manager'
+const mockChannels: IChannel[] = [
+  // 1. General Channel - Company-wide
+  {
+    id: '1',
+    type: 'group', // Changed from 'general'
+    name: 'General',
+    avatar_url: undefined,
+    mongo_department_id: undefined,
+    mongo_project_id: undefined,
+    mongo_creator_id: 'user1',
+    is_private: false,
+    member_count: 3,
+    last_message_at: new Date(Date.now() - 3600000).toISOString(),
+    participants: [
+      {
+        channel_id: '1',
+        mongo_member_id: 'user1',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 86400000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 86400000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'John Doe',
+        email: 'john@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '1',
+        mongo_member_id: 'user2',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 84000000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 86400000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'User',
+        name: 'Jane Smith',
+        email: 'jane@example.com',
+        avatar: undefined,
+        isOnline: false
+      },
+      {
+        channel_id: '1',
+        mongo_member_id: 'user3',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 3600000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'User',
+        name: 'Bob Johnson',
+        email: 'bob@example.com',
+        avatar: undefined,
+        isOnline: true
+      }
+    ],
+    last_message: {
+      id: 'msg1-3',
+      mongo_sender_id: 'user3',
+      channel_id: '1',
+      content: 'Great work on the Q4 initiatives everyone! 🚀',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 3600000).toISOString()
+    } as ICommunication,
+    created_at: new Date(Date.now() - 2592000000).toISOString(),
+    updated_at: new Date(Date.now() - 3600000).toISOString()
+  },
+
+  // 2. Department Channel - IT Department
+  {
+    id: '2',
+    type: 'department',
+    name: 'IT Department',
+    avatar_url: undefined,
+    mongo_department_id: 'dept1',
+    mongo_project_id: undefined,
+    mongo_creator_id: 'user1',
+    is_private: false,
+    member_count: 2,
+    last_message_at: new Date(Date.now() - 1800000).toISOString(),
+    participants: [
+      {
+        channel_id: '2',
+        mongo_member_id: 'user1',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 14400000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'John Doe',
+        email: 'john@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '2',
+        mongo_member_id: 'user3',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 1800000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'User',
+        name: 'Bob Johnson',
+        email: 'bob@example.com',
+        avatar: undefined,
+        isOnline: true
+      }
+    ],
+    last_message: {
+      id: 'msg2-3',
+      mongo_sender_id: 'user3',
+      channel_id: '2',
+      content: 'Server maintenance scheduled for tonight at 10 PM',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 1800000).toISOString()
+    } as ICommunication,
+    created_at: new Date(Date.now() - 2592000000).toISOString(),
+    updated_at: new Date(Date.now() - 1800000).toISOString()
+  },
+
+  // 3. Department Channel - Sales Department
+  {
+    id: '3',
+    type: 'department',
+    name: 'Sales Department',
+    avatar_url: undefined,
+    mongo_department_id: 'dept2',
+    mongo_project_id: undefined,
+    mongo_creator_id: 'user2',
+    is_private: false,
+    member_count: 2,
+    last_message_at: new Date(Date.now() - 7200000).toISOString(),
+    unreadCount: 0,
+    participants: [
+      {
+        channel_id: '3',
+        mongo_member_id: 'user2',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 7200000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'Jane Smith',
+        email: 'jane@example.com',
+        avatar: undefined,
+        isOnline: false
+      },
+      {
+        channel_id: '3',
+        mongo_member_id: 'user4',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 7200000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 259200000).toISOString(),
+        mongo_invited_by_id: 'user2',
+        userType: 'User',
+        name: 'Alice Brown',
+        email: 'alice@example.com',
+        avatar: undefined,
+        isOnline: true
+      }
+    ],
+    last_message: {
+      id: 'msg3-1',
+      mongo_sender_id: 'user2',
+      channel_id: '3',
+      content: 'New sales targets for Q1 have been set!',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      readAt: new Date(Date.now() - 7200000).toISOString(),
+      created_at: new Date(Date.now() - 7200000).toISOString(),
+    } as ICommunication,
+    created_at: new Date(Date.now() - 2592000000).toISOString(),
+    updated_at: new Date(Date.now() - 7200000).toISOString()
+  },
+
+  // 4. Project Channel - Project Alpha
+  {
+    id: '4',
+    type: 'project',
+    name: 'Project Alpha',
+    avatar_url: undefined,
+    mongo_department_id: undefined,
+    mongo_project_id: 'proj1',
+    mongo_creator_id: 'user1',
+    is_private: false,
+    member_count: 3,
+    last_message_at: new Date(Date.now() - 3600000).toISOString(),
+    unreadCount: 1,
+    participants: [
+      {
+        channel_id: '4',
+        mongo_member_id: 'user1',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 3600000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 1209600000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'John Doe',
+        email: 'john@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '4',
+        mongo_member_id: 'user3',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 3600000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 1209600000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'User',
+        name: 'Bob Johnson',
+        email: 'bob@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '4',
+        mongo_member_id: 'user5',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 3600000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'Client',
+        name: 'Client One',
+        email: 'client1@example.com',
+        avatar: undefined,
+        isOnline: false
+      }
+    ],
+    last_message: {
+      id: 'msg4-1',
+      mongo_sender_id: 'user1',
+      channel_id: '4',
+      content: 'Project Alpha kickoff meeting is scheduled for tomorrow',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      read_receipts: [],
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+    } as ICommunication,
+    created_at: new Date(Date.now() - 1209600000).toISOString(),
+    updated_at: new Date(Date.now() - 3600000).toISOString()
+  },
+
+  // 5. DM Channel - User to User
+  {
+    id: '5',
+    type: 'dm',
+    name: undefined, // DMs don't have names
+    avatar_url: undefined,
+    mongo_department_id: undefined,
+    mongo_project_id: undefined,
+    mongo_creator_id: 'user1',
+    is_private: true,
+    member_count: 2,
+    last_message_at: new Date(Date.now() - 10800000).toISOString(),
+    unreadCount: 0,
+    participants: [
+      {
+        channel_id: '5',
+        mongo_member_id: 'user1',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 10800000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 2592000000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'John Doe',
+        email: 'john@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '5',
+        mongo_member_id: 'user2',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 10800000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 2592000000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'User',
+        name: 'Jane Smith',
+        email: 'jane@example.com',
+        avatar: undefined,
+        isOnline: false
+      }
+    ],
+    last_message: {
+      id: 'msg5-1',
+      mongo_sender_id: 'user2',
+      channel_id: '5',
+      content: 'Hey John, can we discuss the project timeline?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      readAt: new Date(Date.now() - 10800000).toISOString(),
+      created_at: new Date(Date.now() - 10800000).toISOString(),
+    } as ICommunication,
+    created_at: new Date(Date.now() - 2592000000).toISOString(),
+    updated_at: new Date(Date.now() - 10800000).toISOString()
+  },
+
+  // 6. Client Support Channel - Support Agent to Client
+  {
+    id: '550e8400-e29b-41d4-a716-446655440005',
+    type: 'dm',
+    name: undefined, // DMs don't have names
+    avatar_url: undefined,
+    mongo_department_id: undefined,
+    mongo_project_id: 'proj1',
+    mongo_creator_id: 'user1',
+    is_private: true,
+    member_count: 2,
+    last_message_at: new Date(Date.now() - 1800000).toISOString(),
+    unreadCount: 1,
+    participants: [
+      {
+        channel_id: '550e8400-e29b-41d4-a716-446655440005',
+        mongo_member_id: 'user1',
+        role: 'admin',
+        last_read_at: new Date(Date.now() - 86400000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: undefined,
+        userType: 'User',
+        name: 'John Doe',
+        email: 'john@example.com',
+        avatar: undefined,
+        isOnline: true
+      },
+      {
+        channel_id: '550e8400-e29b-41d4-a716-446655440005',
+        mongo_member_id: 'user5',
+        role: 'member',
+        last_read_at: new Date(Date.now() - 1800000).toISOString(),
+        is_muted: false,
+        notification_level: 'all',
+        joined_at: new Date(Date.now() - 604800000).toISOString(),
+        mongo_invited_by_id: 'user1',
+        userType: 'Client',
+        name: 'Client One',
+        email: 'client1@example.com',
+        avatar: undefined,
+        isOnline: false
+      }
+    ],
+    last_message: {
+      id: 'msg6-5',
+      mongo_sender_id: 'user5',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'When can I expect the next update?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      read_receipts: [],
+      created_at: new Date(Date.now() - 1800000).toISOString(),
+    } as ICommunication,
+    created_at: new Date(Date.now() - 604800000).toISOString(),
+    updated_at: new Date(Date.now() - 1800000).toISOString()
+  }
+]
+
+const mockMessages: Record<string, ICommunication[]> = {
+  // General Channel Messages
+  '1': [
+    {
+      id: 'msg1-1',
+      mongo_sender_id: 'user1',
+      channel_id: '1',
+      content: 'Welcome to the general channel! 👋',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'msg1-2',
+      mongo_sender_id: 'user2',
+      channel_id: '1',
+      content: 'Hello everyone! Looking forward to collaborating 😊',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 84000000).toISOString(),
+    },
+    {
+      id: 'msg1-3',
+      mongo_sender_id: 'user3',
+      channel_id: '1',
+      content: 'Great work on the Q4 initiatives everyone! 🚀',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+    }
+  ],
+
+  // Department IT Channel Messages
+  '2': [
+    {
+      id: 'msg2-1',
+      mongo_sender_id: 'user1',
+      channel_id: '2',
+      content: 'System upgrade completed successfully',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 14400000).toISOString(),
+    },
+    {
+      id: 'msg2-2',
+      mongo_sender_id: 'user3',
+      channel_id: '2',
+      content: 'All tests passed. Ready for production deployment.',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 10800000).toISOString(),
+    },
+    {
+      id: 'msg2-3',
+      mongo_sender_id: 'user3',
+      channel_id: '2',
+      content: 'Server maintenance scheduled for tonight at 10 PM',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 1800000).toISOString(),
+    }
+  ],
+
+  // Department Sales Channel Messages
+  '3': [
+    {
+      id: 'msg3-1',
+      mongo_sender_id: 'user2',
+      channel_id: '3',
+      content: 'Q4 targets have been set. Focus on enterprise deals.',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 18000000).toISOString(),
+    },
+    {
+      id: 'msg3-2',
+      mongo_sender_id: 'user4',
+      channel_id: '3',
+      content: 'Already have 3 hot leads for this quarter',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 14400000).toISOString(),
+    },
+    {
+      id: 'msg3-3',
+      mongo_sender_id: 'user4',
+      channel_id: '3',
+      content: 'Updated Q4 sales targets - please review',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 7200000).toISOString(),
+    }
+  ],
+
+  // Project Alpha Channel Messages
+  '4': [
+    {
+      id: 'msg4-1',
+      mongo_sender_id: 'user1',
+      channel_id: '4',
+      content: 'Project kickoff - Welcome to Project Alpha team!',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 1209600000).toISOString(),
+    },
+    {
+      id: 'msg4-2',
+      mongo_sender_id: 'user3',
+      channel_id: '4',
+      content: 'Backend APIs ready for integration testing',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 604800000).toISOString(),
+    },
+    {
+      id: 'msg4-3',
+      mongo_sender_id: 'user1',
+      channel_id: '4',
+      content: 'Great progress! Let\'s sync up tomorrow at 2 PM',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 432000000).toISOString(),
+    },
+    {
+      id: 'msg4-4',
+      mongo_sender_id: 'user5',
+      channel_id: '4',
+      content: 'Can you provide the latest version of the design specs?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 259200000).toISOString(),
+    },
+    {
+      id: 'msg4-5',
+      mongo_sender_id: 'user3',
+      channel_id: '4',
+      content: 'Feature development 85% complete',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 3600000).toISOString()
+    }
+  ],
+
+  // DM User1-User2 Channel Messages
+  '5': [
+    {
+      id: 'msg5-1',
+      mongo_sender_id: 'user1',
+      channel_id: '5',
+      content: 'Hey Jane, do you have time for a quick sync?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 18000000).toISOString(),
+    },
+    {
+      id: 'msg5-2',
+      mongo_sender_id: 'user2',
+      channel_id: '5',
+      content: 'Sure! I\'ll be free in 10 minutes',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 14400000).toISOString(),
+    },
+    {
+      id: 'msg5-3',
+      mongo_sender_id: 'user1',
+      channel_id: '5',
+      content: 'Perfect! Let me know if you need any other resources',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 10800000).toISOString(),
+    },
+    {
+      id: 'msg5-4',
+      mongo_sender_id: 'user1',
+      channel_id: '5',
+      content: 'Let me know if you need any updates',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 10800000).toISOString(),
+    }
+  ],
+
+  // Client Support Channel Messages
+  '550e8400-e29b-41d4-a716-446655440005': [
+    {
+      id: 'msg6-1',
+      mongo_sender_id: 'user1',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'Welcome! Thanks for choosing us. How can I help you today?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 604800000).toISOString(),
+    },
+    {
+      id: 'msg6-2',
+      mongo_sender_id: 'user5',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'Hi! I need help with setting up the integration',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 604800000).toISOString(),
+    },
+    {
+      id: 'msg6-3',
+      mongo_sender_id: 'user1',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'No problem! Let me guide you through the setup process.',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 432000000).toISOString(),
+    },
+    {
+      id: 'msg6-4',
+      mongo_sender_id: 'user1',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'I\'ve sent you the documentation. Check your email!',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'msg6-5',
+      mongo_sender_id: 'user5',
+      channel_id: '550e8400-e29b-41d4-a716-446655440005',
+      content: 'When can I expect the next update?',
+      content_type: 'text',
+      thread_id: undefined,
+      reply_count: 0,
+      mongo_mentioned_user_ids: [],
+      is_edited: false,
+      edited_at: undefined,
+      created_at: new Date(Date.now() - 1800000).toISOString(),
+    }
+  ]
+}
+
+// Mock users data for the user directory
+const mockUsers: User[] = [
+  {
+    _id: 'user1',
+    name: 'John Doe',
+    email: 'john@example.com',
+    role: 'Admin',
+    avatar: undefined,
+    phone: undefined,
+    department: {
+      _id: 'dept1',
+      name: 'System',
+      category: 'it' as const,
+      status: 'active' as const
+    },
+    position: 'Administrator',
+    status: 'active' as const,
+    permissions: ['read', 'write', 'delete'],
+    isClient: false,
+    emailVerified: true,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  {
+    _id: 'user2',
+    name: 'Jane Smith',
+    email: 'jane@example.com',
+    role: 'Manager',
+    avatar: undefined,
+    phone: undefined,
+    department: {
+      _id: 'dept2',
+      name: 'Sales',
+      category: 'sales' as const,
+      status: 'active' as const
+    },
+    position: 'Sales Manager',
+    status: 'active' as const,
+    permissions: ['read', 'write'],
+    isClient: false,
+    emailVerified: true,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  {
+    _id: 'user3',
+    name: 'Bob Johnson',
+    email: 'bob@example.com',
+    role: 'Developer',
+    avatar: undefined,
+    phone: undefined,
+    department: {
+      _id: 'dept1',
+      name: 'IT',
+      category: 'it' as const,
+      status: 'active' as const
+    },
+    position: 'Senior Developer',
+    status: 'active' as const,
+    permissions: ['read', 'write'],
+    isClient: false,
+    emailVerified: true,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  {
+    _id: 'user4',
+    name: 'Alice Brown',
+    email: 'alice@example.com',
+    role: 'Employee',
+    avatar: undefined,
+    phone: undefined,
+    department: {
+      _id: 'dept3',
+      name: 'Support',
+      category: 'support' as const,
+      status: 'active' as const
+    },
+    position: 'Support Agent',
+    status: 'active' as const,
+    permissions: ['read'],
+    isClient: false,
+    emailVerified: true,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  // Client User
+  {
+    _id: 'user5',
+    name: 'Client One',
+    email: 'client1@example.com',
+    role: 'Client',
+    avatar: undefined,
+    phone: undefined,
+    department: {
+      _id: 'dept0',
+      name: 'Clients',
+      category: 'clients' as const,
+      status: 'active' as const
+    },
+    position: 'Client',
+    status: 'active' as const,
+    permissions: ['read'],
+    isClient: true,
+    emailVerified: true,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+]
+
+// Mock current user
+const mockCurrentUser: User = {
+  _id: 'user1',
+  name: 'John Doe',
+  email: 'john@example.com',
+  role: 'Admin',
+  avatar: undefined,
+  phone: undefined,
+  department: {
+    _id: 'dept1',
+    name: 'IT',
+    category: 'it' as const,
+    status: 'active' as const
+  },
+  position: 'System Administrator',
+  status: 'active' as const,
+  permissions: ['read', 'write', 'admin'],
+  isClient: false,
+  emailVerified: true,
+  phoneVerified: false,
+  twoFactorEnabled: false,
+  createdAt: new Date(),
+  updatedAt: new Date()
+}
 
 export function useCommunications() {
   const dispatch = useAppDispatch()
-  const { socket, isConnected } = useSocket()
   const { toast } = useToast()
+  const realtimeManager = getRealtimeManager()
 
   const {
     channels,
@@ -72,429 +960,292 @@ export function useCommunications() {
     notifications
   } = useAppSelector((state) => state.communications)
 
-  // Define options for generic hooks - Channels
-  const channelOptions: UseGenericQueryOptions<IChannel> = useMemo(() => ({
-    entityName: 'channels',
-    baseUrl: '/api/communications/channels',
-    reduxDispatchers: {
-      setEntities: (entities) => dispatch(setChannels(entities as IChannel[])),
-      setLoading: (loading) => dispatch(setLoading(loading)),
-      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
-      setError: (error) => dispatch(setError(error)),
-      clearError: () => dispatch(clearError()),
-    },
-  }), [dispatch])
-
-  // Define options for generic hooks - Messages
-  const messageOptions: UseGenericQueryOptions<ICommunication> = useMemo(() => ({
-    entityName: 'messages',
-    baseUrl: '/api/communications/messages',
-    reduxDispatchers: {
-      setLoading: (loading) => dispatch(setMessagesLoading(loading)),
-      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
-      setError: (error) => dispatch(setError(error)),
-      clearError: () => dispatch(clearError()),
-    },
-  }), [dispatch])
-
-  // Memoize query params to prevent unnecessary re-renders
-  const channelQueryParams = useMemo(() => ({
-    page: pagination.page,
-    limit: pagination.limit,
-    filters,
-    sort: {
-      field: sort.field,
-      direction: sort.direction as 'asc' | 'desc',
-    },
-  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
-
-  const messageQueryParams = useMemo(() => ({
-    page: 1,
-    limit: 50,
-    filters: activeChannelId ? { channelId: activeChannelId } : {},
-    sort: {
-      field: 'createdAt' as const,
-      direction: 'asc' as const,
-    },
-  }), [activeChannelId])
-
-  // Use generic hooks for channels
-  const { 
-    data: fetchedChannels, 
-    isLoading: channelsQueryLoading, 
-    refetch: refetchChannels 
-  } = useGenericQuery(channelOptions, channelQueryParams, true)
-
-  // Use generic hooks for messages (only fetch when activeChannelId exists)
-  const { 
-    data: fetchedMessages, 
-    isLoading: messagesQueryLoading, 
-    refetch: refetchMessages 
-  } = useGenericQuery(messageOptions, messageQueryParams, !!activeChannelId)
-
-  // Update Redux with fetched messages when they arrive
+  // Initialize realtime manager with event handlers
   useEffect(() => {
-    if (fetchedMessages && activeChannelId) {
-      dispatch(setMessages({ channelId: activeChannelId, messages: fetchedMessages }))
-    }
-  }, [fetchedMessages, activeChannelId, dispatch])
-
-  // Mutations
-  const createChannelMutation = useGenericCreate<IChannel>(channelOptions)
-  const sendMessageMutation = useGenericCreate<ICommunication>(messageOptions)
-  const updateMessageMutation = useGenericUpdate<ICommunication>(messageOptions)
-
-  // Socket.io integration
-  useEffect(() => {
-    if (!socket || !isConnected) return
-
-    // Get all channel IDs user has access to
-    const channelIds = channels.map(ch => ch.channelId)
-
-    // Connect to socket with user's channels
-    socket.emit('user:connect', {
-      token: '', // Will be handled by auth middleware
-      channelIds
-    })
-
-    // Listen for real-time events
-    const handleMessageReceive = (message: ICommunication) => {
-      dispatch(addMessage({ channelId: message.channelId, message }))
-      dispatch(addNotification({ channelId: message.channelId, message }))
-    }
-
-    const handleMessageRead = (data: { messageId: string; userId: string }) => {
-      if (activeChannelId) {
+    realtimeManager.updateHandlers({
+      onNewMessage: (message) => {
+        dispatch(addMessage({ channelId: message.channel_id, message }))
+      },
+      onMessageUpdate: (message) => {
         dispatch(updateMessage({
-          channelId: activeChannelId,
-          messageId: data.messageId,
-          updates: { isRead: true, readAt: new Date().toISOString() }
+          channelId: message.channel_id,
+          messageId: message.id,
+          updates: message
         }))
+      },
+      onMessageDelete: (messageId) => {
+        // Handle message deletion
+        console.log('Message deleted:', messageId)
+      },
+      onUserJoined: (member) => {
+        // Handle user joined
+        console.log('User joined:', member)
+      },
+      onUserLeft: (memberId) => {
+        // Handle user left
+        console.log('User left:', memberId)
+      },
+      onUserOnline: (userId) => {
+        dispatch(updateOnlineUsers({ userId, isOnline: true }))
+      },
+      onUserOffline: (userId) => {
+        dispatch(updateOnlineUsers({ userId, isOnline: false }))
+      },
+      onTypingStart: (userId) => {
+        dispatch(setTyping({
+          channelId: activeChannelId || '',
+          userId,
+          userName: 'Unknown User', // Will be resolved later
+          timestamp: new Date().toISOString()
+        }))
+      },
+      onTypingStop: (userId) => {
+        dispatch(removeTyping(activeChannelId || '', userId))
       }
-    }
+    })
+  }, [dispatch, realtimeManager, activeChannelId])
 
-    const handleTyping = (data: { channelId: string; userId: string; userName: string }) => {
-      dispatch(setTyping({
-        channelId: data.channelId,
-        userId: data.userId,
-        userName: data.userName,
-        timestamp: new Date().toISOString()
-      } as ITypingIndicator))
-    }
-
-    const handleStopTyping = (data: { channelId: string; userId: string }) => {
-      dispatch(removeTyping({ channelId: data.channelId, userId: data.userId }))
-    }
-
-    const handleUserOnline = (userId: string) => {
-      // Update online status in participants
-      const updatedUsers = onlineUsers.map(user =>
-        user._id === userId ? { ...user, isOnline: true } : user
-      )
-      dispatch(updateOnlineUsers(updatedUsers))
-    }
-
-    const handleUserOffline = (userId: string) => {
-      // Update online status in participants
-      const updatedUsers = onlineUsers.map(user =>
-        user._id === userId ? { ...user, isOnline: false } : user
-      )
-      dispatch(updateOnlineUsers(updatedUsers))
-    }
-
-    const handleError = (error: string) => {
-      toast({
-        title: "Connection Error",
-        description: error,
-        variant: "destructive",
-      })
-    }
-
-    // Register event listeners
-    socket.on('message:receive', handleMessageReceive)
-    socket.on('message:read', handleMessageRead)
-    socket.on('message:typing', handleTyping)
-    socket.on('message:stop_typing', handleStopTyping)
-    socket.on('user:online', handleUserOnline)
-    socket.on('user:offline', handleUserOffline)
-    socket.on('error', handleError)
-
-    // Cleanup
-    return () => {
-      socket.off('message:receive', handleMessageReceive)
-      socket.off('message:read', handleMessageRead)
-      socket.off('message:typing', handleTyping)
-      socket.off('message:stop_typing', handleStopTyping)
-      socket.off('user:online', handleUserOnline)
-      socket.off('user:offline', handleUserOffline)
-      socket.off('error', handleError)
-    }
-  }, [socket, isConnected, channels, activeChannelId, onlineUsers, dispatch, toast])
-
-  // Join channel when selected
+  // Fetch channels on mount
   useEffect(() => {
-    if (!socket || !isConnected || !activeChannelId) return
+    fetchChannels()
+  }, [])
 
-    socket.emit('channel:join', activeChannelId)
+  // Subscribe to active channel
+  useEffect(() => {
+    if (activeChannelId) {
+      realtimeManager.subscribeToChannel(activeChannelId)
+      fetchMessages({ channel_id: activeChannelId })
+    }
 
     return () => {
       if (activeChannelId) {
-        socket.emit('channel:leave', activeChannelId)
+        realtimeManager.unsubscribeFromChannel(activeChannelId)
       }
     }
-  }, [socket, isConnected, activeChannelId])
+  }, [activeChannelId, realtimeManager])
 
   // Channel operations
-  const handleFetchChannels = useCallback((params: { isInternal?: boolean } = {}) => {
-    // Update filters if needed
-    if (params.isInternal !== undefined) {
-      dispatch(setFilters({ isInternal: params.isInternal }))
+  const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
+    try {
+      dispatch(setLoading(true))
+      const response = await apiRequest('/api/communication/channels', {
+        method: 'GET',
+        params
+      })
+      dispatch(setChannels(response.channels))
+      return response.channels
+    } catch (error) {
+      dispatch(setError('Failed to fetch channels'))
+      toast({
+        title: "Error",
+        description: "Failed to load channels",
+        variant: "destructive"
+      })
+      return []
+    } finally {
+      dispatch(setLoading(false))
     }
-    return refetchChannels()
-  }, [dispatch, refetchChannels])
+  }, [dispatch, toast])
 
-  const handleSelectChannel = useCallback((channelId: string) => {
-    console.log('handleSelectChannel called with:', channelId)
-    dispatch(setActiveChannel(channelId))
+  const selectChannel = useCallback((channel_id: string) => {
+    dispatch(setActiveChannel(channel_id))
   }, [dispatch])
 
-  const handleClearChannel = useCallback(() => {
+  const clearActiveChannel = useCallback(() => {
     dispatch(clearActiveChannel())
   }, [dispatch])
 
   // Message operations
-  const handleFetchMessages = useCallback((params: FetchMessagesParams) => {
-    // The generic hook will automatically refetch when activeChannelId changes
-    return refetchMessages()
-  }, [refetchMessages])
-
-  const handleSendMessage = useCallback(async (messageData: CreateMessageData) => {
+  const fetchMessages = useCallback(async (params: FetchMessagesParams) => {
     try {
-      const result = await sendMessageMutation.mutateAsync(messageData)
-      
+      dispatch(setMessagesLoading(true))
+      const response = await apiRequest('/api/communication/messages', {
+        method: 'GET',
+        params: { channel_id: params.channel_id, limit: params.limit, offset: params.offset }
+      })
+      dispatch(setMessages({ channelId: params.channel_id, messages: response.messages }))
+      return response.messages
+    } catch (error) {
+      dispatch(setError('Failed to fetch messages'))
+      toast({
+        title: "Error",
+        description: "Failed to load messages",
+        variant: "destructive"
+      })
+      return []
+    } finally {
+      dispatch(setMessagesLoading(false))
+    }
+  }, [dispatch, toast])
+
+  const sendMessage = useCallback(async (messageData: CreateMessageData) => {
+    try {
+      dispatch(setActionLoading(true))
+      const response = await apiRequest('/api/communication/messages', {
+        method: 'POST',
+        body: messageData
+      })
+
+      // The message will be added via realtime subscription
       toast({
         title: "Message sent",
         description: "Your message has been sent successfully",
       })
-      
-      // Refetch messages to update the list
-      await refetchMessages()
-      
-      return result
-    } catch (error: any) {
+
+      return response.message
+    } catch (error) {
+      dispatch(setError('Failed to send message'))
       toast({
         title: "Error",
-        description: error.message || "Failed to send message",
+        description: "Failed to send message",
         variant: "destructive"
       })
       throw error
+    } finally {
+      dispatch(setActionLoading(false))
     }
-  }, [sendMessageMutation, toast, refetchMessages])
+  }, [dispatch, toast])
 
-  const handleCreateChannel = useCallback(async (channelData: CreateChannelData) => {
+  const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
-      const result = await createChannelMutation.mutateAsync(channelData)
-      
+      dispatch(setActionLoading(true))
+      const response = await apiRequest('/api/communication/channels', {
+        method: 'POST',
+        body: channelData
+      })
+
+      // Refresh channels list
+      await fetchChannels()
+
       toast({
         title: "Channel created",
         description: "New conversation started successfully",
       })
-      
-      // Refetch channels to update the list
-      await refetchChannels()
-      
-      return result
-    } catch (error: any) {
+
+      return response.channel
+    } catch (error) {
+      dispatch(setError('Failed to create channel'))
       toast({
         title: "Error",
-        description: error.message || "Failed to create channel",
+        description: "Failed to create channel",
         variant: "destructive"
       })
       throw error
+    } finally {
+      dispatch(setActionLoading(false))
     }
-  }, [createChannelMutation, toast, refetchChannels])
+  }, [dispatch, toast, fetchChannels])
 
-  const handleMarkAsRead = useCallback((messageId: string, channelId: string) => {
-    return updateMessageMutation.mutateAsync({ 
-      id: messageId, 
-      data: { isRead: true } 
-    })
-  }, [updateMessageMutation])
-
-  const handleUpdateMessage = useCallback((channelId: string, messageId: string, updates: Partial<ICommunication>) => {
-    dispatch(updateMessage({ channelId, messageId, updates }))
-  }, [dispatch])
+  const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
+    try {
+      await apiRequest('/api/communication/read-receipts', {
+        method: 'POST',
+        body: { message_id: messageId, channel_id }
+      })
+    } catch (error) {
+      console.error('Failed to mark message as read:', error)
+    }
+  }, [])
 
   // Real-time operations
-  const handleSetTyping = useCallback((typingIndicator: ITypingIndicator) => {
-    if (socket && isConnected) {
-      socket.emit('message:typing', { channelId: typingIndicator.channelId })
-    }
-    dispatch(setTyping(typingIndicator))
+  const setTyping = useCallback((typingIndicator: ITypingIndicator) => {
+    if (activeChannelId) {
+      realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
+      dispatch(setTyping(typingIndicator))
 
-    // Auto-remove typing indicator after 3 seconds
-    setTimeout(() => {
-      dispatch(removeTyping({
-        channelId: typingIndicator.channelId,
-        userId: typingIndicator.userId
-      }))
-    }, 3000)
-  }, [socket, isConnected, dispatch])
-
-  const handleRemoveTyping = useCallback((channelId: string, userId: string) => {
-    if (socket && isConnected) {
-      socket.emit('message:stop_typing', { channelId })
+      // Auto-remove typing indicator after 3 seconds
+      setTimeout(() => {
+        removeTyping(activeChannelId, typingIndicator.userId)
+      }, 3000)
     }
+  }, [dispatch, activeChannelId, realtimeManager])
+
+  const removeTyping = useCallback((channelId: string, userId: string) => {
+    realtimeManager.sendTypingStop(channelId, userId)
     dispatch(removeTyping({ channelId, userId }))
-  }, [socket, isConnected, dispatch])
-
-  const handleUpdateOnlineUsers = useCallback((users: IParticipant[]) => {
-    dispatch(updateOnlineUsers(users))
-  }, [dispatch])
+  }, [dispatch, realtimeManager])
 
   // UI state operations
-  const handleToggleChannelList = useCallback(() => {
+  const toggleChannelList = useCallback(() => {
     dispatch(toggleChannelList())
   }, [dispatch])
 
-  const handleToggleContextPanel = useCallback(() => {
+  const toggleContextPanel = useCallback(() => {
     dispatch(toggleContextPanel())
   }, [dispatch])
 
-  const handleSetChannelListExpanded = useCallback((expanded: boolean) => {
+  const setChannelListExpanded = useCallback((expanded: boolean) => {
     dispatch(setChannelListExpanded(expanded))
   }, [dispatch])
 
-  const handleSetContextPanelVisible = useCallback((visible: boolean) => {
+  const setContextPanelVisible = useCallback((visible: boolean) => {
     dispatch(setContextPanelVisible(visible))
   }, [dispatch])
 
   // Filter and search operations
-  const handleSetFilters = useCallback((newFilters: Partial<CommunicationFilters>) => {
+  const setFilters = useCallback((newFilters: CommunicationFilters) => {
     dispatch(setFilters(newFilters))
   }, [dispatch])
 
-  const handleSetSort = useCallback((newSort: CommunicationSort) => {
+  const setSort = useCallback((newSort: CommunicationSort) => {
     dispatch(setSort(newSort))
   }, [dispatch])
 
-  const handleSetPagination = useCallback((newPagination: { page?: number; limit?: number }) => {
+  const setPagination = useCallback((newPagination: any) => {
     dispatch(setPagination(newPagination))
   }, [dispatch])
 
   // Error handling
-  const handleClearError = useCallback(() => {
+  const clearError = useCallback(() => {
     dispatch(clearError())
   }, [dispatch])
 
-  const handleSetError = useCallback((error: string) => {
-    dispatch(setError(error))
+  const setError = useCallback((errorMessage: string) => {
+    dispatch(setError(errorMessage))
   }, [dispatch])
 
   // Notifications
-  const handleAddNotification = useCallback((channelId: string, message: ICommunication) => {
-    dispatch(addNotification({ channelId, message }))
-    
-    // Show toast notification
-    toast({
-      title: "New message",
-      description: `${message.message.substring(0, 50)}${message.message.length > 50 ? '...' : ''}`,
-    })
-  }, [dispatch, toast])
+  const addNotification = useCallback((notification: any) => {
+    dispatch(addNotification(notification))
+  }, [dispatch])
 
-  const handleClearNotifications = useCallback(() => {
+  const clearNotifications = useCallback(() => {
     dispatch(clearNotifications())
   }, [dispatch])
 
   // Utility operations
-  const handleResetState = useCallback(() => {
+  const resetState = useCallback(() => {
     dispatch(resetState())
   }, [dispatch])
 
   const refreshChannels = useCallback(() => {
-    return handleFetchChannels({ isInternal: filters.isInternal })
-  }, [handleFetchChannels, filters.isInternal])
+    return fetchChannels()
+  }, [fetchChannels])
 
   const refreshMessages = useCallback(() => {
     if (activeChannelId) {
-      return handleFetchMessages({ channelId: activeChannelId })
+      return fetchMessages({ channel_id: activeChannelId })
     }
-    return Promise.resolve()
-  }, [handleFetchMessages, activeChannelId])
+  }, [fetchMessages, activeChannelId])
 
-  // Computed values
-  const activeMessages = useMemo(() => {
-    return activeChannelId ? messages[activeChannelId] || [] : []
-  }, [messages, activeChannelId])
-
-  const activeTypingUsers = useMemo(() => {
-    return activeChannelId ? typingUsers[activeChannelId] || [] : []
-  }, [typingUsers, activeChannelId])
-
+  // Mock data for backward compatibility (remove when fully migrated)
+  const mockUsers = [] as User[]
+  const mockCurrentUser = null as User | null
   const hasChannels = channels.length > 0
-  const hasMessages = activeMessages.length > 0
-  const hasUnreadMessages = unreadCount > 0
-  const hasNotifications = notifications.length > 0
-
-  const sortedChannels = useMemo(() => {
-    return [...channels].sort((a, b) => {
-      // Prioritize channels with unread messages
-      if (a.unreadCount > 0 && b.unreadCount === 0) return -1
-      if (a.unreadCount === 0 && b.unreadCount > 0) return 1
-      
-      // Then sort by last message timestamp
-      const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0
-      const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0
-      
-      return bTime - aTime // Most recent first
-    })
-  }, [channels])
-
-  const filteredChannels = useMemo(() => {
-    let filtered = sortedChannels
-
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase()
-      filtered = filtered.filter(channel => 
-        channel.name.toLowerCase().includes(searchLower) ||
-        channel.participants.some((p: IParticipant) => p.name.toLowerCase().includes(searchLower))
-      )
-    }
-
-    if (filters.isInternal !== undefined) {
-      filtered = filtered.filter(channel => channel.isInternal === filters.isInternal)
-    }
-
-    return filtered
-  }, [sortedChannels, filters])
-
-  // Clear error after 5 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        handleClearError()
-      }, 5000)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [error, handleClearError])
 
   return {
     // State
-    channels: filteredChannels,
-    allChannels: fetchedChannels || channels,
+    channels,
     activeChannelId,
     selectedChannel,
-    messages: activeMessages,
-    allMessages: messages,
+    messages,
     onlineUsers,
-    typingUsers: activeTypingUsers,
-    allTypingUsers: typingUsers,
+    typingUsers,
     isChannelListExpanded,
     isContextPanelVisible,
-    loading: channelsQueryLoading || loading,
-    actionLoading: createChannelMutation.isPending || sendMessageMutation.isPending || actionLoading,
-    messagesLoading: messagesQueryLoading || messagesLoading,
+    loading,
+    actionLoading,
+    messagesLoading,
     error,
     filters,
     sort,
@@ -503,52 +1254,48 @@ export function useCommunications() {
     unreadCount,
     notifications,
 
-    // Computed values
+    // Mock data (for backward compatibility)
+    mockUsers,
+    mockCurrentUser,
     hasChannels,
-    hasMessages,
-    hasUnreadMessages,
-    hasNotifications,
-    sortedChannels,
 
     // Channel operations
-    fetchChannels: handleFetchChannels,
-    selectChannel: handleSelectChannel,
-    clearChannel: handleClearChannel,
-    createChannel: handleCreateChannel,
+    fetchChannels,
+    selectChannel,
+    clearActiveChannel,
 
     // Message operations
-    fetchMessages: handleFetchMessages,
-    sendMessage: handleSendMessage,
-    markAsRead: handleMarkAsRead,
-    updateMessage: handleUpdateMessage,
+    fetchMessages,
+    sendMessage,
+    createChannel,
+    markAsRead,
 
     // Real-time operations
-    setTyping: handleSetTyping,
-    removeTyping: handleRemoveTyping,
-    updateOnlineUsers: handleUpdateOnlineUsers,
+    setTyping,
+    removeTyping,
 
     // UI state operations
-    toggleChannelList: handleToggleChannelList,
-    toggleContextPanel: handleToggleContextPanel,
-    setChannelListExpanded: handleSetChannelListExpanded,
-    setContextPanelVisible: handleSetContextPanelVisible,
+    toggleChannelList,
+    toggleContextPanel,
+    setChannelListExpanded,
+    setContextPanelVisible,
 
     // Filter and search operations
-    setFilters: handleSetFilters,
-    setSort: handleSetSort,
-    setPagination: handleSetPagination,
+    setFilters,
+    setSort,
+    setPagination,
 
     // Error handling
-    clearError: handleClearError,
-    setError: handleSetError,
+    clearError,
+    setError,
 
     // Notifications
-    addNotification: handleAddNotification,
-    clearNotifications: handleClearNotifications,
+    addNotification,
+    clearNotifications,
 
     // Utility operations
-    resetState: handleResetState,
+    resetState,
     refreshChannels,
     refreshMessages
   }
-}
+  }

@@ -1,42 +1,57 @@
-// Communication Types - Following CRM patterns
+// Communication Types - Updated for Supabase integration
+
+// Messages table interface
 export interface ICommunication {
-  _id: string
-  projectId?: string // FK to Projects
-  senderId: string // FK to Users or Clients
-  receiverId?: string // FK to Users/Clients (null for group channels)
-  senderModel: 'User' | 'Client'
-  receiverModel?: 'User' | 'Client'
-  channelId: string // Unique channel identifier
-  subject?: string
-  message: string
-  communicationType: 'chat' | 'email' | 'note'
-  priority: 'low' | 'medium' | 'high'
-  isRead: boolean
-  isInternal: boolean // True for internal users only
-  attachments?: string[] // Array of file URLs
-  parentMessageId?: string // For threading/replies
-  readAt?: string // ISO string to avoid Redux serialization issues
-  typingUsers?: string[] // Array of user IDs typing
-  createdAt: string // ISO string to avoid Redux serialization issues
-  updatedAt: string // ISO string to avoid Redux serialization issues
+  id: string // Supabase UUID
+  channel_id: string // Supabase channel UUID reference
+  mongo_sender_id: string // MongoDB user ID of sender
+  content: string // Message content
+  content_type: 'text' | 'file' | 'system' // Content type
+  thread_id?: string // For threading (optional)
+  reply_count: number // Number of replies
+  mongo_mentioned_user_ids?: string[] // Array of mentioned user IDs
+  is_edited: boolean // Edit status
+  edited_at?: string // Edit timestamp
+  created_at: string // Creation timestamp
+  attachments?: IAttachment[]
+  read_receipts?: IReadReceipt[]
 }
 
+// Channels table interface
 export interface IChannel {
-  _id: string
-  channelId: string
-  name: string
-  type: 'dm' | 'project' | 'client-support' | 'group'
-  participants: IParticipant[]
-  projectId?: string
-  isInternal: boolean
-  lastMessage?: ICommunication
-  unreadCount: number
-  createdAt: string // ISO string to avoid Redux serialization issues
-  updatedAt: string // ISO string to avoid Redux serialization issues
+  id: string // Supabase UUID
+  type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Channel type
+  name?: string // Channel name (optional for DMs)
+  avatar_url?: string // Channel avatar URL
+  mongo_department_id?: string // MongoDB department reference
+  mongo_project_id?: string // MongoDB project reference
+  mongo_creator_id: string // MongoDB user ID of creator
+  is_private: boolean // Privacy setting
+  member_count: number // Number of members
+  last_message_at?: string // Last message timestamp
+  created_at: string // Creation timestamp
+  updated_at: string // Update timestamp
+  // UI helper fields (not in schema)
+  last_message?: ICommunication
+  unreadCount?: number
+  participants: IChannelMember[] // Required for UI
+}
+
+// Channel members table interface
+export interface IChannelMember extends IParticipant {
+  channel_id: string // Supabase channel UUID
+  mongo_member_id: string // MongoDB user ID
+  role: 'admin' | 'member' // Channel role
+  last_read_at: string // Last read timestamp
+  is_muted: boolean // Mute status
+  notification_level: 'all' | 'mentions' | 'none' // Notification preference
+  joined_at: string // Join timestamp
+  mongo_invited_by_id?: string // Who invited this member
+  // UI helper fields (not in schema) - inherited from IParticipant
 }
 
 export interface IParticipant {
-  _id: string
+  mongo_member_id: string // Changed from 'mongoUserId'
   name: string
   email: string
   avatar?: string
@@ -55,13 +70,12 @@ export interface ITypingIndicator {
 // Filter and Query Types
 export interface CommunicationFilters {
   channelId?: string
-  isInternal?: boolean
-  departmentId?: string
-  communicationType?: 'chat' | 'email' | 'note'
-  priority?: 'low' | 'medium' | 'high'
+  is_private?: boolean // Changed from 'isInternal'
+  mongoDepartmentId?: string
+  mongo_project_id?: string
   search?: string
-  dateFrom?: string // ISO string to avoid Redux serialization issues
-  dateTo?: string // ISO string to avoid Redux serialization issues
+  dateFrom?: string
+  dateTo?: string
 }
 
 export interface CommunicationSort {
@@ -70,7 +84,7 @@ export interface CommunicationSort {
 }
 
 export interface FetchMessagesParams {
-  channelId: string
+  channel_id: string
   page?: number
   limit?: number
   filters?: CommunicationFilters
@@ -79,48 +93,24 @@ export interface FetchMessagesParams {
 
 // Form Data Types
 export interface CreateMessageData {
-  channelId: string
-  message: string
-  attachments?: string[]
-  parentMessageId?: string
-  communicationType?: 'chat' | 'email' | 'note'
-  priority?: 'low' | 'medium' | 'high'
+  channel_id: string
+  content: string // Changed from 'message'
+  content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
+  attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
+  thread_id?: string // Changed from 'parentMessageId'
 }
 
 export interface CreateChannelData {
   name?: string
-  type: 'dm' | 'project' | 'client-support' | 'group' | 'department' | 'general'
-  participants: string[]
-  projectId?: string
-  departmentId?: string
-  isInternal?: boolean
+  type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Updated to match schema
+  participants: string[] // MongoDB User IDs
+  mongo_project_id?: string
+  mongo_department_id?: string
+  is_private?: boolean // Changed from 'isInternal'
 }
 
 export interface UpdateMessageData {
-  message?: string
-  isRead?: boolean
-  readAt?: string // ISO string to avoid Redux serialization issues
-}
-
-// Socket Event Types
-export interface SocketEvents {
-  // Connection events
-  'user:connect': { userId: string; channelIds: string[] }
-  'user:disconnect': { userId: string }
-  
-  // Channel events
-  'channel:join': { channelId: string }
-  'channel:leave': { channelId: string }
-  
-  // Message events
-  'message:send': CreateMessageData
-  'message:receive': ICommunication
-  'message:read': { messageId: string; channelId: string }
-  'message:typing': { channelId: string; userId: string; userName: string }
-  'message:stop_typing': { channelId: string; userId: string }
-  
-  // Notification events
-  'notification:new_message': { channelId: string; message: ICommunication }
+  content?: string // Changed from 'message'
 }
 
 // Component Props Types
@@ -190,4 +180,35 @@ export interface ChannelApiResponse {
   }
   error?: string
   message?: string
+}
+
+// New interfaces for additional features
+export interface IReaction {
+  id: string
+  message_id: string
+  mongo_user_id: string
+  reaction_type: string
+  created_at: string
+}
+
+export interface IAttachment {
+  id: string
+  message_id: string
+  file_name: string
+  file_url?: string
+  s3_key?: string
+  s3_bucket?: string
+  file_size?: number
+  file_type?: string
+  uploaded_by?: string
+  created_at: string
+  width?: number
+  height?: number
+  durationSeconds?: number
+}
+
+export interface IReadReceipt {
+  message_id: string
+  mongo_user_id: string
+  read_at: string
 }

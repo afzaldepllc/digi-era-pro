@@ -28,6 +28,7 @@ import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
 import { useNavigation } from "@/components/providers/navigation-provider";
 import { Project } from "@/types";
 import HtmlTextRenderer from "@/components/ui/html-text-renderer";
+import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
 
 interface Risk {
   description: string;
@@ -69,6 +70,13 @@ interface ExtendedClient {
   phone?: string
   status?: string
   avatar?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    country?: string
+    zipCode?: string
+  }
 }
 
 interface ExtendedTeamMember {
@@ -97,10 +105,19 @@ interface ExtendedDepartmentTask {
     assigneeId?: string
     assignee?: ExtendedTeamMember | null
     dueDate?: string
+    estimatedHours?: number
+    actualHours?: number
+    subTasks?: Array<{
+      _id: string
+      title: string
+      status: string
+      estimatedHours?: number
+      actualHours?: number
+    }>
   }>
 }
 
-interface ExtendedProject extends Omit<Project,'client' | 'creator' | 'departmentTasks'> {
+interface ExtendedProject extends Omit<Project, 'client' | 'creator' | 'departmentTasks'> {
   client?: ExtendedClient;
   creator?: {
     _id: string
@@ -109,6 +126,16 @@ interface ExtendedProject extends Omit<Project,'client' | 'creator' | 'departmen
     avatar?: string
   }
   departmentTasks?: ExtendedDepartmentTask[];
+  progress?: {
+    overall: number;
+    byDepartment?: Record<string, number>;
+  };
+  budgetHealth?: 'good' | 'warning' | 'critical';
+  timelineHealth?: 'good' | 'warning' | 'critical';
+  qualityMetrics?: {
+    onTimeDelivery: boolean;
+    withinBudget: boolean;
+  };
 }
 
 // Using Project type from @/types
@@ -219,24 +246,6 @@ export default function ProjectDetailsPage() {
     }
   }, [activeTab]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20';
-      case 'completed': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/20';
-      case 'on-hold': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/20';
-      case 'cancelled': return 'bg-red-100 text-red-700 dark:bg-red-900/20';
-      default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/20';
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'bg-red-100 text-red-700 dark:bg-red-900/20';
-      case 'high': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/20';
-      case 'medium': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/20';
-      default: return 'bg-green-100 text-green-700 dark:bg-green-900/20';
-    }
-  };
 
   // Remove global loading - each tab handles its own loading state
   // if (loading) {
@@ -407,7 +416,7 @@ export default function ProjectDetailsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 
                         <div className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
                           <div className="flex items-center justify-between">
@@ -433,7 +442,7 @@ export default function ProjectDetailsPage() {
                       </div>
 
                       {/* Project Health Indicators */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
                         <div className="flex items-center gap-3">
                           <div className={`p-2 rounded-full ${(project.progress?.overall || 0) >= 80 ? 'bg-green-100 text-green-600' :
                             (project.progress?.overall || 0) >= 50 ? 'bg-yellow-100 text-yellow-600' :
@@ -451,36 +460,32 @@ export default function ProjectDetailsPage() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-full ${project.budget && project.actualCost ?
-                            (project.actualCost / project.budget) <= 0.8 ? 'bg-green-100 text-green-600' :
-                              (project.actualCost / project.budget) <= 1.0 ? 'bg-yellow-100 text-yellow-600' :
-                                'bg-red-100 text-red-600'
-                            : 'bg-gray-100 text-gray-600'
+                          <div className={`p-2 rounded-full ${project.budgetHealth === 'good' ? 'bg-green-100 text-green-600' :
+                            project.budgetHealth === 'warning' ? 'bg-yellow-100 text-yellow-600' :
+                              'bg-red-100 text-red-600'
                             }`}>
                             <DollarSign className="h-4 w-4" />
                           </div>
                           <div>
                             <p className="text-sm font-medium">Budget Health</p>
                             <p className="text-xs text-muted-foreground">
-                              {project.budget && project.actualCost ?
-                                (project.actualCost / project.budget) <= 0.8 ? 'Under Budget' :
-                                  (project.actualCost / project.budget) <= 1.0 ? 'On Budget' : 'Over Budget'
-                                : 'No Data'}
+                              {project.budgetHealth === 'good' ? 'On Budget' :
+                                project.budgetHealth === 'warning' ? 'Budget Warning' : 'Budget Critical'}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-full bg-purple-100 text-purple-600`}>
+                          <div className={`p-2 rounded-full ${project.timelineHealth === 'good' ? 'bg-green-100 text-green-600' :
+                            project.timelineHealth === 'warning' ? 'bg-yellow-100 text-yellow-600' :
+                              'bg-red-100 text-red-600'
+                            }`}>
                             <Clock className="h-4 w-4" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium">Time Remaining</p>
+                            <p className="text-sm font-medium">Timeline Health</p>
                             <p className="text-xs text-muted-foreground">
-                              {project.endDate
-                                ? Math.max(0, Math.ceil((new Date(project.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
-                                : 'N/A'
-                              }
-                              <span> {project.endDate ? 'Days left' : 'No end date set'}</span>
+                              {project.timelineHealth === 'good' ? 'On Schedule' :
+                                project.timelineHealth === 'warning' ? 'Timeline Warning' : 'Timeline Critical'}
                             </p>
                           </div>
                         </div>
@@ -498,10 +503,10 @@ export default function ProjectDetailsPage() {
                       <CardTitle className="flex items-center gap-2">
                         Project Information
                         <div className="flex gap-2 ml-auto">
-                          <Badge className={getStatusColor(project.status)}>
+                          <Badge className={STATUS_COLORS[project.status]}>
                             {project.status.replace('-', ' ')}
                           </Badge>
-                          <Badge className={getPriorityColor(project.priority)}>
+                          <Badge className={PRIORITY_COLORS[project.priority]}>
                             {project.priority} priority
                           </Badge>
                         </div>
@@ -512,22 +517,38 @@ export default function ProjectDetailsPage() {
                         <div className="col-span-3">
                           <label className="text-sm text-muted-foreground">Start Date</label>
                           <p className="font-medium">
-                            {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}
+                            {project.startDate ? new Date(project.startDate).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            }) : 'Not set'}
                           </p>
                         </div>
                         <div className="col-span-3">
                           <label className="text-sm text-muted-foreground">End Date</label>
                           <p className="font-medium">
-                            {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'Not set'}
+                            {project.endDate ? new Date(project.endDate).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            }) : 'Not set'}
                           </p>
-                        </div>
+                        </div>  
                         <div className="col-span-3">
                           <label className="text-sm text-muted-foreground">Last Updated</label>
-                          <p className="font-medium">{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : 'N/A'}</p>
+                          <p className="font-medium">{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          }) : 'N/A'}</p>
                         </div>
                         <div className="col-span-3">
                           <label className="text-sm text-muted-foreground">Created</label>
-                          <p className="font-medium">{project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'N/A'}</p>
+                          <p className="font-medium">{project.createdAt ? new Date(project.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          }) : 'N/A'}</p>
                         </div>
                         <div className="col-span-4">
                           <label className="text-sm text-muted-foreground">Created By</label>
@@ -588,13 +609,26 @@ export default function ProjectDetailsPage() {
                             )}
                           </div>
                         </div>
-                        {project.requirements && (
+                        {project.requirements && project.requirements.length > 0 && (
                           <div className="col-span-12">
                             <label className="text-sm font-medium text-muted-foreground">Requirements</label>
                             <div className="flex gap-2 items-center mt-1 flex-wrap">
                               {project.requirements.map((req, index) => (
                                 <Badge variant="outline" className="text-xs" key={index}>
                                   {req}
+                                </Badge>
+                              ))}
+                            </div>
+
+                          </div>
+                        )}
+                        {project.customerServices && project.customerServices.length > 0 && (
+                          <div className="col-span-12">
+                            <label className="text-sm font-medium text-muted-foreground">Customer Services</label>
+                            <div className="flex gap-2 items-center mt-1 flex-wrap">
+                              {project.customerServices.map((service, index) => (
+                                <Badge variant="outline" className="text-xs" key={index}>
+                                  {service}
                                 </Badge>
                               ))}
                             </div>
@@ -842,6 +876,69 @@ export default function ProjectDetailsPage() {
                     </Card>
                   ))}
 
+                  {/* Client info including the address */}
+                  {project.client && (
+                    <Card className="max-h-96 overflow-y-auto">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-blue-500" />
+                          Project Client Details
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={project.client.avatar} />
+                              <AvatarFallback className="text-sm">
+                                {project.client.name.split(' ').map((n: string) => n[0]).join('') || 'C'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{project.client.name}</p>
+                              <p className="text-xs text-muted-foreground">{project.client.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 justify-between">
+                            {project.client.phone && (
+                              <div>
+                                <label className="text-sm text-muted-foreground">Phone</label>
+                                <p className="font-medium">{project.client.phone}</p>
+                              </div>
+                            )}
+                            {project.client?.address?.zipCode && (
+                              <div>
+                                <label className="text-sm text-muted-foreground">Zip Code</label>
+                                <p className="font-medium">{project.client?.address.zipCode}</p>
+                              </div>
+                            )}
+                            {project.client.status && (
+                              <div>
+                                <label className="text-sm text-muted-foreground">Status</label><br />
+                                <Badge className={STATUS_COLORS[project?.client?.status as keyof typeof STATUS_COLORS]} variant="outline">
+                                  {project.client.status.replace('-', ' ')}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+
+                          {project.client.address && (
+                            <div>
+                              <label className="text-sm text-muted-foreground">Address</label>
+                              <div className="text-sm font-medium">
+                                <p>
+                                  {project.client.address.street && `${project.client.address.street}, `}
+                                  {project.client.address.city && `${project.client.address.city}, `}
+                                  {project.client.address.state && `${project.client.address.state}, `}
+                                  {project.client.address.country && `${project.client.address.country}`}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                   {/* Risks */}
                   {project.risks && Array.isArray(project.risks) && project.risks.length > 0 && (
                     <Card className="max-h-96 overflow-y-auto">
@@ -900,12 +997,23 @@ export default function ProjectDetailsPage() {
                         <div className="flex justify-between">
                           <span className="text-sm text-muted-foreground">Budget Utilization</span>
                           <span className="text-sm font-medium">
-                            {(project.budget && project.actualCost) ? Math.round((project.actualCost / project.budget) * 100) : 0}%
+                            {(() => {
+                              const budgetBreakdown = project.budgetBreakdown || {}
+                              const totalAllocated = Object.values(budgetBreakdown).reduce((sum: number, val: any) => sum + (val || 0), 0)
+                              return project.budget ? Math.round((totalAllocated / project.budget) * 100) : 0
+                            })()}%
                           </span>
                         </div>
-                        <Progress value={(project.budget && project.actualCost) ? (project.actualCost / project.budget) * 100 : 0} className="h-2" />
+                        <Progress value={(() => {
+                          const budgetBreakdown = project.budgetBreakdown || {}
+                          const totalAllocated = Object.values(budgetBreakdown).reduce((sum: number, val: any) => sum + (val || 0), 0)
+                          return project.budget ? (totalAllocated / project.budget) * 100 : 0
+                        })()} className="h-2" />
                         <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>${(project.actualCost ?? 0).toLocaleString()} spent</span>
+                          <span>${(() => {
+                            const budgetBreakdown = project.budgetBreakdown || {}
+                            return Object.values(budgetBreakdown).reduce((sum: number, val: any) => sum + (val || 0), 0)
+                          })().toLocaleString()} allocated</span>
                           <span>${(project.budget ?? 0).toLocaleString()} budget</span>
                         </div>
                       </div>
@@ -919,8 +1027,54 @@ export default function ProjectDetailsPage() {
                         </div>
                         <Progress value={project.progress?.overall ?? 0} className="h-2" />
                         <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}</span>
-                          <span>{project.endDate ? new Date(project.endDate).toLocaleDateString() : 'Not set'}</span>
+                          <span>{project.startDate ? new Date(project.startDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          }) : 'Not set'}</span>
+                          <span>{project.endDate ? new Date(project.endDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          }) : 'Not set'}</span>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">Hour Efficiency</span>
+                          <span className="text-sm font-medium">
+                            {project.departmentTasks?.length ? (() => {
+                              const totalEstimated = project.departmentTasks.reduce((sum, dept) =>
+                                sum + dept.tasks.reduce((taskSum, task) =>
+                                  taskSum + (task.estimatedHours || 0) + (task.subTasks?.reduce((subSum, sub) => subSum + (sub.estimatedHours || 0), 0) || 0), 0), 0)
+                              const totalActual = project.departmentTasks.reduce((sum, dept) =>
+                                sum + dept.tasks.reduce((taskSum, task) =>
+                                  taskSum + (task.actualHours || 0) + (task.subTasks?.reduce((subSum, sub) => subSum + (sub.actualHours || 0), 0) || 0), 0), 0)
+                              return totalEstimated > 0 ? Math.min(200, Math.round((totalActual / totalEstimated) * 100)) : 100
+                            })() : 100}%
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Estimated vs Actual Hours
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">Timeline Health</span>
+                          <span className={`text-sm font-medium ${project.timelineHealth === 'good' ? 'text-green-600' :
+                            project.timelineHealth === 'warning' ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {project.timelineHealth === 'good' ? 'On Schedule' :
+                              project.timelineHealth === 'warning' ? 'Warning' : 'Critical'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Based on progress vs time remaining
                         </div>
                       </div>
                     </CardContent>
@@ -968,6 +1122,6 @@ export default function ProjectDetailsPage() {
           ))}
         </TabsContent>
       </Tabs>
-    </div>
+    </div >
   );
 }

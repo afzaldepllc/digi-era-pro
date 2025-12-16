@@ -20,7 +20,7 @@ export default function AddClientPage() {
   const { createClient, actionLoading } = useClients();
   const { navigateTo } = useNavigation()
 
-  const form = useForm<CreateClientFormData>({
+  const form = useForm({
     resolver: zodResolver(createClientFormSchema),
     defaultValues: {
       // Basic Information
@@ -31,6 +31,7 @@ export default function AddClientPage() {
 
       // Company Information
       company: "",
+      website: "",
       industry: "",
       companySize: undefined,
       annualRevenue: "",
@@ -51,18 +52,8 @@ export default function AddClientPage() {
       },
 
       // Social Links
-      socialLinks: {
-        linkedin: "",
-        twitter: "",
-        github: "",
-      },
+      socialLinks: [],
 
-      // Preferences
-      preferences: {
-        theme: "system",
-        language: "en",
-        timezone: "UTC",
-      },
 
       // Notes
       notes: "",
@@ -72,13 +63,14 @@ export default function AddClientPage() {
   const handleSubmit = async (data: CreateClientFormData) => {
     try {
       // Transform form data to API format
-      const cleanedData: CreateClientData = {
+      const cleanedData = {
         // Required fields from form
         name: data.name,
         email: data.email,
         phone: data.phone?.trim() || undefined,
         position: data.position?.trim() || undefined,
         company: data.company?.trim() || '',
+        website: data.website?.trim() || '',
 
         // Status fields
         status: data.status || 'qualified',
@@ -95,14 +87,11 @@ export default function AddClientPage() {
         } : undefined,
 
         // Social links
-        socialLinks: data.socialLinks ? {
-          linkedin: data.socialLinks.linkedin?.trim() || undefined,
-          twitter: data.socialLinks.twitter?.trim() || undefined,
-          github: data.socialLinks.github?.trim() || undefined,
-        } : undefined,
+        socialLinks: data.socialLinks ? data.socialLinks.map(item => ({
+          linkName: item.linkName,
+          linkUrl: item.linkUrl as string,
+        })) : undefined,
 
-        // Preferences
-        preferences: data.preferences,
 
         // Required API fields with defaults
         emailVerified: false,
@@ -238,7 +227,17 @@ export default function AddClientPage() {
           placeholder: "Enter company name",
           description: "Company or organization name",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
+        },
+        {
+          name: "website",
+          label: "Company Website",
+          type: "url" as const,
+          required: true,
+          placeholder: "Enter company website url",
+          description: "Company or organization website",
+          cols: 12,
+          mdCols: 4,
         },
         {
           name: "industry",
@@ -247,7 +246,7 @@ export default function AddClientPage() {
           placeholder: "Technology, Healthcare, Finance, etc.",
           description: "Industry or sector the company operates in",
           cols: 12,
-          mdCols: 6,
+          mdCols: 4,
         },
         {
           name: "companySize",
@@ -337,76 +336,39 @@ export default function AddClientPage() {
         },
       ]
     },
-    {
+     {
       subform_title: "Social Links",
       collapse: true,
       defaultOpen: false,
       fields: [
         {
-          name: "socialLinks.linkedin",
-          label: "LinkedIn",
-          type: "text" as const,
-          placeholder: "https://linkedin.com/in/username",
-          description: "LinkedIn profile URL",
+          name: "socialLinks",
+          label: "Social Links",
+          type: "array-object" as const,
+          description: "Client's Social links",
           cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "socialLinks.twitter",
-          label: "Twitter",
-          type: "text" as const,
-          placeholder: "https://twitter.com/username",
-          description: "Twitter profile URL",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "socialLinks.github",
-          label: "GitHub",
-          type: "text" as const,
-          placeholder: "https://github.com/username",
-          description: "GitHub profile URL",
-          cols: 12,
-          mdCols: 4,
-        },
-      ]
-    },
-    {
-      subform_title: "Preferences",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "preferences.theme",
-          label: "Theme",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-            { value: "system", label: "System" },
-          ],
-          description: "Preferred theme",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "preferences.language",
-          label: "Language",
-          type: "text" as const,
-          placeholder: "en",
-          description: "Preferred language code",
-          cols: 12,
-          mdCols: 4,
-        },
-        {
-          name: "preferences.timezone",
-          label: "Timezone",
-          type: "text" as const,
-          placeholder: "UTC",
-          description: "Preferred timezone",
-          cols: 12,
-          mdCols: 4,
+          fields: [
+            {
+              name: "linkName",
+              label: "Social Media Platform",
+              type: "text" as const,
+              required: true,
+              description: "Social media platform name",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+            {
+              name: "linkUrl",
+              label: "Social Media Url",
+              type: "url" as const,
+              required: true,
+              description: "Social media platform URL",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+          ]
         },
       ]
     },

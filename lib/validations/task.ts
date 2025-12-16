@@ -104,6 +104,12 @@ export const baseTaskSchema = z.object({
     .optional()
     .transform(val => val === null ? undefined : val),
 
+  // Soft delete fields
+  isDeleted: z.boolean().default(false).optional(),
+  deletedAt: z.date().nullable().optional(),
+  deletedBy: objectIdSchema.nullable().optional(),
+  deletionReason: z.string().max(500, 'Deletion reason too long').nullable().optional().transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+
   createdBy: objectIdSchema,
   
   assignedBy: objectIdSchema
@@ -218,6 +224,8 @@ export const updateTaskSchema = baseTaskSchema
   .omit({ createdBy: true })
   .partial()
   .extend({
+    // Allow isDeleted field only when restoring (setting to false)
+    isDeleted: z.literal(false).optional(),
     completedAt: z.string()
       .optional()
       .transform(val => !val || val === '' ? undefined : val),
@@ -251,6 +259,10 @@ export const createTaskFormSchema = baseTaskFormSchema
   })
 
 export const updateTaskFormSchema = baseTaskFormSchema
+  .extend({
+    // Allow isDeleted field only when restoring (setting to false)
+    isDeleted: z.literal(false).optional(),
+  })
   .partial()
   .strict()
   .refine(data => Object.values(data).some(value => 

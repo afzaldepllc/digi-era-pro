@@ -90,7 +90,7 @@ export function CommunicationSidebar({
               </Button>
 
               {showChannels && (
-                <div className="ml-6 mt-2">
+                <div className="mt-2">
                   <ChannelList
                     channels={channels}
                     activeChannelId={activeChannelId}
@@ -121,7 +121,7 @@ export function CommunicationSidebar({
                 Direct Messages
               </Button>
 
-              <div className={cn("ml-6 mt-2", !showUsers && "hidden")}>
+              <div className={cn("mt-2", !showUsers && "hidden")}>
                 <UserDirectory
                   onStartDM={async (userId: string) => {
                     // This will be handled by the parent component

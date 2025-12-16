@@ -134,7 +134,7 @@ export default function RolesPage() {
             </div>
           </div>
           <div className="flex flex-col">
-            <span className="font-medium text-foreground">{value || row.name}</span>
+            <span className="font-medium text-foreground">{value || row.name}{`(${row?.departmentDetails?.name})`}</span>
             <span className="text-sm text-muted-foreground">
               Internal: {row.name}
             </span>

@@ -175,9 +175,7 @@ export async function GET(request: NextRequest) {
                 activeProjects: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
                 completedProjects: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
                 onHoldProjects: { $sum: { $cond: [{ $eq: ['$status', 'on-hold'] }, 1, 0] } },
-                averageProgress: { $avg: '$progress.overall' },
-                totalBudget: { $sum: '$budget' },
-                totalSpent: { $sum: '$actualCost' }
+                totalBudget: { $sum: '$budget' }
               }
             }
           ]),
@@ -251,9 +249,9 @@ export async function GET(request: NextRequest) {
         activeProjects: projectOverviewData.status === 'active' ? 1 : 0,
         completedProjects: projectOverviewData.status === 'completed' ? 1 : 0,
         onHoldProjects: projectOverviewData.status === 'on-hold' ? 1 : 0,
-        averageProgress: projectOverviewData.progress?.overall || 0,
+        averageProgress: 0, // Will be calculated from tasks
         totalBudget: projectOverviewData.budget || 0,
-        totalSpent: projectOverviewData.actualCost || 0
+        totalSpent: 0 // Not available
       } : (Array.isArray(projectOverviewData) ? projectOverviewData[0] : null) || {
         totalProjects: 0,
         activeProjects: 0,
@@ -276,12 +274,14 @@ export async function GET(request: NextRequest) {
       const kpiMetrics = {
         taskCompletion: taskData.totalTasks > 0 ? Math.round((taskData.completedTasks / taskData.totalTasks) * 100) : 0,
         budgetUtilization: resourceMetricsData.budget?.utilization || 0,
+        budgetEfficiency: resourceMetricsData.budget?.efficiency || 100,
         teamProductivity: teamMetricsData.summary?.avgIndividualProductivity || 0,
         overallHealth: Math.round([
           taskData.totalTasks > 0 ? (taskData.completedTasks / taskData.totalTasks) * 100 : 100,
           Math.max(0, 100 - Math.abs((resourceMetricsData.budget?.utilization || 0) - 85)),
+          resourceMetricsData.budget?.efficiency || 100,
           teamMetricsData.summary?.avgIndividualProductivity || 85
-        ].reduce((sum, val) => sum + val, 0) / 3)
+        ].reduce((sum, val) => sum + val, 0) / 4)
       }
 
       const responseData = {
@@ -321,6 +321,8 @@ export async function GET(request: NextRequest) {
           analyticsVersion: '2.0'
         }
       }
+
+      console.log("resourceMetricsData 325",resourceMetricsData);
 
       // Return result for caching
       return responseData
@@ -531,17 +533,25 @@ async function calculateResourceMetrics(projectId?: string, departmentId?: strin
   const utilizationRate = tasks.length > 0 ? Math.round((assignedTasks.length / tasks.length) * 100) : 100
   
   // Efficiency calculations
-  const hourEfficiency = completedEstimatedHours > 0 ? 
-    Math.min(100, Math.max(0, Math.round((completedEstimatedHours / completedActualHours) * 100))) : 100
+  const hourEfficiency = completedEstimatedHours > 0 
+    ? Math.min(200, Math.max(0, Math.round((completedActualHours / completedEstimatedHours) * 100)))
+    : 100
   
-  // Since phases are removed, use task actual hours as proxy for actual costs
-  const estimatedBudgetUtilization = totalAllocated > 0 ? Math.round((totalEstimatedHours / totalAllocated) * 100) : 0
+  // Budget utilization: how much of the allocated budget is actually used
+  // Since we don't have actual costs, we'll use estimated hours vs allocated budget as proxy
+  const budgetUtilization = projectBudget > 0 ? Math.round((totalAllocated / projectBudget) * 100) : 0
+  
+  // Budget efficiency: for completed tasks, how well we estimated vs actual
+  const budgetEfficiency = completedEstimatedHours > 0 
+    ? Math.min(200, Math.max(0, Math.round((completedActualHours / completedEstimatedHours) * 100)))
+    : 100
 
   return {
     budget: {
       total: projectBudget,
       allocated: totalAllocated,
-      utilization: estimatedBudgetUtilization,
+      utilization: budgetUtilization,
+      efficiency: budgetEfficiency,
       variance: projectBudget > 0 ? Math.round(((totalAllocated - projectBudget) / projectBudget) * 100) : 0,
       breakdown: budgetBreakdown
     },
@@ -560,8 +570,8 @@ async function calculateResourceMetrics(projectId?: string, departmentId?: strin
       totalTasks: tasks.length
     },
     summary: {
-      overallEfficiency: Math.round((hourEfficiency + Math.max(0, 100 - Math.abs(estimatedBudgetUtilization - 100))) / 2),
-      budgetHealth: estimatedBudgetUtilization <= 100 ? 'good' : estimatedBudgetUtilization <= 110 ? 'warning' : 'critical',
+      overallEfficiency: Math.round((hourEfficiency + Math.max(0, 100 - Math.abs(budgetUtilization - 100))) / 2),
+      budgetHealth: budgetUtilization <= 100 ? 'good' : budgetUtilization <= 110 ? 'warning' : 'critical',
       resourceHealth: utilizationRate >= 90 ? 'good' : utilizationRate >= 70 ? 'warning' : 'critical'
     }
   }

@@ -35,12 +35,8 @@ import {
   InlinePriorityDropdown,
   InlineDueDateInput,
   InlineAssigneeDropdown,
-  statusColors,
-  priorityColors,
 } from "@/components/projects/InlineTaskEditUtils"
 
-// Status and Priority Colors - Already imported from InlineTaskEditUtils
-export { statusColors, priorityColors }
 
 interface TaskViewProps {
   departmentId: string
@@ -59,6 +55,7 @@ interface TaskViewProps {
   ) => void
   onOpenEditTaskModal: (task: any) => void
   onDeleteTask: (taskId: string) => Promise<void>
+  onRestoreTask: (taskId: string) => Promise<void>
   onToggleTaskCollapse: (taskId: string) => void
   onSelectTaskForDetails: (task: any) => void
   getSubTasks: (parentTaskId: string) => any[]
@@ -90,6 +87,7 @@ export const BoardColumn: React.FC<{
   ) => void
   onOpenEditTaskModal?: (task: any) => void
   onDeleteTask?: (taskId: string) => Promise<void>
+  onRestoreTask?: (taskId: string) => Promise<void>
   canUpdate?: (resource: string) => boolean
   canDelete?: (resource: string) => boolean
   getDepartmentName: (departmentId: string) => string
@@ -120,6 +118,7 @@ export const BoardColumn: React.FC<{
   draggingTask,
   onOpenEditTaskModal,
   onDeleteTask,
+  onRestoreTask,
   canUpdate,
   canDelete,
   onStatusChange,
@@ -145,15 +144,14 @@ export const BoardColumn: React.FC<{
           _collapsed ? 'p-1 w-16 overflow-hidden whitespace-nowrap' : 'p-3 w-100'
         )}
         style={{
-          height: '100%',
-          minHeight: '80vh',
+          height: '600px',
         }}
         aria-expanded={!_collapsed}
       >
         {/* Fixed Header - Always visible */}
-          <div className={`flex items-center justify-between mb-3 flex-shrink-0 ${_collapsed ? "flex-col gap-10" : "flex-row"} `}>
-            <div className={`flex items-center ${_collapsed ? "flex-col  gap-8" : "flex-row  gap-2"}`}>
-              <Button
+        <div className={`flex items-center justify-between mb-3 flex-shrink-0 ${_collapsed ? "flex-col gap-10" : "flex-row"} `}>
+          <div className={`flex items-center ${_collapsed ? "flex-col  gap-8" : "flex-row  gap-2"}`}>
+            <Button
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 transition-transform"
@@ -161,16 +159,16 @@ export const BoardColumn: React.FC<{
               onPointerDown={(e) => { e.stopPropagation(); }}
               aria-label={_collapsed ? 'Expand column' : 'Collapse column'}
               title={_collapsed ? 'Expand column' : 'Collapse column'}
-                aria-expanded={!_collapsed}
+              aria-expanded={!_collapsed}
               style={{
                 transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
               }}
             >
               <ChevronDown className="h-4 w-4" />
             </Button>
-              <div className="capitalize font-medium text-sm truncate" style={{
-                transform: _collapsed ? 'rotate(90deg)' : 'rotate(0deg)',
-              }}>{title.replace("-", " ")}</div>
+            <div className="capitalize font-medium text-sm truncate" style={{
+              transform: _collapsed ? 'rotate(90deg)' : 'rotate(0deg)',
+            }}>{title.replace("-", " ")}</div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0" >
             <Badge className="text-xs">{tasks.length}</Badge>
@@ -195,7 +193,9 @@ export const BoardColumn: React.FC<{
             </div>
 
             {/* Scrollable Tasks Container */}
-            <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">
+            <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar" style={{
+              height: "600px",
+            }}>
               {/* Only render tasks list if column is expanded */}
               {tasks.length === 0 ? (
                 <div className="p-3 text-center text-sm text-muted-foreground border-2 border-dashed border-muted rounded-lg">
@@ -220,6 +220,7 @@ export const BoardColumn: React.FC<{
                       isActionLoadingForTask={isActionLoadingForTask}
                       onOpenEditTaskModal={onOpenEditTaskModal}
                       onDeleteTask={onDeleteTask}
+                      onRestoreTask={onRestoreTask}
                       canUpdate={canUpdate}
                       canDelete={canDelete}
                       isActionLoadingForDepartment={isActionLoadingForDepartment}
@@ -258,6 +259,7 @@ const DraggableTask: React.FC<{
   isActionLoadingForTask?: (taskId: string) => boolean
   onOpenEditTaskModal?: (task: any) => void
   onDeleteTask?: (taskId: string) => Promise<void>
+  onRestoreTask?: (taskId: string) => Promise<void>
   canUpdate?: (resource: string) => boolean
   canDelete?: (resource: string) => boolean
   isActionLoadingForDepartment?: (departmentId: string) => boolean
@@ -270,7 +272,7 @@ const DraggableTask: React.FC<{
   usersLoading?: boolean
   isBoard?: boolean
   taskIndex?: number
-}> = ({ task, taskIndex, onSelectTaskForDetails, onShowTaskDetails, isActionLoadingForTask, onOpenEditTaskModal, onDeleteTask, canUpdate, canDelete, isActionLoadingForDepartment, departmentId, onStatusChange, onPriorityChange, onDueDateChange, onAssigneeChange, departmentUsers, usersLoading, isBoard = false }) => {
+}> = ({ task, taskIndex, onSelectTaskForDetails, onShowTaskDetails, isActionLoadingForTask, onOpenEditTaskModal, onDeleteTask, onRestoreTask, canUpdate, canDelete, isActionLoadingForDepartment, departmentId, onStatusChange, onPriorityChange, onDueDateChange, onAssigneeChange, departmentUsers, usersLoading, isBoard = false }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: String(task._id),
     disabled: !!isActionLoadingForTask?.(task._id),
@@ -412,7 +414,7 @@ const DraggableTask: React.FC<{
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            {canDelete && canDelete("tasks") && (
+            {canDelete && canDelete("tasks") && !task.isDeleted && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation()
@@ -423,6 +425,19 @@ const DraggableTask: React.FC<{
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
+              </DropdownMenuItem>
+            )}
+            {canDelete && canDelete("tasks") && task.isDeleted && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRestoreTask?.(task._id)
+                }}
+                className="text-green-600"
+                disabled={isActionLoadingForTask?.(task._id) || isActionLoadingForDepartment?.(departmentId || "")}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Restore
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -443,6 +458,7 @@ export const TaskGridView: React.FC<TaskViewProps> = memo(function TaskGridView(
   onOpenCreateTaskModal,
   onOpenEditTaskModal,
   onDeleteTask,
+  onRestoreTask,
   onToggleTaskCollapse,
   onSelectTaskForDetails,
   getSubTasks,
@@ -599,10 +615,16 @@ export const TaskGridView: React.FC<TaskViewProps> = memo(function TaskGridView(
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
-                      {canDelete("tasks") && (
+                      {canDelete("tasks") && !task.isDeleted && (
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteTask(task._id); }} className="text-red-600" disabled={isActionLoadingForTask?.(task._id)}>
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
+                        </DropdownMenuItem>
+                      )}
+                      {canDelete("tasks") && task.isDeleted && (
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRestoreTask(task._id); }} className="text-green-600" disabled={isActionLoadingForTask?.(task._id)}>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Restore
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -707,10 +729,16 @@ export const TaskGridView: React.FC<TaskViewProps> = memo(function TaskGridView(
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          {canDelete('tasks') && (
+                          {canDelete('tasks') && !subTask.isDeleted && (
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteTask(subTask._id); }} className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/30 text-xs" disabled={isActionLoadingForTask?.(subTask._id)}>
                               <Trash2 className="h-3.5 w-3.5 mr-2" />
                               Delete
+                            </DropdownMenuItem>
+                          )}
+                          {canDelete('tasks') && subTask.isDeleted && (
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRestoreTask(subTask._id); }} className="text-green-600 focus:text-green-600 focus:bg-green-50 dark:focus:bg-green-950/30 text-xs" disabled={isActionLoadingForTask?.(subTask._id)}>
+                              <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                              Restore
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
@@ -738,6 +766,7 @@ export const TaskTableView: React.FC<TaskViewProps> = memo(function TaskTableVie
   onOpenCreateTaskModal,
   onOpenEditTaskModal,
   onDeleteTask,
+  onRestoreTask,
   onToggleTaskCollapse,
   onSelectTaskForDetails,
   getSubTasks,
@@ -1023,6 +1052,7 @@ export const TaskBoardView: React.FC<
   onOpenCreateTaskModal,
   onOpenEditTaskModal,
   onDeleteTask,
+  onRestoreTask,
   onSelectTaskForDetails,
   getDepartmentName,
   sensors,
@@ -1039,7 +1069,7 @@ export const TaskBoardView: React.FC<
   departmentUsers,
   usersLoading,
 }) {
-  const statuses = ["pending", "in-progress", "on-hold", "completed","closed", "deleted"]
+  const statuses = ["pending", "in-progress", "on-hold", "completed", "closed"]
   const [collapsedColumns, setCollapsedColumns] = useState<Set<string>>(new Set())
 
   const toggleColumnCollapse = (columnId: string) => {
@@ -1069,10 +1099,10 @@ export const TaskBoardView: React.FC<
   }, [departmentTasks, statuses])
 
   return (
-    <DndContext 
-      onDragStart={onHandleDragStart} 
-      onDragEnd={onHandleDragEnd} 
-      sensors={sensors} 
+    <DndContext
+      onDragStart={onHandleDragStart}
+      onDragEnd={onHandleDragEnd}
+      sensors={sensors}
       collisionDetection={closestCenter}
     >
       <div className="flex gap-3 p-4 h-full w-100 overflow-x-auto">
@@ -1083,12 +1113,12 @@ export const TaskBoardView: React.FC<
             <div
               key={columnId}
               className={cn(
-                collapsedColumns.has(columnId) ? 'flex-initial min-w-[48px] w-auto' : 'flex-1 min-w-80 max-w-sm',
+                collapsedColumns.has(columnId) ? 'flex-initial min-w-[48px] w-auto' : 'flex-1 min-w-[350px] max-w-sm',
                 'transition-all duration-300 ease-in-out'
               )}
             >
-              <SortableContext 
-                items={columnTasks.map((t) => String(t._id))} 
+              <SortableContext
+                items={columnTasks.map((t) => String(t._id))}
                 strategy={verticalListSortingStrategy}
               >
                 <BoardColumn
@@ -1107,6 +1137,7 @@ export const TaskBoardView: React.FC<
                   draggingTask={draggingTask}
                   onOpenEditTaskModal={onOpenEditTaskModal}
                   onDeleteTask={onDeleteTask}
+                  onRestoreTask={onRestoreTask}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   onStatusChange={onStatusChange}
@@ -1121,7 +1152,7 @@ export const TaskBoardView: React.FC<
           )
         })}
       </div>
-      <DragOverlay 
+      <DragOverlay
         dropAnimation={{
           duration: 200,
           easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
@@ -1131,11 +1162,61 @@ export const TaskBoardView: React.FC<
         {draggingTask ? (
           <Card className="p-3 border border-border bg-card shadow-2xl transform rotate-3 scale-105 transition-all" style={{ width: '300px' }}>
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{draggingTask.title}</div>
-                <div className="text-xs text-muted-foreground line-clamp-2">{draggingTask.description}</div>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex flex-col min-w-0">
+                  <div className="text-sm font-medium mr-6">{draggingTask.title}</div>
+                  {/* Compact metadata row for board view - no description */}
+                  <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground justify-between flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {/* Task Order Number */}
+                      <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-slate-100 dark:bg-slate-800">
+                        #{draggingTask.order || draggingTask._id?.toString().slice(-4).toUpperCase()}
+                      </Badge>
+                      {draggingTask.dueDate && new Date(draggingTask.dueDate) < new Date() && draggingTask.status !== "completed" && (
+                        <Badge variant="destructive" className="text-xs whitespace-nowrap">
+                          Overdue
+                        </Badge>
+                      )}
+                      {/* Priority Inline Dropdown - Available in all views */}
+                      {draggingTask.priority && (
+                        <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                          <InlinePriorityDropdown
+                            task={draggingTask}
+                            isLoading={isActionLoadingForTask?.(draggingTask._id)}
+                            canUpdate={canUpdate?.("tasks")}
+                            onPriorityChange={onPriorityChange || (async () => { })}
+                          />
+                        </div>
+                      )}
+
+                      {/* Due date inline edit - Available in all views */}
+                      {draggingTask.dueDate && (
+                        <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                          <InlineDueDateInput
+                            task={draggingTask}
+                            isLoading={isActionLoadingForTask?.(draggingTask._id)}
+                            canUpdate={canUpdate?.("tasks")}
+                            onDueDateChange={onDueDateChange || (async () => { })}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Assignee - Always editable via dropdown with pointer-events handling */}
+                    <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                      <InlineAssigneeDropdown
+                        task={draggingTask}
+                        isLoading={isActionLoadingForTask?.(draggingTask._id)}
+                        assigneeLoading={usersLoading}
+                        canUpdate={canUpdate?.("tasks")}
+                        users={departmentUsers}
+                        onAssigneeChange={onAssigneeChange || (async () => { })}
+                      />
+                    </div>
+
+                  </div>
+                </div>
               </div>
-              <Badge className={`text-xs h-6 px-2 flex-shrink-0 ${statusColors[draggingTask.status as keyof typeof statusColors] || statusColors.pending}`}>{draggingTask.status?.replace('-', ' ')}</Badge>
             </div>
           </Card>
         ) : null}

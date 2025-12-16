@@ -1,4 +1,4 @@
-# Complete CRUD Implementation Guide - DepLLC CRM
+# Complete CRUD Implementation Guide - Digi Era Pro CRM
 
 This comprehensive guide documents the complete CRUD implementation pattern used in the Department module, serving as a blueprint for creating new CRUD operations with security, validation, and best practices.
 
@@ -13,11 +13,11 @@ This comprehensive guide documents the complete CRUD implementation pattern used
 7. [API Layer](#api-layer)
 8. [State Management](#state-management)
 9. [Frontend Components](#frontend-components)
-10. [Caching System](#caching-system)
-11. [Security & Middleware](#security--middleware)
-12. [Database Connection System](#database-connection-system)
-13. [Best Practices](#best-practices)
-14. [Recent Updates & Fixes](#recent-updates--fixes)
+10. [Additional Features](#additional-features)
+11. [Caching System](#caching-system)
+12. [Security & Middleware](#security--middleware)
+13. [Database Connection System](#database-connection-system)
+14. [Best Practices](#best-practices)
 15. [Implementation Checklist](#implementation-checklist)
 
 ---
@@ -152,10 +152,15 @@ import mongoose, { Document, Schema } from 'mongoose'
 
 export interface IDepartment extends Document {
   name: string
+  category: 'sales' | 'support' | 'it' | 'management'
   description?: string
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'deleted'
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 }
 
 const DepartmentSchema = new Schema<IDepartment>({
@@ -164,8 +169,14 @@ const DepartmentSchema = new Schema<IDepartment>({
     required: [true, "Department name is required"],
     trim: true,
     maxlength: [100, "Name cannot exceed 100 characters"],
-    unique: true,
-    index: true,
+    unique: true, // This already creates an index, so remove index: true
+  },
+  category: {
+    type: String,
+    required: [true, "Department category is required"],
+    trim: true,
+    maxlength: [100, "Category cannot exceed 100 characters"],
+    enum: ['sales', 'support', 'it', 'management'],
   },
   description: {
     type: String,
@@ -174,34 +185,52 @@ const DepartmentSchema = new Schema<IDepartment>({
   },
   status: {
     type: String,
-    enum: ['active', 'inactive'],
+    enum: ['active', 'inactive', 'deleted'],
     default: 'active',
-    index: true,
+    // index: true, // Removed - covered by compound indexes
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
   },
 }, {
-  timestamps: true,           // Auto createdAt/updatedAt
-  toJSON: { virtuals: true }, // Include virtuals in JSON
+  timestamps: true,
+  toJSON: { virtuals: true },
   toObject: { virtuals: true },
 })
 
-// Performance indexes
+// Compound indexes for better query performance
 DepartmentSchema.index({ status: 1, createdAt: -1 })
-DepartmentSchema.index({ 
-  name: 'text', 
+DepartmentSchema.index({ category: 1, createdAt: -1 })
+
+// Text search index
+DepartmentSchema.index({
+  name: 'text',
   description: 'text'
 }, {
   weights: { name: 10, description: 5 },
   name: 'department_search_index'
 })
 
-// Pre-save validation
-DepartmentSchema.pre('save', async function(next) {
+// Pre-save middleware to ensure unique name (case insensitive)
+DepartmentSchema.pre('save', async function (next) {
   if (this.isModified('name')) {
     const existingDept = await mongoose.model('Department').findOne({
       name: { $regex: new RegExp(`^${this.name}$`, 'i') },
       _id: { $ne: this._id }
     })
-    
+
     if (existingDept) {
       const error = new Error('Department name already exists')
       return next(error)
@@ -216,9 +245,10 @@ export default mongoose.models.Department || mongoose.model<IDepartment>("Depart
 ### Key Database Features:
 
 - **Unique Constraints**: Case-insensitive name uniqueness
-- **Indexes**: Performance optimization for queries
-- **Text Search**: Full-text search capability
-- **Soft Delete**: Status-based filtering instead of hard deletion
+- **Indexes**: Performance optimization for queries with compound indexes
+- **Text Search**: Full-text search capability on name and description
+- **Soft Delete**: Implemented with isDeleted flag, deletedAt, deletedBy, and deletionReason
+- **Categories**: Department categorization (sales, support, it, management)
 - **Timestamps**: Automatic createdAt/updatedAt tracking
 - **Validation**: Schema-level validation with custom error messages
 
@@ -231,62 +261,230 @@ export default mongoose.models.Department || mongoose.model<IDepartment>("Depart
 ```typescript
 import { z } from 'zod'
 
-// Constants for validation
+// Custom validation helpers
+const createStringValidator = (config: { min?: number; max?: number; required?: boolean }) => {
+  let validator = z.string()
+
+  if (config.min) {
+    validator = validator.min(config.min, `Must be at least ${config.min} characters`)
+  }
+
+  if (config.max) {
+    validator = validator.max(config.max, `Cannot exceed ${config.max} characters`)
+  }
+
+  // Trim all strings
+  const baseValidator = validator.transform((val) => val.trim())
+
+  if (config.required === false) {
+    return baseValidator.optional()
+  }
+
+  return baseValidator.refine((val) => val.length > 0, 'This field is required')
+}
+
 export const DEPARTMENT_CONSTANTS = {
-  NAME: { MIN_LENGTH: 2, MAX_LENGTH: 100 },
-  DESCRIPTION: { MAX_LENGTH: 500 },
-  STATUS: { VALUES: ['active', 'inactive'] as const, DEFAULT: 'active' as const },
-  PAGINATION: { DEFAULT_PAGE: 1, DEFAULT_LIMIT: 10, MAX_LIMIT: 100, MIN_PAGE: 1 },
-  SORT: { ALLOWED_FIELDS: ['name', 'status', 'createdAt', 'updatedAt'] as const }
+  NAME: {
+    MIN_LENGTH: 2,
+    MAX_LENGTH: 100,
+  },
+  DESCRIPTION: {
+    MAX_LENGTH: 2000,
+  },
+  CATEGORY: {
+    VALUES: ['sales', 'support', 'it', 'management'] as const,
+    DEFAULT: 'it' as const,
+  },
+  STATUS: {
+    VALUES: ['active', 'inactive', 'deleted'] as const,
+    DEFAULT: 'active' as const,
+  },
+  PAGINATION: {
+    DEFAULT_PAGE: 1,
+    DEFAULT_LIMIT: 10,
+    MAX_LIMIT: 100,
+    MIN_PAGE: 1,
+  },
+  SORT: {
+    ALLOWED_FIELDS: ['name', 'status', 'createdAt', 'updatedAt'] as const,
+    DEFAULT_FIELD: 'createdAt' as const,
+    DEFAULT_ORDER: 'desc' as const,
+  },
+} as const
+  NAME: {
+    MIN_LENGTH: 2,
+    MAX_LENGTH: 100,
+  },
+  DESCRIPTION: {
+    MAX_LENGTH: 2000,
+  },
+  CATEGORY: {
+    VALUES: ['sales', 'support', 'it', 'management'] as const,
+    DEFAULT: 'it' as const,
+  },
+  STATUS: {
+    VALUES: ['active', 'inactive', 'deleted'] as const,
+    DEFAULT: 'active' as const,
+  },
+  PAGINATION: {
+    DEFAULT_PAGE: 1,
+    DEFAULT_LIMIT: 10,
+    MAX_LIMIT: 100,
+    MIN_PAGE: 1,
+  },
+  SORT: {
+    ALLOWED_FIELDS: ['name', 'status', 'createdAt', 'updatedAt'] as const,
+    DEFAULT_FIELD: 'createdAt' as const,
+    DEFAULT_ORDER: 'desc' as const,
+  },
 } as const
 
-// MongoDB ObjectId validation
 export const objectIdSchema = z.string().regex(
   /^[0-9a-fA-F]{24}$/,
   'Invalid ID format'
 )
 
-// Base department schema
 export const baseDepartmentSchema = z.object({
-  name: z.string()
-    .min(DEPARTMENT_CONSTANTS.NAME.MIN_LENGTH, 'Name too short')
-    .max(DEPARTMENT_CONSTANTS.NAME.MAX_LENGTH, 'Name too long')
-    .transform(val => val.trim())
-    .refine(name => name.length > 0, 'Department name is required'),
+  name: createStringValidator({
+    min: DEPARTMENT_CONSTANTS.NAME.MIN_LENGTH,
+    max: DEPARTMENT_CONSTANTS.NAME.MAX_LENGTH,
+    required: true,
+  }).refine(
+    (name) => name && name.length > 0,
+    'Department name is required'
+  ),
+  category: z.enum(['sales', 'support', 'it', 'management'], {
+    errorMap: () => ({ message: 'Category must be one of: sales, support, it, management' })
+  }),
 
   description: z.string()
-    .max(DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH, 'Description too long')
+    .max(DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH, `Description cannot exceed ${DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH} characters`)
     .nullable()
     .optional()
-    .transform(val => !val || val.trim() === '' ? undefined : val.trim()),
+    .transform((val) => {
+      if (val === null || val === undefined || val.trim() === '') return undefined
+      return val.trim()
+    }),
 
-  status: z.enum(DEPARTMENT_CONSTANTS.STATUS.VALUES)
-    .default(DEPARTMENT_CONSTANTS.STATUS.DEFAULT),
+  status: z.enum(DEPARTMENT_CONSTANTS.STATUS.VALUES, {
+    errorMap: () => ({ message: 'Status must be either active or inactive' })
+  }).default(DEPARTMENT_CONSTANTS.STATUS.DEFAULT),
 })
 
-// Operation-specific schemas
 export const createDepartmentSchema = baseDepartmentSchema.strict()
 
-export const updateDepartmentSchema = baseDepartmentSchema.partial().strict()
-  .refine(data => Object.values(data).some(value => 
-    value !== undefined && value !== null && value !== ''
-  ), { message: 'At least one field must be provided for update' })
+export const updateDepartmentSchema = baseDepartmentSchema.partial().extend({
+  isDeleted: z.literal(false).optional(),
+}).strict().refine(
+  (data) => {
+    const fields = Object.keys(data)
+    return fields.length > 0 && fields.some(key => 
+      data[key] !== undefined && data[key] !== null && data[key] !== ''
+    )
+  },
+  {
+    message: 'At least one field must be provided for update',
+  }
+)
 
-// Query parameter schemas
-export const departmentQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
-  search: z.string().optional().transform(val => val?.trim() || ''),
-  status: z.enum(['active', 'inactive', '']).optional(),
-  sortBy: z.enum(['name', 'status', 'createdAt', 'updatedAt']).default('createdAt'),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+export const departmentWithIdSchema = baseDepartmentSchema.extend({
+  _id: objectIdSchema,
+  createdAt: z.date().or(z.string().transform(str => new Date(str))),
+  updatedAt: z.date().or(z.string().transform(str => new Date(str))),
 })
 
-// Type exports
-export type Department = z.infer<typeof departmentWithIdSchema>
-export type CreateDepartmentData = z.infer<typeof createDepartmentSchema>
-export type UpdateDepartmentData = z.infer<typeof updateDepartmentSchema>
-export type DepartmentQueryParams = z.infer<typeof departmentQuerySchema>
+export const departmentFiltersSchema = z.object({
+  search: z.string().optional(),
+  status: z.enum(['active', 'inactive', '']).optional(),
+  category: z.enum(['sales', 'support', 'it', 'management', '']).optional(),
+})
+
+export const departmentSortSchema = z.object({
+  field: z.enum(['name', 'status', 'createdAt', 'updatedAt', '_id']),
+  direction: z.enum(['asc', 'desc']),
+})
+
+export const fetchDepartmentsParamsSchema = z.object({
+  page: z.number()
+    .int('Page must be an integer')
+    .min(DEPARTMENT_CONSTANTS.PAGINATION.MIN_PAGE, 'Page must be at least 1')
+    .optional(),
+
+  limit: z.number()
+    .int('Limit must be an integer')
+    .min(1, 'Limit must be at least 1')
+    .max(DEPARTMENT_CONSTANTS.PAGINATION.MAX_LIMIT, `Limit cannot exceed ${DEPARTMENT_CONSTANTS.PAGINATION.MAX_LIMIT}`)
+    .optional(),
+
+  filters: departmentFiltersSchema.optional(),
+  sort: departmentSortSchema.optional(),
+})
+
+export const departmentQuerySchema = z.object({
+  page: z.coerce.number()
+    .int('Page must be an integer')
+    .min(DEPARTMENT_CONSTANTS.PAGINATION.MIN_PAGE, 'Page must be at least 1')
+    .default(DEPARTMENT_CONSTANTS.PAGINATION.DEFAULT_PAGE),
+
+  limit: z.coerce.number()
+    .int('Limit must be an integer')
+    .min(1, 'Limit must be at least 1')
+    .max(DEPARTMENT_CONSTANTS.PAGINATION.MAX_LIMIT, `Limit cannot exceed ${DEPARTMENT_CONSTANTS.PAGINATION.MAX_LIMIT}`)
+    .default(DEPARTMENT_CONSTANTS.PAGINATION.DEFAULT_LIMIT),
+
+  search: z.string()
+    .trim()
+    .optional()
+    .transform(val => val || undefined),
+
+  category: z.string()
+    .trim()
+    .optional()
+    .transform(val => {
+      if (!val || val === '') return undefined
+      return val
+    })
+    .refine(val => {
+      if (val === undefined) return true
+      return DEPARTMENT_CONSTANTS.CATEGORY.VALUES.includes(val as any)
+    }, 'Invalid category value'),
+
+  status: z.string()
+    .trim()
+    .optional()
+    .transform(val => {
+      if (!val || val === '') return undefined
+      return val
+    })
+    .refine(val => {
+      if (val === undefined) return true
+      return DEPARTMENT_CONSTANTS.STATUS.VALUES.includes(val as any)
+    }, 'Invalid status value'),
+
+  sortBy: z.enum([...DEPARTMENT_CONSTANTS.SORT.ALLOWED_FIELDS])
+    .default(DEPARTMENT_CONSTANTS.SORT.DEFAULT_FIELD),
+
+  sortOrder: z.enum(['asc', 'desc'])
+    .default(DEPARTMENT_CONSTANTS.SORT.DEFAULT_ORDER),
+
+  includeInactive: z.coerce.boolean().optional().default(false),
+})
+
+export const departmentIdSchema = z.object({
+  id: objectIdSchema,
+})
+
+export const bulkDepartmentOperationSchema = z.object({
+  operation: z.enum(['delete', 'activate', 'deactivate']),
+  departmentIds: z.array(objectIdSchema).min(1, 'At least one department ID is required'),
+})
+
+export const departmentResponseSchema = z.object({
+  success: z.boolean(),
+  data: departmentWithIdSchema.optional(),
+  message: z.string().optional(),
+  error: z.string().optional(),
+})
 ```
 
 ### Validation Features:
@@ -310,52 +508,91 @@ import Department from "@/models/Department"
 import { createDepartmentSchema, departmentQuerySchema } from "@/lib/validations/department"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
-// GET /api/departments - List with pagination and filtering
+// GET /api/departments - List departments with pagination and filters
 export async function GET(request: NextRequest) {
   try {
-    // Security & Authentication
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    // Apply middleware (rate limiting + authentication + permissions)
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
 
-    // Parse & validate executeGenericDbQuery parameters
+    // Parse and validate query parameters
     const searchParams = request.nextUrl.searchParams
+
+    // Parse query parameters properly
     const queryParams = {
       page: searchParams.get('page') || '1',
       limit: searchParams.get('limit') || '10',
       search: searchParams.get('search') || '',
       status: searchParams.get('status') || '',
+      category: searchParams.get('category') || '',
       sortBy: searchParams.get('sortBy') || 'createdAt',
       sortOrder: searchParams.get('sortOrder') || 'desc',
     }
 
-    const validatedParams = departmentQuerySchema.parse(queryParams)
+    // Convert and validate parameters
+    const parsedParams = {
+      page: parseInt(queryParams.page),
+      limit: parseInt(queryParams.limit),
+      search: queryParams.search.trim(),
+      status: queryParams.status.trim(),
+      category: queryParams.category.trim(),
+      sortBy: queryParams.sortBy,
+      sortOrder: queryParams.sortOrder as 'asc' | 'desc',
+    }
 
-    // Build MongoDB filter (renamed from 'executeGenericDbQuery' to avoid shadowing)
-    const filter: any = {}
-    
+    const validatedParams = departmentQuerySchema.parse(parsedParams)
+
+    // Build query with soft delete filter
+    let filter: any = {}
+
+    // Apply soft delete filter - exclude deleted records unless super admin
+    filter = addSoftDeleteFilter(filter, isSuperAdmin)
+
+    // Search implementation - use regex for more reliable results
     if (validatedParams.search) {
-      filter.$or = [
-        { name: { $regex: validatedParams.search, $options: 'i' } },
-        { description: { $regex: validatedParams.search, $options: 'i' } }
-      ]
+      const searchTerm = validatedParams.search.trim()
+      console.log('Search term:', searchTerm)
+
+      // Security: sanitize and validate search input
+      const sanitizedSearch = SecurityUtils.sanitizeString(searchTerm)
+      // Check for potential security threats
+      if (SecurityUtils.containsSQLInjection || SecurityUtils.containsXSS) {
+        return createErrorResponse('Invalid search input', 400)
+      }
+
+      if (searchTerm.length > 0) {
+        filter.$text = { $search: sanitizedSearch }
+      }
     }
-    
+
+    // Status filter - if user is not super admin, ensure we don't override soft delete filter
     if (validatedParams.status) {
-      filter.status = validatedParams.status
+      if (isSuperAdmin) {
+        filter.status = validatedParams.status
+      } else {
+        filter.status = validatedParams.status
+        filter.isDeleted = false // Ensure non-admins can't see deleted items
+      }
     }
 
-    // Build sort
-    const sort: any = {}
-    sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
+    // Category filter
+    if (validatedParams.category) {
+      filter.category = validatedParams.category
+    }
 
-    // Execute parallel queries with automatic connection management and caching
+    console.log('Final query before execution:', JSON.stringify(filter, null, 2))
+
+    // Execute queries with automatic connection management and caching
     const [departments, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
-        return await Department.find(filter)
-          .sort(sort)
+        // Debug: Check visible departments (based on user's permissions)
+        const deptQuery = Department.find(filter)
+          .sort({ [validatedParams.sortBy]: validatedParams.sortOrder === 'asc' ? 1 : -1 })
           .skip((validatedParams.page - 1) * validatedParams.limit)
           .limit(validatedParams.limit)
           .lean()
-      }, `departments-${JSON.stringify(validatedParams)}`, 60000), // 1-minute cache
+
+        return await deptQuery
+      }, `departments-${JSON.stringify(validatedParams)}`, 60000),
 
       executeGenericDbQuery(async () => {
         return await Department.countDocuments(filter)
@@ -363,6 +600,7 @@ export async function GET(request: NextRequest) {
 
       executeGenericDbQuery(async () => {
         return await Department.aggregate([
+          { $match: addSoftDeleteFilter({}, isSuperAdmin) },
           {
             $group: {
               _id: null,
@@ -372,19 +610,22 @@ export async function GET(request: NextRequest) {
             }
           }
         ])
-      }, `departments-stats`, 300000) // 5-minute cache for stats
+      }, `departments-stats-${isSuperAdmin ? 'admin' : 'user'}`, 300000)
     ])
+
+    const pages = Math.ceil(total / validatedParams.limit)
+    const pagination = {
+      page: validatedParams.page,
+      limit: validatedParams.limit,
+      total,
+      pages
+    }
 
     return NextResponse.json({
       success: true,
       data: {
         departments,
-        pagination: {
-          page: validatedParams.page,
-          limit: validatedParams.limit,
-          total,
-          pages: Math.ceil(total / validatedParams.limit)
-        },
+        pagination,
         stats: stats[0] || { totalDepartments: 0, activeDepartments: 0, inactiveDepartments: 0 }
       },
       message: 'Departments retrieved successfully'
@@ -392,10 +633,17 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching departments:', error)
-    return NextResponse.json({
-      success: false,
-      error: error.message || 'Failed to fetch departments'
-    }, { status: 500 })
+
+    // Handle middleware errors (like permission denied)
+    if (error instanceof Response) {
+      return error
+    }
+
+    return createAPIErrorResponse(
+      error.message || 'Failed to fetch departments',
+      500,
+      "INTERNAL_ERROR"
+    )
   }
 }
 
@@ -807,60 +1055,304 @@ const apiData = response || response.data
 ### 6. Minimal Redux Slice (`store/slices/entitySlice.ts`)
 
 ```typescript
-import { createSlice } from '@reduxjs/toolkit'
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { Department, DepartmentFilters, DepartmentSort } from '@/types'
 
-const entitySlice = createSlice({
-  name: 'entities',
-  initialState: {
-    entities: [],
-    selectedEntity: null,
-    loading: false,
-    actionLoading: false,
-    error: null,
-    pagination: { page: 1, limit: 10, total: 0, pages: 0 }
-  },
-  reducers: {
-    setEntities: (state, action) => { state.entities = action.payload },
-    setEntity: (state, action) => { state.selectedEntity = action.payload },
-    setPagination: (state, action) => { state.pagination = action.payload },
-    setLoading: (state, action) => { state.loading = action.payload },
-    setActionLoading: (state, action) => { state.actionLoading = action.payload },
-    setError: (state, action) => { state.error = action.payload },
-    clearError: (state) => { state.error = null }
+interface DepartmentState {
+  departments: Department[]
+  selectedDepartment: Department | null
+  loading: boolean
+  actionLoading: boolean
+  error: any
+  filters: DepartmentFilters
+  sort: DepartmentSort
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    pages: number
   }
+  stats: {
+    totalDepartments: number
+    activeDepartments: number
+    inactiveDepartments: number
+  } | null
+}
+
+const initialState: DepartmentState = {
+  departments: [],
+  selectedDepartment: null,
+  loading: false,
+  actionLoading: false,
+  error: null,
+  filters: {},
+  sort: { field: 'createdAt', direction: 'desc' },
+  pagination: { page: 1, limit: 10, total: 0, pages: 0 },
+  stats: null,
+}
+
+const departmentSlice = createSlice({
+  name: "departments",
+  initialState,
+  reducers: {
+    setDepartments: (state, action: PayloadAction<Department[]>) => {
+      state.departments = action.payload
+    },
+    setSelectedDepartment: (state, action: PayloadAction<Department | null>) => {
+      state.selectedDepartment = action.payload
+    },
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload
+    },
+    setActionLoading: (state, action: PayloadAction<boolean>) => {
+      state.actionLoading = action.payload
+    },
+    setError: (state, action: PayloadAction<any>) => {
+      state.error = action.payload
+    },
+    clearError: (state) => {
+      state.error = null
+    },
+    setFilters: (state, action: PayloadAction<DepartmentFilters>) => {
+      state.filters = action.payload
+      state.pagination.page = 1
+    },
+    setSort: (state, action: PayloadAction<DepartmentSort>) => {
+      state.sort = action.payload
+    },
+    setPagination: (state, action: PayloadAction<Partial<DepartmentState["pagination"]>>) => {
+      state.pagination = { ...state.pagination, ...action.payload }
+    },
+    setStats: (state, action: PayloadAction<DepartmentState["stats"]>) => {
+      state.stats = action.payload
+    },
+    resetState: (state) => {
+      return initialState
+    },
+  },
 })
 
-export const { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } = entitySlice.actions
-export default entitySlice.reducer
+export const {
+  setDepartments,
+  setSelectedDepartment,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
+  setFilters,
+  setSort,
+  setPagination,
+  setStats,
+  resetState
+} = departmentSlice.actions
+
+export default departmentSlice.reducer
 ```
 
-### 7. Custom Hook using Generic Hooks (`hooks/use-entities.ts`)
+### 7. Custom Hook using Generic Hooks (`hooks/use-departments.ts`)
 
 ```typescript
+import {
+  setDepartments,
+  setSelectedDepartment,
+  setLoading,
+  setActionLoading,
+  setError,
+  clearError,
+  setFilters,
+  setSort,
+  setPagination,
+  setStats,
+  resetState,
+} from '@/store/slices/departmentSlice'
 import { useGenericQuery, useGenericCreate, useGenericUpdate, useGenericDelete } from '@/hooks/use-generic-query'
-import { useAppDispatch } from '@/hooks/redux'
-import { setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError } from '@/store/slices/entitySlice'
+import { useAppDispatch, useAppSelector } from '@/hooks/redux'
+import { useCallback, useMemo } from 'react'
 
-export function useEntities(params: FetchParams = {}) {
+export function useDepartments() {
   const dispatch = useAppDispatch()
 
-  const reduxDispatchers = {
-    setEntities, setEntity, setPagination, setLoading, setActionLoading, setError, clearError
+  const {
+    departments,
+    selectedDepartment,
+    loading,
+    actionLoading,
+    error,
+    filters,
+    sort,
+    pagination,
+    stats,
+  } = useAppSelector((state) => state.departments)
+
+  // Define options for generic hooks
+  const departmentOptions: UseGenericQueryOptions<any> = {
+    entityName: 'departments',
+    baseUrl: '/api/departments',
+    reduxDispatchers: {
+      setEntities: (entities) => dispatch(setDepartments(entities)),
+      setEntity: (entity) => dispatch(setSelectedDepartment(entity)),
+      setPagination: (pagination) => dispatch(setPagination(pagination)),
+      setStats: (stats) => dispatch(setStats(stats)),
+      setLoading: (loading) => dispatch(setLoading(loading)),
+      setActionLoading: (loading) => dispatch(setActionLoading(loading)),
+      setError: (error) => dispatch(setError(error)),
+      clearError: () => dispatch(clearError()),
+    },
   }
 
-  const query = useGenericQuery<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers }, params)
-  const createMutation = useGenericCreate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
-  const updateMutation = useGenericUpdate<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
-  const deleteMutation = useGenericDelete<Entity>({ entityName: 'entities', baseUrl: '/api/entities', reduxDispatchers })
+  // Memoize query params to prevent unnecessary re-renders
+  const queryParams = useMemo(() => ({
+    page: pagination.page,
+    limit: pagination.limit,
+    filters,
+    sort: {
+      field: sort.field,
+      direction: sort.direction as 'asc' | 'desc',
+    },
+  }), [pagination.page, pagination.limit, filters, sort.field, sort.direction])
+
+  const allDepartmentsParams = useMemo(() => ({
+    page: 1,
+    limit: 100,
+    filters: { status: 'active', category: '' },
+    sort: {
+      field: 'name' as const,
+      direction: 'asc' as const,
+    },
+  }), [])
+
+  // Use generic hooks with better caching
+  const { data: fetchedDepartments, isLoading: queryLoading, refetch: refetchDepartments } = useGenericQuery(
+    departmentOptions,
+    queryParams,
+    true,
+    {
+      staleTime: 10 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 2,
+    }
+  )
+
+  // Separate query for fetching all departments (for filters/dropdowns) with longer cache
+  const { data: allDepartments } = useGenericQuery(
+    departmentOptions,
+    allDepartmentsParams,
+    true,
+    {
+      staleTime: 15 * 60 * 1000,
+      gcTime: 60 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 2,
+    }
+  )
+
+  const createMutation = useGenericCreate(departmentOptions)
+  const updateMutation = useGenericUpdate(departmentOptions)
+  const deleteMutation = useGenericDelete(departmentOptions)
+
+  // CRUD operations
+  const handleCreateDepartment = useCallback((departmentData: CreateDepartmentData) => {
+    return createMutation.mutateAsync(departmentData)
+  }, [createMutation])
+
+  const handleUpdateDepartment = useCallback((id: string, data: UpdateDepartmentData) => {
+    return updateMutation.mutateAsync({ id, data })
+  }, [updateMutation])
+
+  const handleDeleteDepartment = useCallback((departmentId: string) => {
+    return deleteMutation.mutateAsync(departmentId)
+  }, [deleteMutation])
+
+  // Filter and sort operations
+  const handleSetFilters = useCallback((newFilters: Partial<DepartmentFilters>) => {
+    dispatch(setFilters(newFilters))
+  }, [dispatch])
+
+  const handleSetSort = useCallback((newSort: DepartmentSort) => {
+    dispatch(setSort(newSort))
+  }, [dispatch])
+
+  const handleSetPagination = useCallback((newPagination: { page?: number; limit?: number }) => {
+    dispatch(setPagination(newPagination))
+  }, [dispatch])
+
+  const handleSetSelectedDepartment = useCallback((department: any) => {
+    dispatch(setSelectedDepartment(department))
+  }, [dispatch])
+
+  // Utility operations
+  const handleClearError = useCallback(() => {
+    dispatch(clearError())
+  }, [dispatch])
+
+  const handleResetDepartments = useCallback(() => {
+    dispatch(resetState())
+  }, [dispatch])
+
+  const refreshDepartments = useCallback(() => {
+    refetchDepartments()
+  }, [refetchDepartments])
+
+  // Computed values
+  const hasDepartments = departments.length > 0
+  const isFirstPage = pagination.page === 1
+  const isLastPage = pagination.page >= pagination.pages
+  const totalPages = pagination.pages
+  const totalItems = pagination.total
+
+  // Department utilities
+  const getDepartmentById = useCallback((departmentId: string) => {
+    return departments.find(dept => dept._id === departmentId)
+  }, [departments])
+
+  const getActiveDepartments = useCallback(() => {
+    return departments.filter(dept => dept.status === 'active')
+  }, [departments])
 
   return {
-    entities: query.data,
-    isLoading: query.isLoading,
-    error: query.error,
-    createEntity: createMutation.mutateAsync,
-    updateEntity: updateMutation.mutateAsync,
-    deleteEntity: deleteMutation.mutateAsync,
-    refetch: query.refetch
+    // Data
+    departments,
+    selectedDepartment,
+    allDepartments: allDepartments || [],
+    stats,
+
+    // Loading states
+    loading: loading || queryLoading,
+    actionLoading,
+
+    // Error
+    error,
+
+    // CRUD operations
+    createDepartment: handleCreateDepartment,
+    updateDepartment: handleUpdateDepartment,
+    deleteDepartment: handleDeleteDepartment,
+
+    // Filter/Sort/Pagination
+    filters,
+    sort,
+    pagination,
+    setFilters: handleSetFilters,
+    setSort: handleSetSort,
+    setPagination: handleSetPagination,
+    setSelectedDepartment: handleSetSelectedDepartment,
+
+    // Utility functions
+    clearError: handleClearError,
+    resetDepartments: handleResetDepartments,
+    refreshDepartments,
+
+    // Computed values
+    hasDepartments,
+    isFirstPage,
+    isLastPage,
+    totalPages,
+    totalItems,
+    getDepartmentById,
+    getActiveDepartments,
   }
 }
 ```
@@ -1340,6 +1832,123 @@ export default function AddDepartmentPage() {
 
 ---
 
+## Additional Features
+
+### Navigation and Permissions
+
+The CRUD implementation integrates with navigation and permission systems for enhanced UX and security.
+
+#### Navigation Provider (`components/providers/navigation-provider.tsx`)
+```typescript
+// Provides navigation utilities with loading states
+const { navigateTo, isNavigating } = useNavigation()
+const { isNavigating, handleNavigation } = useNavigationLoading()
+```
+
+#### Permissions Hook (`hooks/use-permissions.ts`)
+```typescript
+// Check user permissions for CRUD operations
+const { canCreate, canRead, canUpdate, canDelete } = usePermissions()
+```
+
+#### Usage in Pages:
+```tsx
+// In list page
+const { canCreate } = usePermissions()
+const { navigateTo } = useNavigation()
+
+// Add button with permission check
+{canCreate && (
+  <Button onClick={() => navigateTo("/departments/add")}>
+    Add Department
+  </Button>
+)}
+```
+
+### Soft Delete Implementation
+
+The system implements soft delete with full audit trail:
+
+#### Database Schema Extensions:
+- `isDeleted: Boolean` - Soft delete flag
+- `deletedAt: Date` - Deletion timestamp
+- `deletedBy: ObjectId` - User who performed deletion
+- `deletionReason: String` - Optional reason for deletion
+
+#### API Utilities:
+```typescript
+// lib/utils/soft-delete.ts
+export function addSoftDeleteFilter(filter: any, isSuperAdmin: boolean, excludeDeleted = true) {
+  if (!isSuperAdmin && excludeDeleted) {
+    filter.isDeleted = false
+  }
+  return filter
+}
+
+export async function performSoftDelete(entityType: string, entityId: string, userEmail: string) {
+  // Implementation for soft delete with audit
+}
+```
+
+#### Usage in API Routes:
+```typescript
+// Apply soft delete filter
+const filter = addSoftDeleteFilter({ _id: id }, isSuperAdmin)
+
+// Perform soft delete
+const deleteResult = await performSoftDelete('department', id, userEmail)
+```
+
+### Security Utilities
+
+#### Input Sanitization (`lib/utils/security.ts`)
+```typescript
+export class SecurityUtils {
+  static sanitizeString(input: string): string {
+    // Remove potentially dangerous characters
+  }
+
+  static containsSQLInjection(input: string): boolean {
+    // Check for SQL injection patterns
+  }
+
+  static containsXSS(input: string): boolean {
+    // Check for XSS patterns
+  }
+}
+```
+
+#### Usage in API:
+```typescript
+const sanitizedSearch = SecurityUtils.sanitizeString(searchTerm)
+if (SecurityUtils.containsSQLInjection(sanitizedSearch) || SecurityUtils.containsXSS(sanitizedSearch)) {
+  return createErrorResponse('Invalid input', 400)
+}
+```
+
+### Bulk Operations
+
+Support for bulk operations on entities:
+
+#### Validation Schema:
+```typescript
+export const bulkDepartmentOperationSchema = z.object({
+  operation: z.enum(['delete', 'activate', 'deactivate']),
+  departmentIds: z.array(objectIdSchema).min(1, 'At least one department ID is required'),
+})
+```
+
+#### API Endpoint:
+```typescript
+// POST /api/departments/bulk
+export async function POST(request: NextRequest) {
+  const { operation, departmentIds } = bulkDepartmentOperationSchema.parse(await request.json())
+  // Perform bulk operation
+}
+```
+
+---
+
 ## Caching System
 
 ### Frontend Caching with TanStack Query:
@@ -1493,6 +2102,23 @@ const { session, user, userEmail } = await genericApiRoutesMiddleware(request, '
 - Use middleware for cross-cutting concerns
 - Wrap all database operations in `executeGenericDbQuery()` functions
 
+### 9. **Soft Delete Implementation**
+- **Use `addSoftDeleteFilter()`**: Always apply soft delete filters based on user permissions
+- **Audit Trail**: Include deletedAt, deletedBy, and deletionReason for compliance
+- **Super Admin Access**: Allow super admins to see deleted records
+- **Cascade Considerations**: Handle related data when soft deleting
+
+### 10. **Security Best Practices**
+- **Input Sanitization**: Use `SecurityUtils.sanitizeString()` for all user inputs
+- **Injection Prevention**: Check for SQL injection and XSS patterns
+- **Permission Checks**: Implement fine-grained permissions for all operations
+- **Rate Limiting**: Protect against abuse with appropriate limits
+
+### 11. **Navigation and UX**
+- **Loading States**: Use navigation loading states for better UX
+- **Permission-based UI**: Hide/show UI elements based on user permissions
+- **Consistent Navigation**: Use navigation providers for centralized routing
+
 ### 9. **Component Architecture**
 - **Smart Fetching**: Implement parameter-based fetching to prevent unnecessary API calls
 - **Error Boundaries**: Use `handleAPIError` for consistent error handling
@@ -1522,37 +2148,39 @@ When creating a new CRUD module, follow this checklist:
 
 ### Generic Setup
 - [ ] Use generic hooks from `@/hooks/use-generic-query` for all CRUD operations
-- [ ] Create minimal Redux slice with basic reducers
-- [ ] Wrap generic hooks in entity-specific custom hook
+- [ ] Create Redux slice with stats, filters, sort, pagination support
+- [ ] Wrap generic hooks in entity-specific custom hook with memoized params
 - [ ] Handle API responses with `response || response.data` pattern
 
 ### Database Layer
-- [ ] Create Mongoose model with proper validation
-- [ ] Add appropriate indexes for performance
-- [ ] Implement soft delete with status field
-- [ ] Add text search indexes if needed
+- [ ] Create Mongoose model with soft delete fields (isDeleted, deletedAt, deletedBy, deletionReason)
+- [ ] Add compound indexes for performance (status + createdAt, category + createdAt)
+- [ ] Implement text search indexes with weights
+- [ ] Add pre-save middleware for uniqueness validation
 
 ### Validation Layer
-- [ ] Define Zod schemas for all operations
-- [ ] Create constants for validation rules
-- [ ] Implement input sanitization
+- [ ] Define comprehensive Zod schemas with constants
+- [ ] Include category enums and detailed validation rules
+- [ ] Implement bulk operation schemas
+- [ ] Add input sanitization and security checks
 
 ### API Layer
-- [ ] Create endpoints using `executeGenericDbQuery()` wrapper
-- [ ] Implement appropriate cache TTL
-- [ ] Add cache clearing patterns after mutations
-- [ ] Integrate security middleware
+- [ ] Create endpoints with `addSoftDeleteFilter()` for permission-based access
+- [ ] Implement `SecurityUtils` for input sanitization
+- [ ] Use `performSoftDelete()` for audit-trail soft deletes
+- [ ] Integrate security middleware and rate limiting
 
 ### State Management
-- [ ] Create minimal Redux slice with basic reducers
-- [ ] Use generic hooks for server state management
-- [ ] Sync with Redux for global state
+- [ ] Create Redux slice with stats, filters, sort, pagination
+- [ ] Use generic hooks with proper caching configuration
+- [ ] Implement separate queries for lists and dropdown data
+- [ ] Sync TanStack Query with Redux for UI state
 
 ### Frontend Components
-- [ ] Use generic hooks in components
-- [ ] Implement error handling with `handleAPIError`
-- [ ] Create list and form pages
-- [ ] Add permission-based UI controls
+- [ ] Use navigation providers for consistent routing
+- [ ] Implement permission-based UI with `usePermissions()`
+- [ ] Create list and form pages with loading states
+- [ ] Add debounced search and filter functionality
 
 ### Testing
 - [ ] Test all CRUD operations
@@ -1780,7 +2408,7 @@ export default function EntitiesPage() {
 
 ---
 
-This guide provides a comprehensive blueprint for implementing secure, scalable CRUD operations in the DepLLC CRM system using TanStack Query and generic hooks. By following these patterns and practices, you ensure consistency, security, and maintainability across all modules.
+This guide provides a comprehensive blueprint for implementing secure, scalable CRUD operations in the Digi Era Pro CRM system using TanStack Query and generic hooks. By following these patterns and practices, you ensure consistency, security, and maintainability across all modules.
 
 The generic CRUD implementation with TanStack Query provides:
 - **Automatic Caching**: No manual cache management needed

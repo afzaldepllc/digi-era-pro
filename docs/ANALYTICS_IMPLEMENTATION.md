@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document explains the complete analytics implementation in the DepLLC CRM system, including the solution to the cache invalidation problem that prevented real-time analytics updates after CRUD operations.
+This document explains the complete analytics implementation in the Digi Era Pro CRM system, including the solution to the cache invalidation problem that prevented real-time analytics updates after CRUD operations.
 
 ---
 

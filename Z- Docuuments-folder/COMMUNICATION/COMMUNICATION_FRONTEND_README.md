@@ -1,6 +1,6 @@
-# DepLLC CRM - Real-Time Communication Module (Frontend)
+# Digi Era Pro CRM - Real-Time Communication Module (Frontend)
 
-This document provides an overview of the comprehensive real-time communication frontend implementation for the DepLLC CRM system. The implementation follows the established CRM patterns and architecture.
+This document provides an overview of the comprehensive real-time communication frontend implementation for the Digi Era Pro CRM system. The implementation follows the established CRM patterns and architecture.
 
 ## 🚀 Overview
 

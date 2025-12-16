@@ -53,7 +53,7 @@ export interface ColumnDef<T> {
 }
 
 export interface ActionMenuItem<T> {
-  label: string;
+  label: string | ((row: T) => string);
   icon: React.ReactNode;
   onClick: (row: T) => void;
   variant?: "default" | "destructive";
@@ -384,8 +384,12 @@ const DataTable = <T extends Record<string, any>>({
     const generic = [...buildGenericActions];
 
     // Find indices for "Edit" and "Delete"
-    const editIdx = generic.findIndex(a => a.label?.toLowerCase() === "edit");
-    const deleteIdx = generic.findIndex(a => a.label?.toLowerCase() === "delete");
+    const editIdx = generic.findIndex(a =>
+      typeof a.label === "string" ? a.label.toLowerCase() === "edit" : false
+    );
+    const deleteIdx = generic.findIndex(a =>
+      typeof a.label === "string" ? a.label.toLowerCase() === "delete" : false
+    );
 
     // Insert custom actions after "Edit" (or after "View" if "Edit" not found)
     let insertIdx = editIdx !== -1 ? editIdx + 1 : 1;
@@ -532,7 +536,7 @@ const DataTable = <T extends Record<string, any>>({
                 )}
               >
                 {action.icon}
-                <span>{action.label}</span>
+                <span>{typeof action.label === 'function' ? action.label(row) : action.label}</span>
                 {!permitted && showActionsIfNoPermission && (
                   <span className="ml-auto text-xs text-muted-foreground">(No permission)</span>
                 )}

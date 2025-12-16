@@ -4,6 +4,7 @@ import Task from "@/models/Task"
 import User from "@/models/User"
 import { updateTaskSchema, taskIdSchema, assignTaskSchema, updateTaskStatusSchema } from "@/lib/validations/task"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 import mongoose from 'mongoose'
 
 interface RouteParams {
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           { createdBy: user.id }
         ]
       }
+
+      // Apply soft delete filtering
+      addSoftDeleteFilter(filter, isSuperAdmin)
 
       return await Task.findOne(filter)
         .populate('project', 'name clientId status')
@@ -133,6 +137,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (!isSuperAdmin && user.department && !isSupport) {
         filter.departmentId = user.department
       }
+
+      // Apply soft delete filtering
+      addSoftDeleteFilter(filter, isSuperAdmin)
 
       const existingTask = await Task.findOne(filter)
       
@@ -249,81 +256,69 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/tasks/[id] - Cancel task (soft delete)
+// DELETE /api/tasks/[id] - Soft delete task
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'tasks', 'delete')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'tasks', 'delete')
 
     // Resolve params and validate
     const resolvedParams = await params
     const validatedParams = taskIdSchema.parse({ id: resolvedParams.id })
 
-    // Cancel task with automatic connection management
-    const cancelledTask = await executeGenericDbQuery(async () => {
-      const filter: any = { 
+    // Check if task exists and user has access (same filtering as GET)
+    const existingTask = await executeGenericDbQuery(async () => {
+      // Build filter based on user permissions
+      const filter: any = {
         _id: validatedParams.id,
         status: { $ne: 'cancelled' }
       }
 
-      // Department-based filtering for non-support users
-      if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+      // Department-based filtering for non-support users (super admin bypasses this)
+      const userDepartment = user.department?.name?.toLowerCase()
+      const isSupport = ['support', 'admin'].includes(userDepartment)
+      if (!isSuperAdmin && user.departmentId && !isSupport) {
         filter.departmentId = user.departmentId
       }
 
-      const existingTask = await Task.findOne(filter)
-      
-      if (!existingTask) {
-        throw new Error('Task not found or already cancelled')
+      // Team members can only see their assigned or created tasks
+      if (!isSuperAdmin && user.role?.name === 'team_member') {
+        filter.$or = [
+          { assigneeId: user.id },
+          { createdBy: user.id }
+        ]
       }
 
-      // Permission checks
-      const userDepartment = user.department?.name?.toLowerCase()
-      const isSupport = ['support', 'admin'].includes(userDepartment)
-      const isLeadOrManager = ['department_lead', 'manager'].includes(user.role)
-      const isCreator = existingTask.createdBy?.toString() === user.id
+      // Apply soft delete filtering (exclude deleted tasks like departments)
+      addSoftDeleteFilter(filter, false)
 
-      if (!isSupport && !isLeadOrManager && !isCreator) {
-        throw new Error('You do not have permission to cancel this task')
-      }
-
-      // Check if task has active sub-tasks
-      if (existingTask.type === 'task') {
-        const activeSubTasks = await Task.countDocuments({
-          parentTaskId: validatedParams.id,
-          status: { $in: ['pending', 'in-progress'] }
-        })
-
-        if (activeSubTasks > 0) {
-          throw new Error('Cannot cancel task with active sub-tasks')
-        }
-      }
-
-      // Cancel the task (soft delete by setting status to cancelled)
-      return await Task.findByIdAndUpdate(
-        validatedParams.id,
-        { 
-          status: 'cancelled',
-          updatedAt: new Date()
-        },
-        { new: true }
-      )
+      return await Task.findOne(filter)
     })
 
-    // Clear relevant cache patterns after cancellation
-    clearCache('tasks')
-    clearCache(`task-${validatedParams.id}`)
-    if (cancelledTask?.projectId) {
-      clearCache(`project-${cancelledTask.projectId}`)
+    if (!existingTask) {
+      return NextResponse.json({
+        success: false,
+        error: 'Task not found or access denied'
+      }, { status: 404 })
+    }
+
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('task', validatedParams.id, userEmail)
+
+    if (!deleteResult.success) {
+      return NextResponse.json({
+        success: false,
+        error: deleteResult.message
+      }, { status: 400 })
     }
 
     return NextResponse.json({
       success: true,
-      data: cancelledTask,
-      message: 'Task cancelled successfully'
+      message: deleteResult.message,
+      data: deleteResult.data
     })
 
   } catch (error: any) {
-    console.error('Error cancelling task:', error)
+    console.error('Error deleting task:', error)
 
     if (error.name === 'ZodError') {
       return NextResponse.json({
@@ -335,7 +330,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       success: false,
-      error: error.message || 'Failed to cancel task'
+      error: error.message || 'Failed to delete task'
     }, { status: 500 })
   }
 }

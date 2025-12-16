@@ -1,4 +1,4 @@
-# Complete Request Lifecycle Guide - DepLLC CRM Permission System
+# Complete Request Lifecycle Guide - Digi Era Pro CRM Permission System
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -16,7 +16,7 @@
 
 ## Overview
 
-The DepLLC CRM system implements a **multi-layered security architecture** with dynamic role-based permissions. Every request goes through multiple validation stages to ensure users can only access resources they're authorized for.
+The Digi Era Pro CRM system implements a **multi-layered security architecture** with dynamic role-based permissions. Every request goes through multiple validation stages to ensure users can only access resources they're authorized for.
 
 ### Key Components:
 - **NextAuth.js** for authentication
@@ -686,7 +686,7 @@ fetch('/api/users')
 
 ## Summary
 
-The DepLLC CRM implements a **comprehensive, multi-layered security system** that protects every aspect of the application:
+The Digi Era Pro CRM implements a **comprehensive, multi-layered security system** that protects every aspect of the application:
 
 1. **Authentication** via NextAuth.js with secure sessions
 2. **Dynamic Permissions** with granular resource+action control
@@ -699,4 +699,4 @@ Every request flows through multiple validation layers, ensuring users can only 
 
 ---
 
-*This guide covers the complete request lifecycle as implemented in the DepLLC CRM system. For specific implementation details, refer to the source code in the respective files mentioned throughout this document.*
+*This guide covers the complete request lifecycle as implemented in the Digi Era Pro CRM system. For specific implementation details, refer to the source code in the respective files mentioned throughout this document.*

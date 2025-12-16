@@ -60,7 +60,7 @@ export function OnlineIndicator({
         {/* User avatars */}
         <div className="flex -space-x-2">
           {visibleUsers.map((user) => (
-            <Tooltip key={user._id}>
+            <Tooltip key={user.mongo_member_id}>
               <TooltipTrigger>
                 <div className="relative">
                   <Avatar className={cn(sizeClasses[size], "border-2 border-background")}>
@@ -102,7 +102,7 @@ export function OnlineIndicator({
               <TooltipContent>
                 <div className="space-y-1">
                   {onlineUsers.slice(maxVisible).map(user => (
-                    <div key={user._id} className="text-sm">
+                    <div key={user.mongo_member_id} className="text-sm">
                       {user.name}
                     </div>
                   ))}
@@ -116,7 +116,7 @@ export function OnlineIndicator({
         {showNames && (
           <div className="flex flex-wrap gap-1">
             {visibleUsers.map((user, index) => (
-              <span key={user._id} className={cn("text-muted-foreground", textSizeClasses[size])}>
+              <span key={user.mongo_member_id} className={cn("text-muted-foreground", textSizeClasses[size])}>
                 {user.name}
                 {index < visibleUsers.length - 1 && ", "}
               </span>

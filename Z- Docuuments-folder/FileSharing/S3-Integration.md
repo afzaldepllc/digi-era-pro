@@ -1,8 +1,8 @@
 
 @@ -0,0 +1,799 @@
-# AWS S3 File Storage Implementation - DepLLC CRM
+# AWS S3 File Storage Implementation - Digi Era Pro CRM
 
-This document provides a comprehensive overview of the AWS S3 file storage implementation integrated into the DepLLC CRM system, including architecture, components, usage patterns, and integration with AWS SES for email attachments.
+This document provides a comprehensive overview of the AWS S3 file storage implementation integrated into the Digi Era Pro CRM system, including architecture, components, usage patterns, and integration with AWS SES for email attachments.
 
 ## Table of Contents
 

@@ -5,7 +5,7 @@ export interface IProject extends Document {
   description?: string
   clientId: mongoose.Types.ObjectId
   departmentIds: mongoose.Types.ObjectId[]
-  status: 'pending' | 'active' | 'completed' | 'approved' | 'inactive'
+  status: 'pending' | 'active' | 'completed' | 'approved' | 'inactive' | 'deleted'
   budget?: number
   startDate?: Date
   endDate?: Date
@@ -13,7 +13,9 @@ export interface IProject extends Document {
 
   // Fields from lead project info
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
 
   // Enhanced professional CRM fields
@@ -35,10 +37,11 @@ export interface IProject extends Document {
     status: 'identified' | 'mitigated' | 'occurred'
   }[]
 
+  // Progress calculated dynamically from tasks
   progress?: {
-    overall: number // 0-100
-    lastUpdated?: Date
-    notes?: string
+    overall: number
+    totalTasks: number
+    completedTasks: number
   }
 
   resources?: {
@@ -62,6 +65,10 @@ export interface IProject extends Document {
   approvedAt?: Date
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 }
 
 const ProjectSchema = new Schema<IProject>({
@@ -90,7 +97,7 @@ const ProjectSchema = new Schema<IProject>({
   }],
   status: {
     type: String,
-    enum: ['pending', 'active', 'completed', 'approved', 'inactive'],
+    enum: ['pending', 'active', 'completed', 'approved', 'inactive', 'deleted'],
     default: 'pending',
     // index: true, // Removed - covered by compound indexes
   },
@@ -117,10 +124,20 @@ const ProjectSchema = new Schema<IProject>({
     trim: true,
     maxlength: [100, "Project type cannot exceed 100 characters"],
   },
+  complexity: {
+    type: String,
+    trim: true,
+    maxlength: [100, "Project complexity cannot exceed 100 characters"],
+  },
   requirements: [{
     type: String,
     trim: true,
     maxlength: [200, "Requirement cannot exceed 200 characters"],
+  }],
+  customerServices: [{
+    type: String,
+    trim: true,
+    maxlength: [200, "Customer service cannot exceed 200 characters"],
   }],
   timeline: {
     type: String,
@@ -147,12 +164,6 @@ const ProjectSchema = new Schema<IProject>({
     mitigation: { type: String, trim: true, maxlength: [500, "Mitigation cannot exceed 500 characters"] },
     status: { type: String, enum: ['identified', 'mitigated', 'occurred'], default: 'identified' },
   }],
-
-  progress: {
-    overall: { type: Number, min: [0, "Progress cannot be negative"], max: [100, "Progress cannot exceed 100"] },
-    lastUpdated: { type: Date },
-    notes: { type: String, trim: true, maxlength: [1000, "Progress notes cannot exceed 1000 characters"] },
-  },
 
   resources: {
     estimatedHours: { type: Number, min: [0, "Estimated hours cannot be negative"] },
@@ -183,6 +194,21 @@ const ProjectSchema = new Schema<IProject>({
   approvedAt: {
     type: Date,
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -195,6 +221,7 @@ ProjectSchema.index({ status: 1, createdAt: -1 })
 ProjectSchema.index({ departmentIds: 1, status: 1 })
 ProjectSchema.index({ createdBy: 1, status: 1 })
 ProjectSchema.index({ priority: 1, status: 1 })
+ProjectSchema.index({ isDeleted: 1, status: 1, createdAt: -1 })
 
 // Text search index
 ProjectSchema.index({

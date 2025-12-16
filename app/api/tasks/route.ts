@@ -5,6 +5,7 @@ import Project from "@/models/Project"
 import User from "@/models/User"
 import { createTaskSchema, taskQuerySchema, taskHierarchyQuerySchema } from "@/lib/validations/task"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 import mongoose from 'mongoose'
 
 // GET /api/tasks - List with pagination and filtering
@@ -121,6 +122,10 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // Apply soft delete filter - only super admins can see deleted tasks
+    const isSuperAdmin = user.role === 'super_admin'
+    const finalFilter = addSoftDeleteFilter(filter, isSuperAdmin, true)
+
     // Build sort
     const sort: any = {}
     sort[validatedParams.sortBy] = validatedParams.sortOrder === 'asc' ? 1 : -1
@@ -129,7 +134,7 @@ export async function GET(request: NextRequest) {
     const [tasks, total, stats] = await Promise.all([
       executeGenericDbQuery(async () => {
         try {
-          return await Task.find(filter)
+          return await Task.find(finalFilter)
             .populate('project', 'name clientId')
             .populate('department', 'name status')
             .populate('assignee', 'name email')
@@ -164,11 +169,11 @@ export async function GET(request: NextRequest) {
           }
           throw error
         }
-      }, `tasks-list-${JSON.stringify({ filter, sort, page: validatedParams.page, limit: validatedParams.limit })}`, 60000),
+      }, `tasks-list-${JSON.stringify({ filter: finalFilter, sort, page: validatedParams.page, limit: validatedParams.limit })}`, 60000),
 
       executeGenericDbQuery(async () => {
         try {
-          return await Task.countDocuments(filter)
+          return await Task.countDocuments(finalFilter)
         } catch (error: any) {
           if (error.name === 'CastError' && error.path === 'departmentId') {
             console.warn('Found corrupted departmentId data in count query, filtering out invalid records')
@@ -183,12 +188,12 @@ export async function GET(request: NextRequest) {
           }
           throw error
         }
-      }, `tasks-count-${JSON.stringify(filter)}`, 60000),
+      }, `tasks-count-${JSON.stringify(finalFilter)}`, 60000),
 
       executeGenericDbQuery(async () => {
         try {
           const pipeline = [
-            { $match: filter },
+            { $match: finalFilter },
             {
               $group: {
                 _id: null,

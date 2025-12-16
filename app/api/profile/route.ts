@@ -68,11 +68,6 @@ export async function GET(request: NextRequest) {
         twitter: "",
         github: "",
       },
-      preferences: user.preferences || {
-        theme: "system",
-        language: "en",
-        timezone: "UTC",
-      },
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
       twoFactorEnabled: user.twoFactorEnabled,
@@ -165,7 +160,6 @@ export async function PUT(request: NextRequest) {
         avatar: updatedUser.avatar,
         address: updatedUser.address,
         socialLinks: updatedUser.socialLinks,
-        preferences: updatedUser.preferences,
         updatedAt: updatedUser.updatedAt,
       }
     })

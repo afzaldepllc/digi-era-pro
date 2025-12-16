@@ -53,9 +53,9 @@ interface EmailTemplate {
 const EMAIL_TEMPLATES: EmailTemplate[] = [
   {
     name: 'Welcome Email',
-    subject: 'Welcome to DepLLC CRM!',
+    subject: 'Welcome to Digi Era Pro CRM!',
     htmlContent: `
-      <h2>Welcome to DepLLC CRM</h2>
+      <h2>Welcome to Digi Era Pro CRM</h2>
       <p>Hello <strong>{{name}}</strong>,</p>
       <p>We're excited to have you on board! Your account has been successfully created.</p>
       <ul>
@@ -64,27 +64,27 @@ const EMAIL_TEMPLATES: EmailTemplate[] = [
         <li>Collaborate with your team</li>
       </ul>
       <p>If you have any questions, don't hesitate to reach out.</p>
-      <p>Best regards,<br>The DepLLC Team</p>
+      <p>Best regards,<br>The Digi Era Pro Team</p>
     `,
-    textContent: 'Welcome to DepLLC CRM!\n\nHello {{name}},\n\nWe\'re excited to have you on board! Your account has been successfully created.\n\n- Access your dashboard\n- Manage your projects\n- Collaborate with your team\n\nIf you have any questions, don\'t hesitate to reach out.\n\nBest regards,\nThe DepLLC Team',
+    textContent: 'Welcome to Digi Era Pro CRM!\n\nHello {{name}},\n\nWe\'re excited to have you on board! Your account has been successfully created.\n\n- Access your dashboard\n- Manage your projects\n- Collaborate with your team\n\nIf you have any questions, don\'t hesitate to reach out.\n\nBest regards,\nThe Digi Era Pro Team',
     category: 'auth',
     priority: 'normal'
   },
   {
     name: 'Password Reset',
-    subject: 'Reset Your DepLLC CRM Password',
+    subject: 'Reset Your Digi Era Pro CRM Password',
     htmlContent: `
       <h2>Password Reset Request</h2>
       <p>Hello <strong>{{name}}</strong>,</p>
-      <p>We received a request to reset your password for your DepLLC CRM account.</p>
+      <p>We received a request to reset your password for your Digi Era Pro CRM account.</p>
       <div style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff;">
         <p style="margin: 0;"><strong>Security Notice:</strong> If you didn't request this reset, please ignore this email.</p>
       </div>
       <p><a href="{{resetUrl}}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Reset Password</a></p>
       <p><small>This link will expire in 24 hours.</small></p>
-      <p>Best regards,<br>The DepLLC Security Team</p>
+      <p>Best regards,<br>The Digi Era Pro Security Team</p>
     `,
-    textContent: 'Password Reset Request\n\nHello {{name}},\n\nWe received a request to reset your password for your DepLLC CRM account.\n\nSECURITY NOTICE: If you didn\'t request this reset, please ignore this email.\n\nReset your password: {{resetUrl}}\n\nThis link will expire in 24 hours.\n\nBest regards,\nThe DepLLC Security Team',
+    textContent: 'Password Reset Request\n\nHello {{name}},\n\nWe received a request to reset your password for your Digi Era Pro CRM account.\n\nSECURITY NOTICE: If you didn\'t request this reset, please ignore this email.\n\nReset your password: {{resetUrl}}\n\nThis link will expire in 24 hours.\n\nBest regards,\nThe Digi Era Pro Security Team',
     category: 'auth',
     priority: 'high'
   },
@@ -123,7 +123,7 @@ const EMAIL_TEMPLATES: EmailTemplate[] = [
       <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
         <h2 style="color: #856404; margin-top: 0;">⚠️ Scheduled System Maintenance</h2>
       </div>
-      <p>Dear DepLLC CRM Users,</p>
+      <p>Dear Digi Era Pro CRM Users,</p>
       <p>We will be performing scheduled maintenance on our systems:</p>
       <ul>
         <li><strong>Date:</strong> {{date}}</li>
@@ -136,9 +136,9 @@ const EMAIL_TEMPLATES: EmailTemplate[] = [
         <p style="margin: 5px 0 0 0;">During this maintenance window, the CRM system will be temporarily unavailable. Please save your work and plan accordingly.</p>
       </div>
       <p>We apologize for any inconvenience and appreciate your understanding.</p>
-      <p>Best regards,<br>DepLLC IT Team</p>
+      <p>Best regards,<br>Digi Era Pro IT Team</p>
     `,
-    textContent: 'SCHEDULED SYSTEM MAINTENANCE\n\nDear DepLLC CRM Users,\n\nWe will be performing scheduled maintenance on our systems:\n\nDate: {{date}}\nTime: {{time}}\nDuration: {{duration}}\nExpected Impact: {{impact}}\n\nWhat to expect:\nDuring this maintenance window, the CRM system will be temporarily unavailable. Please save your work and plan accordingly.\n\nWe apologize for any inconvenience and appreciate your understanding.\n\nBest regards,\nDepLLC IT Team',
+    textContent: 'SCHEDULED SYSTEM MAINTENANCE\n\nDear Digi Era Pro CRM Users,\n\nWe will be performing scheduled maintenance on our systems:\n\nDate: {{date}}\nTime: {{time}}\nDuration: {{duration}}\nExpected Impact: {{impact}}\n\nWhat to expect:\nDuring this maintenance window, the CRM system will be temporarily unavailable. Please save your work and plan accordingly.\n\nWe apologize for any inconvenience and appreciate your understanding.\n\nBest regards,\nDepLLC IT Team',
     category: 'system',
     priority: 'urgent'
   }
@@ -969,9 +969,9 @@ export default function EmailTestingPage() {
                   className="w-full justify-start"
                   onClick={() => {
                     setToEmails(['test@example.com'])
-                    setSubject('Test Email from DepLLC CRM')
-                    setHtmlContent('<p>This is a test email from the DepLLC CRM system.</p>')
-                    setTextContent('This is a test email from the DepLLC CRM system.')
+                    setSubject('Test Email from Digi Era Pro CRM')
+                    setHtmlContent('<p>This is a test email from the Digi Era Pro CRM system.</p>')
+                    setTextContent('This is a test email from the Digi Era Pro CRM system.')
                     setActiveTab('compose')
                   }}
                 >

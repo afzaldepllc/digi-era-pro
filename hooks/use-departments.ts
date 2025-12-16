@@ -74,7 +74,7 @@ export function useDepartments() {
   const allDepartmentsParams = useMemo(() => ({
     page: 1,
     limit: 100,
-    filters: { status: 'active' },
+    filters: { status: 'active', category: '' },
     sort: {
       field: 'name' as const,
       direction: 'asc' as const,
@@ -88,7 +88,7 @@ export function useDepartments() {
     true,
     {
       staleTime: 10 * 60 * 1000, // 10 minutes (departments change less frequently)
-      cacheTime: 30 * 60 * 1000, // 30 minutes
+      gcTime: 30 * 60 * 1000, // 30 minutes
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       retry: 2,
@@ -102,7 +102,7 @@ export function useDepartments() {
     true,
     {
       staleTime: 15 * 60 * 1000, // 15 minutes
-      cacheTime: 60 * 60 * 1000, // 1 hour
+      gcTime: 60 * 60 * 1000, // 1 hour
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       retry: 2,

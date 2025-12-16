@@ -1,4 +1,4 @@
-# DepLLC CRM Real-Time Communication Module
+# Digi Era Pro CRM Real-Time Communication Module
 ## Performance Benchmarks & Monitoring Guidelines
 
 ---
@@ -436,11 +436,11 @@ graph TB
 
 
 
-This benchmark framework provides measurable targets for monitoring and optimizing the DepLLC CRM real-time communication module at scale. Start with the "Immediate" optimization checklist, then scale incrementally as usage grows. The projected infrastructure cost of ~$2K/year is highly economical for 50+ concurrent users with production-grade reliability.
+This benchmark framework provides measurable targets for monitoring and optimizing the Digi Era Pro CRM real-time communication module at scale. Start with the "Immediate" optimization checklist, then scale incrementally as usage grows. The projected infrastructure cost of ~$2K/year is highly economical for 50+ concurrent users with production-grade reliability.
 
 
-Real-Time Communication Module Implementation Guide for DepLLC CRM
-This comprehensive guide documents the implementation of an advanced real-time communication module for the DepLLC CRM system built with Next.js. The module enables bidirectional, real-time messaging with multimedia support including text, files, voice messages, voice/video calls between internal users, with sophisticated channel management and security.
+Real-Time Communication Module Implementation Guide for Digi Era Pro CRM
+This comprehensive guide documents the implementation of an advanced real-time communication module for the Digi Era Pro CRM system built with Next.js. The module enables bidirectional, real-time messaging with multimedia support including text, files, voice messages, voice/video calls between internal users, with sophisticated channel management and security.
 📋 Table of Contents
 
 Overview
@@ -792,7 +792,7 @@ Audit logs: All actions logged (AUDIT_LOGS model)
 
 📁 File Structure
 Updated structure with new real-time components:
-📦 DepLLC CRM
+📦 Digi Era Pro CRM
 ├─ 📁 models/
 │  ├─ Communication.ts              # Enhanced message model
 │  ├─ Channel.ts                    # New: Channel metadata model
@@ -1092,7 +1092,7 @@ export interface IChannel extends Document {
   participants: IParticipant[];
   
   // Access control
-  isPrivate: boolean;
+  is_private: boolean;
   isInternal: boolean; // Exclude clients
   
   // Related entities
@@ -1139,7 +1139,7 @@ const ChannelSchema = new Schema<IChannel>({
   
   participants: [ParticipantSchema],
   
-  isPrivate: { type: Boolean,RetryClaude does not have the ability to run the code it generates yet.AHContinuetypescript  isPrivate: { type: Boolean, default: false },
+  is_private: { type: Boolean,RetryClaude does not have the ability to run the code it generates yet.AHContinuetypescript  is_private: { type: Boolean, default: false },
   isInternal: { type: Boolean, default: true, index: true },
   
   projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
@@ -1536,7 +1536,7 @@ export const createChannelSchema = z.object({
   participants: z.array(participantSchema)
     .min(1)
     .max(CHANNEL_CONSTANTS.PARTICIPANTS.MAX_COUNT),
-  isPrivate: z.boolean().default(false),
+  is_private: z.boolean().default(false),
   projectId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
   departmentId: z.string().optional(),
 }).refine(

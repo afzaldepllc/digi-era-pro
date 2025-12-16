@@ -43,6 +43,7 @@ export default function AddLeadPage() {
         zipCode: "",
         country: "",
       },
+      socialLinks: [],
       // Project Information
       projectName: "",
       projectType: undefined,
@@ -319,6 +320,42 @@ export default function AddLeadPage() {
       ]
     },
     {
+      subform_title: "Social Links",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "socialLinks",
+          label: "Social Links",
+          type: "array-object" as const,
+          description: "Lead's Social links",
+          cols: 12,
+          fields: [
+            {
+              name: "linkName",
+              label: "Social Media Platform",
+              type: "text" as const,
+              required: true,
+              description: "Social media platform name",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+            {
+              name: "linkUrl",
+              label: "Social Media Url",
+              type: "url" as const,
+              required: true,
+              description: "Social media platform URL",
+              cols: 12,
+              mdCols: 6,
+              lgCols: 6,
+            },
+          ]
+        },
+      ]
+    },
+    {
       subform_title: "Source & Follow-up",
       collapse: true,
       defaultOpen: false,
@@ -470,7 +507,7 @@ export default function AddLeadPage() {
         },
         {
           name: "technologies",
-          label: "Technologies",
+          label: "Tools & Technologies",
           type: "array-input" as const,
           placeholder: "Add technology...",
           description: "Required technologies for the project",

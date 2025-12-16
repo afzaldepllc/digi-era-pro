@@ -1,12 +1,11 @@
 
 CRM
 Customer Relationship Management
-
 Project Scope for Custom CRM System
 Objective:
  Develop a CRM platform to streamline client and project management across Sales, Support, and IT departments with role-based access and task visibility.
-Project Modules and Estimated Timeline(Phase wise)
-Phase 1: Project Setup & Architecture and Role base permissions(Weeks 1-2) -completed
+Project Modules and Estimated Timeline(Phase-wise)
+Phase 1: Project Setup & Architecture and Role base permissions(Weeks 1-2) -Completed
 Next.js + Tailwind project setup
 Strict TypeScript config, Redux Toolkit store
 NextAuth with MongoDB adapter + bcryptjs
@@ -15,18 +14,34 @@ Base layout, header, sidebar, notification bell
 Role-based middleware & environment variable scaffolding
 Role-based permission system with dynamic assignment
 Timeline: 2 weeks
-Phase 2: Authentication & Authorization Module (Weeks 3-4)  -In progress
+Phase 2: Authentication & Authorization Module (Weeks 3-4)  -COMPLETED
 Purpose: Multi-tier security with role-based access control
-Multi-Tier Authentication: Admin (2FA + without VPN), Employee (VPN), Client (Global)
+Multi-Tier Authentication: Admin (2FA ), Employee (2FA), Client (Global)
 Dynamic Role Management: 10+ roles with hierarchical permissions
 Security Enforcement: Network validation, session management, audit logging
-Superadmin Protection:user with role.name ='super_admin (unrestricted)
+Superadmin Protection: user with role super_admin(unrestricted)
 User registration/login with security tier validation
-Network access control (VPN)
-Two-factor authentication for admins on every login.
+Two-factor authentication for admins and Internal Employees on every login.
 Session management with timeout
 Timeline: 2 weeks
-Phase 3: Administrative Management Module (Weeks 5)
+Phase 3: Department Management Module (Weeks 5)  - COMPLETED
+Purpose: Organizational structure and coordination
+Key Features:
+Department creation/hierarchy
+Employee assignment
+Role management with dynamic permissions
+Inter-department workflow
+Performance tracking
+Workflow Process:
+Dynamic role creation per department
+Role assignment to users
+Access based on permissions
+Organizational Structure:
+Sales (Stages 1-4), Support (5-6), IT (7-9)
+Client Services, Administration
+Timeline: 1 weeks
+
+Phase 4: Administrative Management Module (Weeks 6) - COMPLETED(Final Touch Pending)
 Purpose: System administration and role management
 Admin Functions:
 User account creation/management
@@ -35,33 +50,19 @@ System settings and config
 Security monitoring and audit logs
 Department structure management
 System Control:
-Role hierarchy management
+Role hierarchy management 
 Permission matrix config
 Security policy enforcement
 System backup and maintenance
-Timeline: 1 weeks
-Phase 4: Real-Time Communication Module (Weeks 6-7) -(after module-5 maybe)
-Purpose: Real-time communication with Socket.IO
-Key Features:
-Real-time text messaging with Socket.IO
-Secure file sharing/uploads in chat
-Group/private chat rooms (project/task/client-based)
-Role-based channel access
-Message history logging/search
-Integration with Client Portal/Task Management
-Communication Tools:
-Socket.IO real-time updates
-File attachment previews/downloads
-Notifications for messages/mentions
-Encrypted transmission
-Audit logs
-Timeline: 2 weeks
-Phase 5: Lead Generation & Client Management Module (Weeks 8-9)
-Purpose: Initial client capture and qualification
+Timeline: 1 week
+Phase 5: Lead Generation & Client Management Module (Weeks 7-8) - COMPLETED
+Purpose: Initial lead capture and qualification
 Workflow Stages:
-Client (Stage 1): Basic info submission
-Sales Closer (Stage 2): Lead qualification
+Lead(Stage 1): Basic info and Basic Project  submission
+Sales Closer (Stage 2): Lead qualification -(Lead to Client Conversion)
 Sales Agent (Stage 3): Quote/proposal creation
+Support Agent - Client on Boarding 
+Direct Project creation on Client module 
 Key Features:
 Client profile creation (details, requirements)
 Lead scoring/qualification tracking
@@ -74,29 +75,32 @@ Project requirements/scope
 Sales activity/follow-up scheduling
 Lead source/ROI analysis
 Timeline: 2 weeks
-Phase 6: Onboarding & Project Validation Module (Weeks 10)
+Phase 6: Onboarding & Project Validation Module (Weeks 9) - Completed
 Purpose: Project validation and requirement gathering
 Workflow Stages:
-Sales Manager (Stage 4): Ticket creation
-Support Manager (Stage 5): Info validation
-Support Agent (Stage 6): Enhancement/documentation
+Sales Manager: Project Basic info collection on the lead creation
+Support Manager (Stage 5): Info validation and Project Updation
+Support Agent (Stage 6): All Project information gathering
+Enhancement/documentation
+Project Phases and Milestone Management 
 Key Features:
 Ticket management with status tracking
 Project categorization (Web, GMB, SEO, Graphics, Social)
 Client requirement validation/enhancement
 Document collection/verification
-Internal communication
 Quality Control:
 Info validation checkpoints
 Requirement completeness
 Client communication tracking
 Project scope finalization
 Project Categorization
-Timeline: 1 weeks
-Phase 7: Approval & Task Creation Module (Weeks 11-12)
+Timeline: 1 week
+Phase 7: Approval & Task Creation Module (Weeks 10-11) - IN-PROGRESS
 Purpose: Project approval and task breakdown
 Workflow Stage:
+Support Agent: Project Categorization (department-wise) 
 Department Manager (Stage 7): Approval/task creation
+Internal assigned users' real-time communications.
 Key Features:
 Project approval with decision tracking
 Task breakdown into units(Sub-Tasks)
@@ -109,7 +113,7 @@ Resource availability
 Timeline/milestone planning
 Risk assessment/mitigation
 Timeline: 2 weeks
-Phase 8: Execution & Task Management Module (Weeks 13-15)
+Phase 8: Execution & Task Management Module (Weeks 12-13) - COMPLETED
 Purpose: Task execution and progress monitoring
 Workflow Stages:
 Team Lead (Stage 8): Subtask creation/assignment
@@ -126,14 +130,47 @@ Time tracking/billable hours
 Progress/milestone reporting
 Workload balancing
 Timeline: 3 weeks
-Phase 9: Client Portal & Communication Module (Weeks 16-17)
+Phase 9: Real-Time Communication Module (Weeks 14-15) -(Basic Implement and In-Progress)
+Purpose: Real-time communication with Socket.IO & WebRTC
+Key Features:
+Real-time text messaging with Socket.IO
+Secure file sharing/uploads in chat
+User to User,User to Client,,Project based Group,Department Based,Group/private chat rooms (project/task/client-based)
+Role-based channel access   -Message history logging/search
+Integration with Client Portal/Task Management
+Audio Video Calls, Real time screen sharing using WebRTC
+Communication Tools:
+Socket.IO real-time updates
+File attachment previews/downloads using AWS S3 bucket
+Notifications for messages/mentions
+Encrypted transmission   -Audit logs
+Timeline: 2 weeks
+Phase 10: Notification & Alert System Module (Weeks 16-17) 
+Purpose: Real-time updates
+Notification Types:
+Task assignment
+Project milestones
+Client updates
+Security breaches
+System maintenance
+Delivery Channels:
+In-app, email, SMS (optional), dashboard
+Timeline: 2 weeks
+Phase 11: Client Portal & Communication Module (Web Version) (Weeks 18-23)
 Purpose: Client interaction and visibility
 Client Portal Features:
 Project progress viewing/tracking
 Document access/download
-Ticket raising
 Team communication
 Invoice/billing info
+Social media API integration:
+Google console
+Facebook API
+Instagram API
+LinkedIn API
+Yelp API
+
+
 Communication Tools:
 Real-time updates
 Secure document sharing
@@ -141,23 +178,7 @@ Feedback collection
 Support ticket management
 Email notifications
 Timeline: 2 weeks
-Phase 10: Department Management Module (Weeks 18)
-Purpose: Organizational structure and coordination
-Key Features:
-Department creation/hierarchy
-Employee assignment
-Role management with dynamic permissions
-Inter-department workflow
-Performance tracking
-Workflow Process:
-Dynamic role creation per department
-Role assignment to users
-Access based on permissions
-Organizational Structure:
-Sales (Stages 1-4), Support (5-6), IT (7-9)
-Client Services, Administration
-Timeline: 1 weeks
-Phase 11: Document & File Management Module (Weeks 19-20)
+Phase 12: Document & File Management Module (Weeks 24-25)
 Purpose: Secure document handling
 Key Features:
 Secure file upload/storage
@@ -171,7 +192,7 @@ Access logging/audit trails
 Document expiration/archival
 Secure sharing
 Timeline: 2 weeks
-Phase 12: Reporting & Analytics Module (Weeks 21-22)
+Phase 13: Reporting & Analytics Module (Weeks 25-26)
 Purpose: Performance monitoring
 Dashboard Views:
 Sales: Lead pipeline, conversion, revenue
@@ -180,23 +201,10 @@ IT: Task completion, timelines, resource use
 Management: Overall metrics, efficiency
 Reports Generation:
 Department performance
-Project timelines/milestones
-Client feedback
-Financial/billing
-Security audits
+Project timelines/milestones   -Client feedback
+Financial/billing                      -Security audits
 Timeline: 2 weeks
-Phase 13: Notification & Alert System Module (Weeks 23-24)
-Purpose: Real-time updates
-Notification Types:
-Task assignment
-Project milestones
-Client updates
-Security breaches
-System maintenance
-Delivery Channels:
-In-app, email, SMS (optional), dashboard
-Timeline: 2 weeks
-Phase 14: Testing, Optimization & Deployment (Weeks 25-26)
+Phase 14: Testing, Optimization & Deployment (Weeks 26-27)
 Comprehensive testing (unit, integration, security)
 Performance optimization
 Final deployment and documentation
@@ -226,7 +234,7 @@ Schema: users, roles, permissions, departments, clients, projects, tasks, ticket
 Purpose: Multi-tier security
 NextAuth.js 4.24, MongoDB Adapter, JWT with JOSE
 BCrypt.js, Rate Limiting, RBAC, Network Validation
-Tiers: Admin (2FA + VPN), Employee (VPN), Client (Global + Portal)
+Tiers: Admin (2FA ), Employee (2FA), Client (Global + Portal)
 3. Development Tools
 Purpose: Development workflow
 TypeScript, ESLint, Autoprefixer, PostCSS
@@ -237,9 +245,10 @@ Radix UI, Class Variance Auth
 Tailwind Merge, Next Themes, Lucide React
 Structure: /components/ (ui, forms, layout, auth, charts, tables, modals)
 5. State & Data Flow
-Purpose: State management
+Purpose: State management & Cache System
 Redux Toolkit, Redux Persist, React Hook Form
 React Query, Context API
+Tans Stack Query
 6. Database Management
 Purpose: Schema and data
 Scripts: npm run migrate, db:seed, db:fresh, roles:setup
@@ -266,12 +275,6 @@ Multi-Layered Security Architecture:
 └─────────────────────────────────────────────────────────────┘
                                 │
 ┌─────────────────────────────────────────────────────────────┐
-│                  Network Security Layer                     │
-│  • VPN/Office IP validation  • Network access control      │
-│  • Geographic restrictions  • Connection monitoring        │
-└─────────────────────────────────────────────────────────────┘
-                                │
-┌─────────────────────────────────────────────────────────────┐
 │                   Middleware Layer                          │
 │  • Rate limiting  • Request validation  • Security headers │
 │  • Security tier enforcement  • Route access control       │
@@ -282,7 +285,7 @@ Multi-Layered Security Architecture:
 │  ┌─────────────────┬─────────────────┬─────────────────┐    │
 │  │     ADMIN       │    EMPLOYEE     │     CLIENT      │    │
 │  │ • 2FA (TOTP)    │ • Credentials   │ • Credentials   │    │
-│  │ • Global Access │ • VPN Required  │ • Global Access │    │
+│  │ • Global Access │ • 2FA (TOTP     │ • Global Access │    │
 │  │ • Session mgmt  │ • Session mgmt  │ • Portal only   │    │
 │  └─────────────────┴─────────────────┴─────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
@@ -315,6 +318,10 @@ Multi-Layered Security Architecture:
 │  • Permission-based queries  • Secure backup systems       │
 │  • Data access logging  • Multi-tier data isolation        │
 └─────────────────────────────────────────────────────────────┘
+
+
+
+
 
 
 
@@ -380,9 +387,10 @@ Solutions: Centralized monitoring & alerts, backup + DR plans, incident playbook
 
 Mobile Version Of CRM
 Our primary/main focus is on Web-Based CRM, as it contains all functionality
-But, there is another version of CRM, which is mobile-based, In Mobile-based CRM, we handle specific modules like client portal, and provide limited functionality to the users/client, as In mobile, it is not possible and recommended to provide all functionalities to the user/client.
-CRM are usually Web-based, and in mobile-version we provide limited functionality and access to user/client.
-Accessibility - If we want to provide mobile-based app to specific users, then we deploy it privately and provide its apk file or link to the user/client which have access to  the credentials.
+However, there is another version of CRM, which is mobile-based. In a Mobile-Based CRM, we handle specific modules, such as a client portal, and provide limited functionality to the users. As mobile devices are not capable of handling all functionalities, it is not possible and recommended to provide all functionalities to the user.
+CRM is usually Web-based, and in a mobile version, we provide limited functionality and access to the user/client.
+Accessibility - If we want to provide a mobile-based app to specific users, we deploy it privately and provide the APK file or link to the user/client who has access to the credentials.
+https://docs.google.com/document/d/15Bh9Fpm_E8lG4klO1MwcM_1mz11c2wH0rkkJT8ykH7M/edit?usp=sharing
 
 1️⃣ Direct APK Distribution
 Host your APK on your own website, Google Drive, Dropbox, or any server.
@@ -433,9 +441,9 @@ Missing Critical Features
  Important Demo Questions & Answers
  1. Daily Basis Updates
 Q: How to handle tasks for already closed projects?
-A: Implement project status hierarchy with "Closed-Pending Updates" status allowing limited modifications with approval workflow.
+A: Implement project status hierarchy with "Closed-Pending Updates" status allowing limited modifications with an approval workflow.
  2. Long-term Project Management
-Q: How to handle tasks/sub-tasks for projects with long-term assignments on daily basis?
+Q: How to handle tasks/sub-tasks for projects with long-term assignments on a daily basis?
 A: Implement milestone-based tracking with weekly/monthly review cycles and automated progress reports.
  3. Sub-task Creation Authority
 Q: Who creates the sub-tasks?
@@ -445,7 +453,7 @@ Q: How to handle permissions for all roles?
 A: Implement role-based access control (RBAC) with granular permissions and inheritance hierarchy.
 5. Task Updates
 Q: How to handle and update tasks/sub-tasks?
-A: Real-time updates with notification system, version control for changes, and approval workflow for critical modifications.
+A: Real-time updates with a notification system, version control for changes, and approval workflow for critical modifications.
 6. Sub-project Creation
 Q: How to create sub-projects of assigned tasks/projects?
 A: Hierarchical project structure with parent-child relationships and cascading permissions.
@@ -453,15 +461,15 @@ A: Hierarchical project structure with parent-child relationships and cascading 
 Q: How to communicate between teams/team members and support team/client?
 A: Multi-channel communication system with internal messaging, client portal, and integrated email/SMS notifications.
 8. Complaint/Review Management
-Q: How to handle complaints/reviews between client and support team?
+Q: How to handle complaints/reviews between the client and support team?
 A: Dedicated complaint management system with SLA tracking, escalation matrix, and resolution workflows.
 
 
-Questions for Understanding the Current flow
+Questions for Understanding the Current Flow
 Business Understanding:
 1. What is your primary business model and revenue streams?
-Company’s primary business model is providing services like:
-Development (Wordpress)
+The company’s primary business model is providing services like:
+Development (WordPress)
 Graphics (Logo Design, Business Cards, Video Editing)
 SEO (On Page + Off-Page)
 Marketing (Yelp)
@@ -471,13 +479,13 @@ Monitoring
 3. How many clients do you typically handle simultaneously?
 10 - 15 (simultaneously)
 4. What is your average project duration and complexity?
-Depends on the Project, Usually (7 - 10) days
+Depends on the Project, usually (7 - 10) days
 5. How do you currently measure project success?
-By client’s feedback
-By client’s retention period
+By the client’s feedback
+By the client’s retention period
 Operational Requirements:
-6. How many departments and team members will use this ?
-Web - Wordpress Development
+6. How many departments and team members will use this?
+Web - WordPress Development
 Graphics
 SEO (On-Page + Off-Page)
  Sales
@@ -488,14 +496,14 @@ HR
 Accounting
 Quality Assurance(QA) -> will be added soon
 7. What is your current project approval process?
-Support Team assigns project to Team Lead / Team Manager
+Support Team assigns the project to Team Lead / Team Manager
 Team Lead / Team Manager assigns the project to Members
 No, definite process right now
-8. How do you handle client communications currently? And how many email sales agent/support managers/agents are used for communication with the multiple clients?
+8. How do you handle client communications currently? And how many email sales agent/support managers/agents are used for communication with multiple clients?
 Client is hunted through Yelp
-Sales Agent & Sales Closer makes deal with Sales Team
-Then, client redirects to Support Team
-Support Team, takes necessary details and requirements about the project.
+Sales Agent & Sales Closer make a deal with the Sales Team
+Then, the client redirects to the Support Team
+Support Team takes necessary details and requirements about the project.
 9. What are your reporting and analytics needs? 
 Different Graphs could be shown on CRM or Client Portal
 On CRM, monitoring on employees
@@ -523,49 +531,79 @@ Seasonal workloads would be balanced, as there are more client demands one servi
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-MongoDB
-
-
-For 50-80 users (M10):
+MongoDB  - Database Integration
+For 30-50 users (M10):
 Specs (Included): 2 vCPU, 2 GB RAM, 10 GB storage
 Pricing: (25-35)$ for 12 hrs. Or (55-60)$ for 24/7
 Operation Supported: (500-1000) ops/sec
 
-For 80-120 users (M20):
+For 50-100 users (M20):
 Specs (Included): 2 vCPU, 4 GB RAM, 10 GB storage
 Pricing: (55-65)$ for 12 hrs. Or (100-120)$ for 24/7
 Operation Supported: (1000-2000) ops/sec
 
  Monitor via Atlas dashboards (CPU >70%, latency >100ms, or storage nearing 5 GB). Enable auto-scaling to adjust storage dynamically(storage can be increased)
-
-
 Sharding:    
 If we apply sharding, means it charges for extra clusters or replica sets  i.e
 	3 x M10(Pricing) = 1 Primary Cluster + 2 Secondary Clusters
-
 Backup:
   	No Additional Cost
 
+File Handling
+
+1️⃣ Direct-to-S3 Uploads (Best Practice)
+Instead of uploading to your Node server first, let the browser upload directly to S3 using a pre-signed URL:
+Flow:
+Client asks your backend for a signed upload URL.
+Browser PUTs the file directly to S3.
+Your server gets a WebSocket event or webhook when done.
+➡️ Your Node server only handles metadata and auth — not the heavy file transfer.
+ This scales beautifully (even thousands of concurrent uploads).
+💰 Cost Estimate (per month)
+S3 Standard - General-purpose storage for any type of data, typically used for frequently accessed data
+Typical Hardware                                                                         Est. Cost :                                                                                     
+
+
+First 50 TB / Month
+$0.023 per GB
+Next 450 TB / Month
+$0.022 per GB
+Over 500 TB / Month
+$0.021 per GB
+
+
+First 5GB(free tier)
+50GB * 0.023 = 1.15$
+100GB * 0.023 = 2.30$
+2️⃣ Use Streaming (Not Memory Buffers)
+If you do handle files through Node (for virus scans, etc.), use streaming uploads (busboy, multer, memoryStorage with care) — never load whole files into RAM.
+Cost Estimate (per month)
+Tier
+Typical Hardware
+Suitable For
+Est. Cost
+Basic single VPS
+2 vCPU / 4 GB RAM
+100 light users, few uploads
+~$20–$25
+Mid-tier
+4 vCPU / 8 GB RAM
+100 users, active file sharing
+~$40–$60
+Scaled (HA)
+2× 4 vCPU / 8 GB nodes + Redis
+200+ users
+~$80–$120
+
+
+🧾 Summary
+✅ Yes, multiple users uploading files → heavier server load.
+ ✅ Best solution → stream or direct-upload to cloud storage (S3/R2/Spaces).
+ ✅ Use reverse proxy + rate limiting + streaming to keep your Node server responsive.
+ ✅ Budget about $40–$60/month for a stable 4 vCPU/8 GB RAM instance if file sharing is common.
 
 
 
 
-    read these files to understand the about the project complete flow and crud implementation flow with security and roles based permissions flow of this crm also 
-
-    now i have implemented the role and permissions system with users,departments crud and i have initiated the real time communication(Chat module) also 
-    so now i wanna to move on the preojects,leads and tasks (with sub tasks) project categorization, task assingment,when team member start on tasks and sub task than after completetion each task he update the status of that task after update the status of subtask of task so the task status also update automatically and when task status updated than also the status of that task's project also updated so the client can also track it project progress, and there is proper algorithm how to create the tasks of the project and than sub tasks of that task which should be ideal and easy for crm internal users like team member,team lead and manager and it should also easy to check and calculate the project progress 
-    so in simple words every things should be covered using the current flow of this project in the ideal way in next js using the best practices of the next js and code should be generic and optimized and should follow the ideal/best approaches while all cover some other points which should be there in a professional and scalable crm ,
 
 
-    so right now i just need the docs files which should explain each and every things how to develope this one in the module wise and step by step while firstally need to complete one things completely than move next with proper guidelines which should help to create the ideal and professional crm functionality so now just focus on the guidelines and using the current components and current flow

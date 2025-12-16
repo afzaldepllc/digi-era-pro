@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { executeGenericDbQuery, clearCache } from "@/lib/mongodb"
 import Department from "@/models/Department"
-import User from "@/models/User"
+import User from "@/models/User"          
 import { updateDepartmentSchema, departmentIdSchema } from "@/lib/validations/department"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"

@@ -7,12 +7,13 @@ export interface IUserSeed {
   name: string
   email: string
   password: string
-  legacyRole: 'admin' | 'manager' | 'user'
   departmentName: string
   roleName?: string
   phone?: string
   status: 'active' | 'inactive' | 'archived'
   twoFactorEnabled?: boolean
+  company?: string
+  website?: string
 }
 
 export const userSeeds: IUserSeed[] = [
@@ -21,7 +22,6 @@ export const userSeeds: IUserSeed[] = [
     name: 'Super Administrator',
     email: 'superadmin@gmail.com',
     password: 'SuperAdmin@123',
-    legacyRole: 'admin',
     departmentName: 'System',
     roleName: 'super_admin',
     phone: '1234567801',
@@ -33,7 +33,6 @@ export const userSeeds: IUserSeed[] = [
     name: 'Super Administrator Depllc',
     email: 'crmdepllc@gmail.com',
     password: 'Depllc@123',
-    legacyRole: 'admin',
     departmentName: 'System',
     roleName: 'super_admin',
     phone: '1234567801',
@@ -46,93 +45,84 @@ export const userSeeds: IUserSeed[] = [
     name: 'Lisa Johnson',
     email: 'lisa.johnson@company.com',
     password: 'HRManager@123',
-    legacyRole: 'admin',
     departmentName: 'HR',
     roleName: 'hr_manager',
     phone: '1234567803',
     status: 'active'
   },
 
-  // Department Heads
+  // Department Leads
   {
-    name: 'Mike Developer',
+    name: 'Mike',
     email: 'mike.developer@company.com',
     password: 'DeptHead@123',
-    legacyRole: 'manager',
     departmentName: 'Web Development',
-    roleName: 'department_head',
+    roleName: 'team_lead',
     phone: '1234567804',
     status: 'active'
   },
   {
-    name: 'Anna Designer',
+    name: 'Anna',
     email: 'anna.designer@company.com',
     password: 'DeptHead@123',
-    legacyRole: 'manager',
     departmentName: 'Graphics',
-    roleName: 'department_head',
+    roleName: 'team_lead',
     phone: '1234567805',
     status: 'active'
   },
   {
-    name: 'David SEO',
+    name: 'David',
     email: 'david.seo@company.com',
     password: 'DeptHead@123',
-    legacyRole: 'manager',
     departmentName: 'SEO',
-    roleName: 'department_head',
+    roleName: 'team_lead',
     phone: '1234567806',
     status: 'active'
   },
   {
-    name: 'Robert Sales',
+    name: 'Robert',
     email: 'robert.sales@company.com',
     password: 'DeptHead@123',
-    legacyRole: 'manager',
     departmentName: 'Sales',
-    roleName: 'department_head',
+    roleName: 'team_lead',
     phone: '1234567807',
     status: 'active'
   },
   {
-    name: 'Emma Support',
+    name: 'Emma',
     email: 'emma.support@company.com',
     password: 'DeptHead@123',
-    legacyRole: 'manager',
     departmentName: 'Support',
-    roleName: 'department_head',
+    roleName: 'team_lead',
     phone: '1234567808',
     status: 'active'
   },
 
-  // Team Leads
+  // Team members
   {
-    name: 'Tom WebLead',
+    name: 'Tom',
     email: 'tom.weblead@company.com',
     password: 'TeamLead@123',
-    legacyRole: 'manager',
     departmentName: 'Web Development',
-    roleName: 'team_lead',
+    roleName: 'team_member',
     phone: '1234567809',
     status: 'active'
   },
   {
-    name: 'Jane GraphicsLead',
+    name: 'Jane',
     email: 'jane.graphicslead@company.com',
     password: 'TeamLead@123',
-    legacyRole: 'manager',
     departmentName: 'Graphics',
-    roleName: 'team_lead',
+    roleName: 'team_member',
     phone: '1234567810',
     status: 'active'
   },
   {
-    name: 'Mark SocialLead',
+    name: 'Mark',
     email: 'mark.sociallead@company.com',
     password: 'TeamLead@123',
-    legacyRole: 'manager',
     departmentName: 'Social Media',
-    roleName: 'team_lead',
+    roleName: 'team_member',
     phone: '1234567811',
     status: 'active'
   },
@@ -142,21 +132,23 @@ export const userSeeds: IUserSeed[] = [
     name: 'ABC Company',
     email: 'client@gmail.com',
     password: 'Client@123',
-    legacyRole: 'user',
-    departmentName: 'Sales',
+    departmentName: 'General',
     roleName: 'client',
     phone: '1234567829',
-    status: 'active'
+    status: 'active',
+    company: 'ABC Company',
+    website: 'https://www.abccompany.com'
   },
   {
     name: 'XYZ Corporation',
     email: 'info@xyzcorp.com',
     password: 'Client@123',
-    legacyRole: 'user',
-    departmentName: 'Sales',
+    departmentName: 'General',
     roleName: 'client',
     phone: '1234567830',
-    status: 'active'
+    status: 'active',
+    company: 'XYZ Corporation',
+    website: 'https://www.xyzcorp.com'
   }
 ]
 
@@ -200,17 +192,42 @@ async function seedUsers() {
 
       // Check if it's a system role first
       if (systemRoleMap.has(targetRoleName)) {
+        const systemRole = systemRoleMap.get(targetRoleName)!
+        // For system roles with departments (super_admin, hr_manager), use the role's department
+        // For other system roles, use the user's department
+        let assignedDepartment = departmentDoc
+        if (systemRole.department) {
+          // Find the department name from the department ID
+          for (const [deptName, dept] of departmentMap.entries()) {
+            if (dept._id.toString() === systemRole.department.toString()) {
+              assignedDepartment = dept
+              break
+            }
+          }
+        }
+        
         return {
-          role: systemRoleMap.get(targetRoleName)!,
-          department: targetRoleName === 'hr_manager' ? departmentMap.get('HR') : departmentDoc
+          role: systemRole,
+          department: assignedDepartment
         }
       }
 
-      // For department roles, construct the role name
-      const departmentSlug = userData.departmentName.toLowerCase().replace(/\s+/g, '_')
-      const departmentRoleName = `${targetRoleName}_${departmentSlug}`
+      // Special case for client role - always use General department
+      if (targetRoleName === 'client') {
+        const clientRole = departmentRoles.find(role => role.name === 'client')
+        if (clientRole) {
+          return {
+            role: clientRole,
+            department: departmentMap.get('General') || departmentDoc
+          }
+        }
+      }
 
-      const departmentRole = departmentRoles.find(role => role.name === departmentRoleName)
+      // For department roles, find by role name and department
+      const departmentRole = departmentRoles.find(role => 
+        role.name === targetRoleName && 
+        role.department.toString() === departmentDoc._id.toString()
+      )
 
       if (departmentRole) {
         return {
@@ -220,11 +237,13 @@ async function seedUsers() {
       }
 
       // Fallback: try to find a client role for this department
-      const clientRoleName = `client_${departmentSlug}`
-      const clientRole = departmentRoles.find(role => role.name === clientRoleName)
+      const clientRole = departmentRoles.find(role => 
+        role.name === 'client' && 
+        role.department.toString() === departmentDoc._id.toString()
+      )
 
       if (clientRole) {
-        console.warn(`⚠️  Role '${targetRoleName}' not found for user ${userData.email}, using '${clientRole.name}' role`)
+        console.warn(`⚠️  Role '${targetRoleName}' not found for user ${userData.email}, using 'client' role`)
         return {
           role: clientRole,
           department: departmentDoc
@@ -232,12 +251,12 @@ async function seedUsers() {
       }
 
       // Final fallback: use any client role
-      const anyClientRole = departmentRoles.find(role => role.name.startsWith('client_'))
+      const anyClientRole = departmentRoles.find(role => role.name === 'client')
       if (anyClientRole) {
-        console.warn(`⚠️  No specific role found for user ${userData.email}, using '${anyClientRole.name}' role`)
+        console.warn(`⚠️  No specific role found for user ${userData.email}, using 'client' role from another department`)
         return {
           role: anyClientRole,
-          department: departmentDoc
+          department: departmentMap.get('General') || departmentDoc
         }
       }
 
@@ -248,24 +267,27 @@ async function seedUsers() {
     const usersToCreate = userSeeds.map(userData => {
       const { role: finalRole, department: finalDepartment } = findRoleForUser(userData)
 
+      const isClientUser = finalRole.name === 'client'
+
       return {
         name: userData.name,
         email: userData.email,
         password: userData.password,
         role: finalRole._id,
-        legacyRole: userData.legacyRole,
-        department: finalDepartment._id,
+        department: isClientUser ? undefined : finalDepartment._id, // Clients don't need department
         phone: userData.phone || '',
         status: 'active',
         emailVerified: true,
         phoneVerified: false,
         twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
+        isClient: isClientUser,
+        // Client-specific fields
+        ...(isClientUser && {
+          company: userData.company || (userData.name.includes('@') ? userData.name.split('@')[1] : 'Client Company'),
+          website: userData.website || (userData.email.includes('@') ? `https://www.${userData.email.split('@')[1]}` : 'https://www.clientcompany.com'),
+          clientStatus: 'qualified' as const,
+        }),
         permissions: [],
-        preferences: {
-          theme: 'system',
-          language: 'en',
-          timezone: 'UTC',
-        },
         metadata: {
           tags: ['seeded'],
           createdBy: 'system_seeder',
@@ -300,7 +322,6 @@ async function seedUsers() {
             await User.findByIdAndUpdate(existingUser._id, {
               name: userData.name,
               role: userData.role,
-              legacyRole: userData.legacyRole,
               department: userData.department,
               phone: userData.phone,
               status: userData.status,
@@ -308,7 +329,6 @@ async function seedUsers() {
               phoneVerified: userData.phoneVerified,
               twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
               permissions: userData.permissions,
-              preferences: userData.preferences,
               'metadata.updatedBy': 'system_seeder',
               'metadata.tags': userData.metadata.tags
             })

@@ -102,22 +102,32 @@ const RoleSchema = new Schema<IRole>({
     type: Schema.Types.ObjectId,
     ref: 'Department',
     required: function (this: IRole) {
-      return !this.isSystemRole;
+      // Department is required for non-system roles and for specific system roles
+      if (!this.isSystemRole) return true;
+      // For system roles, only super_admin and hr_manager require department
+      return ['super_admin', 'hr_manager'].includes(this.name);
     },
     validate: {
       validator: function (this: IRole, value: any) {
-        // System roles should not have department
-        if (this.isSystemRole) {
-          return value === null || value === undefined;
+        if (!this.isSystemRole) {
+          // Non-system roles must have department
+          return value != null && mongoose.Types.ObjectId.isValid(value);
         }
-        // Non-system roles must have department
-        return value != null;
+        // For system roles, only super_admin and hr_manager should have department
+        if (['super_admin', 'hr_manager'].includes(this.name)) {
+          return value != null && mongoose.Types.ObjectId.isValid(value);
+        }
+        // Other system roles should not have department
+        return value === null || value === undefined;
       },
       message: function (this: IRole) {
-        if (this.isSystemRole) {
-          return "System roles should not be associated with a specific department";
+        if (!this.isSystemRole) {
+          return "Department is required for non-system roles";
         }
-        return "Department is required for non-system roles";
+        if (['super_admin', 'hr_manager'].includes(this.name)) {
+          return `${this.name} role must be associated with a department`;
+        }
+        return "System roles should not be associated with a specific department";
       }
     },
     // index: true, // Removed - covered by compound indexes

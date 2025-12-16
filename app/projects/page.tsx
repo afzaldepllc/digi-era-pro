@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
-import { useDebounceSearch } from "@/hooks/use-debounced-search";
 import { Project, ProjectFilters, FilterConfig } from "@/types";
 import PageHeader from "@/components/ui/page-header";
-import DataTable, { ColumnDef } from "@/components/ui/data-table";
+import DataTable, { ColumnDef, HtmlTextRenderer } from "@/components/ui/data-table";
 import GenericFilter from "@/components/ui/generic-filter";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, AlertTriangle, Users, Calendar, DollarSign, FolderOpen, FileText } from "lucide-react";
+import { Building2, AlertTriangle, Users, Calendar, DollarSign, FolderOpen, FileText, Trash2, RotateCcw } from "lucide-react";
 import Swal from "sweetalert2";
 import { handleAPIError } from "@/lib/utils/api-client";
 import { useProjects } from "@/hooks/use-projects";
 import { useDepartments } from "@/hooks/use-departments";
+import { useClients } from "@/hooks/use-clients";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import CustomModal from "@/components/ui/custom-modal";
 import { useNavigation } from "@/components/providers/navigation-provider";
+import { PRIORITY_COLORS, STATUS_COLORS } from '@/lib/colorConstants';
 
 export default function ProjectsPage() {
   console.log('Rendering ProjectsPage component');
@@ -32,16 +33,20 @@ export default function ProjectsPage() {
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([]);
+  const [availableClients, setAvailableClients] = useState<Array<{ value: string, label: string }>>([]);
 
   const { allDepartments } = useDepartments();
+  const { clients: allClients } = useClients();
   const {
     deleteProject,
+    restoreProject,
     setFilters,
     setSort,
     setPagination,
     clearError,
     setSelectedProject,
     handleApproveProject: approveProjectFn,
+    fetchProjects,
     // State from hook
     projects,
     selectedProject,
@@ -52,31 +57,6 @@ export default function ProjectsPage() {
     pagination,
     stats
   } = useProjects();
-
-  // Keep filters in a ref for debounced search
-  const filtersRef = useRef(filters);
-  filtersRef.current = filters;
-
-  // Debounced search functionality
-  const handleDebouncedSearch = useCallback((searchTerm: string) => {
-    const currentFilters = filtersRef.current;
-    setFilters({
-      ...currentFilters,
-      search: searchTerm,
-    });
-  }, [setFilters]);
-
-  const { searchTerm, setSearchTerm, isSearching } = useDebounceSearch({
-    onSearch: handleDebouncedSearch,
-    delay: 500,
-  });
-
-  // Initialize search term from Redux filters
-  useEffect(() => {
-    if (filters.search !== searchTerm) {
-      setSearchTerm(filters.search || '');
-    }
-  }, [filters.search]);
 
   // Update available departments when allDepartments changes
   useEffect(() => {
@@ -91,6 +71,19 @@ export default function ProjectsPage() {
     }
   }, [allDepartments]);
 
+  // Update available clients when allClients changes
+  useEffect(() => {
+    if (allClients && allClients.length > 0) {
+      const clientOptions = allClients
+        .filter((client) => client._id)
+        .map((client: any) => ({
+          value: client._id,
+          label: client.name,
+        })) || [];
+      setAvailableClients(clientOptions);
+    }
+  }, [allClients]);
+
   // Filter configuration
   const filterConfig: FilterConfig = useMemo(() => ({
     fields: [
@@ -100,8 +93,8 @@ export default function ProjectsPage() {
         type: "text",
         placeholder: "Search by name, description...",
         cols: 12,
-        mdCols: 6,
-        lgCols: 3,
+        mdCols: 4,
+        lgCols: 4,
       },
       {
         key: "status",
@@ -110,7 +103,7 @@ export default function ProjectsPage() {
         placeholder: "All Statuses",
         cols: 12,
         mdCols: 6,
-        lgCols: 3,
+        lgCols: 2,
         options: [
           { label: "All Statuses", value: "all" },
           { label: "Pending", value: "pending" },
@@ -127,7 +120,7 @@ export default function ProjectsPage() {
         placeholder: "All Priorities",
         cols: 12,
         mdCols: 6,
-        lgCols: 3,
+        lgCols: 2,
         options: [
           { label: "All Priorities", value: "all" },
           { label: "Low", value: "low" },
@@ -144,10 +137,24 @@ export default function ProjectsPage() {
         placeholder: 'All Departments',
         cols: 12,
         mdCols: 6,
-        lgCols: 3,
+        lgCols: 2,
         options: [
           { value: 'all', label: 'All Departments' },
           ...availableDepartments,
+        ],
+      },
+      {
+        key: 'client',
+        label: 'Client',
+        type: 'select',
+        searchable: true,
+        placeholder: 'All Clients',
+        cols: 12,
+        mdCols: 6,
+        lgCols: 2,
+        options: [
+          { value: 'all', label: 'All Clients' },
+          ...availableClients,
         ],
       },
     ],
@@ -156,27 +163,30 @@ export default function ProjectsPage() {
       status: 'all',
       priority: 'all',
       department: 'all',
+      client: 'all',
     },
   }), [availableDepartments]);
 
   // Map Redux filters to UI filters
   const uiFilters = useMemo(() => ({
-    search: searchTerm,
+    search: filters.search || '',
     status: filters.status || 'all',
     priority: filters.priority || 'all',
     department: filters.departmentId || 'all',
-  }), [searchTerm, filters]);
+    client: filters.clientId || 'all',
+  }), [filters]);
 
   // Filter handling functions
   const handleFilterChange = useCallback((newFilters: Record<string, any>) => {
     const projectFilters: ProjectFilters = {
-      search: filters.search,
+      search: newFilters.search || '',
       status: newFilters.status === 'all' ? '' : newFilters.status || '',
       priority: newFilters.priority === 'all' ? '' : newFilters.priority || '',
       departmentId: newFilters.department === 'all' ? '' : newFilters.department || '',
+      clientId: newFilters.client === 'all' ? '' : newFilters.client || '',
     };
     setFilters(projectFilters);
-  }, [setFilters, filters.search]);
+  }, [setFilters]);
 
   const handleFilterReset = useCallback(() => {
     const defaultFilters: ProjectFilters = {
@@ -184,11 +194,11 @@ export default function ProjectsPage() {
       status: '',
       priority: '',
       departmentId: '',
+      clientId: '',
     };
     setFilters(defaultFilters);
-    setSearchTerm('');
     setIsFilterExpanded(false);
-  }, [setFilters, setSearchTerm]);
+  }, [setFilters]);
 
   // Table columns configuration
   const columns: ColumnDef<Project>[] = [
@@ -220,14 +230,7 @@ export default function ProjectsPage() {
       label: "Status",
       render: (value: any, row: Project) => {
         const status = row.status;
-        const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-          pending: "outline",
-          active: "default",
-          approved: "secondary",
-          completed: "secondary",
-          inactive: "destructive",
-        };
-        return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
+        return <Badge className={STATUS_COLORS[status] || STATUS_COLORS.inactive}>{status}</Badge>;
       },
       sortable: true,
     },
@@ -236,13 +239,7 @@ export default function ProjectsPage() {
       label: "Priority",
       render: (value: any, row: Project) => {
         const priority = row.priority;
-        const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-          low: "outline",
-          medium: "default",
-          high: "secondary",
-          urgent: "destructive",
-        };
-        return <Badge variant={variants[priority] || "outline"}>{priority}</Badge>;
+        return <Badge className={PRIORITY_COLORS[priority] || PRIORITY_COLORS.low}>{priority}</Badge>;
       },
       sortable: true,
     },
@@ -261,7 +258,7 @@ export default function ProjectsPage() {
           <div className="flex flex-wrap gap-1">
             {row.departmentTasks?.slice(0, 2).map((dept) => (
               <Badge key={dept.departmentId} variant="outline" className="text-xs">
-              {dept.departmentName}
+                {dept.departmentName}
               </Badge>
             ))}
             {(row.departmentTasks?.length || 0) > 2 && (
@@ -269,6 +266,11 @@ export default function ProjectsPage() {
                 +{(row.departmentTasks?.length || 0) - 2} more
               </Badge>
             )}
+            {
+              row.departmentTasks?.length === 0 && (
+                <span className="text-sm text-muted-foreground">No Departments</span>
+              )
+            }
           </div>
         );
       },
@@ -277,7 +279,7 @@ export default function ProjectsPage() {
       key: "tasks" as any,
       label: "Tasks",
       render: (value: any, row: Project) => {
-        let taskCount =  0;
+        let taskCount = 0;
         row.departmentTasks?.forEach(dept => {
           taskCount += dept.taskCount;
         });
@@ -285,7 +287,7 @@ export default function ProjectsPage() {
           <div className="flex flex-wrap gap-1">
             {(
               <Badge variant="outline" className="text-xs">
-                {taskCount }
+                {taskCount}
               </Badge>
             )}
           </div>
@@ -296,8 +298,12 @@ export default function ProjectsPage() {
       key: "createdAt",
       label: "Created",
       render: (value: any, row: Project) => {
-        const date = new Date(row.createdAt || '');
-        return date.toLocaleDateString();
+        const date = new Date(row.createdAt || '').toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+        return date;
       },
       sortable: true,
     },
@@ -396,6 +402,80 @@ export default function ProjectsPage() {
       }
     }
   }, [deleteProject, toast]);
+
+  const handleRestoreProject = useCallback(async (project: Project) => {
+    const result = await Swal.fire({
+      customClass: {
+        popup: 'swal-bg',
+        title: 'swal-title',
+        htmlContainer: 'swal-content',
+      },
+      title: `Restore ${project.name}?`,
+      text: "Are you sure you want to restore this project?",
+      icon: "question",
+      showCancelButton: true,
+      showConfirmButton: true,
+      confirmButtonText: "Yes, Restore",
+      cancelButtonText: "No",
+      confirmButtonColor: "#10b981",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        customClass: {
+          popup: 'swal-bg',
+          title: 'swal-title',
+          htmlContainer: 'swal-content',
+        },
+        title: 'Restoring...',
+        text: 'Please wait while we restore the project.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        await restoreProject(project._id as string);
+
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Restored!",
+          text: "Project has been restored successfully.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        toast({
+          title: "Success",
+          description: "Project restored successfully.",
+          variant: "default",
+        });
+
+        fetchProjects();
+      } catch (error: any) {
+        Swal.fire({
+          customClass: {
+            popup: 'swal-bg',
+            title: 'swal-title',
+            htmlContainer: 'swal-content',
+          },
+          title: "Error!",
+          text: error.error?.message || error.error || error.message || "Failed to restore project. Please try again.",
+          icon: "error",
+          confirmButtonText: "OK"
+        });
+        handleAPIError(error, "Failed to restore project. Please try again.");
+      }
+    }
+  }, [restoreProject, toast, fetchProjects]);
 
   const handleApproveProject = useCallback(async (project: Project) => {
     const result = await Swal.fire({
@@ -539,21 +619,17 @@ export default function ProjectsPage() {
         hasActiveFilters={Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')}
         isFilterExpanded={isFilterExpanded}
         onFilterToggle={() => {
-          if (Object.values(uiFilters).some(v => v && v !== 'all' && v !== '')) {
-            // If there are active filters, clear them
-            handleFilterReset();
-          } else {
-            // Otherwise just toggle the filter panel
-            setIsFilterExpanded(!isFilterExpanded);
-          }
+          setIsFilterExpanded(!isFilterExpanded);
         }}
         activeFiltersCount={Object.values(uiFilters).filter(v => v && v !== 'all' && v !== '').length}
         filterText="Filter Projects"
-        clearFiltersText="Clear Filters"
 
         // Refresh functionality
         showRefreshButton={true}
-        onRefresh={handleFilterReset}
+        onRefresh={() => {
+          handleFilterReset();
+          fetchProjects();
+        }}
         isRefreshing={loading}
       >
         {/* Generic Filter */}
@@ -563,10 +639,9 @@ export default function ProjectsPage() {
             values={uiFilters}
             onFilterChange={handleFilterChange}
             onReset={handleFilterReset}
-            collapsible={false}
+            loading={loading}
             title="Filter Projects"
             className="bg-card"
-            loading={isSearching}
           />
         )}
       </PageHeader>
@@ -593,6 +668,8 @@ export default function ProjectsPage() {
           onSort={handleSort}
           sortColumn={sort.field}
           sortDirection={sort.direction}
+          onDelete={handleDeleteProject}
+          onRestore={handleRestoreProject}
           actions={{
             view: {
               enabled: true,
@@ -616,6 +693,7 @@ export default function ProjectsPage() {
           }}
           enablePermissionChecking={true}
           emptyMessage="No projects found"
+
           customActions={[
             {
               label: "Project Details",
@@ -632,6 +710,8 @@ export default function ProjectsPage() {
                 resource: "projects",
                 action: "read",
               },
+              hideIf: (project: Project) => (project as any).status === 'deleted',
+
             },
             {
               label: "Categorize",
@@ -648,6 +728,7 @@ export default function ProjectsPage() {
                 resource: "projects",
                 action: "categorize",
               },
+              hideIf: (project: Project) => (project as any).status === 'deleted',
             },
             {
               label: "Approve",
@@ -659,6 +740,7 @@ export default function ProjectsPage() {
                 resource: "projects",
                 action: "approve",
               },
+              hideIf: (project: Project) => (project as any).status === 'deleted',
             },
           ]}
         />
@@ -752,7 +834,11 @@ export default function ProjectsPage() {
                       <label className="text-sm font-medium text-muted-foreground">Start Date</label>
                       <p className="mt-1">
                         {selectedProject.startDate
-                          ? new Date(selectedProject.startDate).toLocaleDateString()
+                          ? new Date(selectedProject.startDate).toLocaleDateString("en-US",{
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
                           : 'Not set'
                         }
                       </p>
@@ -761,7 +847,11 @@ export default function ProjectsPage() {
                       <label className="text-sm font-medium text-muted-foreground">End Date</label>
                       <p className="mt-1">
                         {selectedProject.endDate
-                          ? new Date(selectedProject.endDate).toLocaleDateString()
+                          ? new Date(selectedProject.endDate).toLocaleDateString("en-US",{
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
                           : 'Not set'
                         }
                       </p>
@@ -772,7 +862,13 @@ export default function ProjectsPage() {
                   {selectedProject.description && (
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Description</label>
-                      <p className="mt-1 text-sm">{selectedProject.description}</p>
+                      <HtmlTextRenderer
+                        content={selectedProject.description}
+                        fallbackText="No description"
+                        showFallback={true}
+                        renderAsHtml={true}
+                        truncateHtml={false}
+                      />
                     </div>
                   )}
 
@@ -783,7 +879,11 @@ export default function ProjectsPage() {
                         <label className="text-muted-foreground">Created</label>
                         <p className="mt-1">
                           {selectedProject.createdAt
-                            ? new Date(selectedProject.createdAt).toLocaleString()
+                            ? new Date(selectedProject.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })
                             : 'Unknown'
                           }
                         </p>
@@ -792,7 +892,11 @@ export default function ProjectsPage() {
                         <label className="text-muted-foreground">Last Updated</label>
                         <p className="mt-1">
                           {selectedProject.updatedAt
-                            ? new Date(selectedProject.updatedAt).toLocaleString()
+                            ? new Date(selectedProject.updatedAt).toLocaleString("en-US", {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })
                             : 'Unknown'
                           }
                         </p>
@@ -840,60 +944,60 @@ export default function ProjectsPage() {
                       Assigned Departments
                     </label>
                     {selectedProject.departmentTasks && selectedProject.departmentTasks.length > 0 ? (
-                        <div className="space-y-3">
+                      <div className="space-y-3">
                         {selectedProject.departmentTasks
                           .map((dept) => (
-                          <div key={dept.departmentId} className="border rounded-lg overflow-hidden">
-                            {/* Department Header */}
-                            <div className="flex items-center justify-between p-3 bg-muted/30">
-                            <div className="flex items-center space-x-3">
-                              <Building2 className="h-4 w-4 text-primary" />
-                              <span className="font-medium">{dept.departmentName}</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Badge variant="secondary" className="text-xs">
-                              {dept.taskCount} Tasks
-                              </Badge>
-                              <Badge variant="outline">Assigned</Badge>
-                            </div>
-                            </div>
-                            
-                            {/* Tasks List */}
-                            {dept.tasks && dept.tasks.length > 0 && (
-                            <div className="p-3 pt-0">
-                              <div className="space-y-2">
-                              {dept.tasks.map((task) => (
-                                <div key={task._id} className="flex items-center justify-between p-2 bg-background rounded border border-border/50">
+                            <div key={dept.departmentId} className="border rounded-lg overflow-hidden">
+                              {/* Department Header */}
+                              <div className="flex items-center justify-between p-3 bg-muted/30">
+                                <div className="flex items-center space-x-3">
+                                  <Building2 className="h-4 w-4 text-primary" />
+                                  <span className="font-medium">{dept.departmentName}</span>
+                                </div>
                                 <div className="flex items-center space-x-2">
-                                  <div className="w-2 h-2 rounded-full bg-muted-foreground/50"></div>
-                                  <span className="text-sm font-medium">{task.title}</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {dept.taskCount} Tasks
+                                  </Badge>
+                                  <Badge variant="outline">Assigned</Badge>
                                 </div>
-                                <Badge 
-                                  variant={
-                                  task.status === 'completed' ? 'secondary' :
-                                  task.status === 'in_progress' ? 'default' :
-                                  task.status === 'pending' ? 'outline' : 'destructive'
-                                  }
-                                  className="text-xs"
-                                >
-                                  {task.status.replace('_', ' ')}
-                                </Badge>
-                                </div>
-                              ))}
                               </div>
+
+                              {/* Tasks List */}
+                              {dept.tasks && dept.tasks.length > 0 && (
+                                <div className="p-3 pt-0">
+                                  <div className="space-y-2">
+                                    {dept.tasks.map((task) => (
+                                      <div key={task._id} className="flex items-center justify-between p-2 bg-background rounded border border-border/50">
+                                        <div className="flex items-center space-x-2">
+                                          <div className="w-2 h-2 rounded-full bg-muted-foreground/50"></div>
+                                          <span className="text-sm font-medium">{task.title}</span>
+                                        </div>
+                                        <Badge
+                                          variant={
+                                            task.status === 'completed' ? 'secondary' :
+                                              task.status === 'in_progress' ? 'default' :
+                                                task.status === 'pending' ? 'outline' : 'destructive'
+                                          }
+                                          className="text-xs"
+                                        >
+                                          {task.status.replace('_', ' ')}
+                                        </Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* No tasks message */}
+                              {(!dept.tasks || dept.tasks.length === 0) && (
+                                <div className="p-3 text-center text-sm text-muted-foreground">
+                                  No tasks assigned to this department yet
+                                </div>
+                              )}
                             </div>
-                            )}
-                            
-                            {/* No tasks message */}
-                            {(!dept.tasks || dept.tasks.length === 0) && (
-                            <div className="p-3 text-center text-sm text-muted-foreground">
-                              No tasks assigned to this department yet
-                            </div>
-                            )}
-                          </div>
                           ))}
-                        </div>
-                      ) : (
+                      </div>
+                    ) : (
                       <div className="text-center py-8">
                         <Building2 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                         <p className="text-muted-foreground">No departments assigned</p>

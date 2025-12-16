@@ -35,16 +35,6 @@ export const CLIENT_CONSTANTS = {
 // Client status validation
 const clientStatusSchema = z.enum(CLIENT_CONSTANTS.STATUS.CLIENT_VALUES)
 
-// Theme validation
-const themeSchema = z.enum(['light', 'dark', 'system'])
-
-// Preferences schema
-const preferencesSchema = z.object({
-  theme: themeSchema.default('system'),
-  language: z.string().default('en'),
-  timezone: z.string().default('UTC'),
-}).optional()
-
 // Company validation (required for clients)
 const clientCompanySchema = z
   .string()
@@ -81,6 +71,7 @@ export const baseClientObjectSchema = z.object({
   clientStatus: clientStatusSchema,
   company: clientCompanySchema,
   industry: z.string().optional(),
+  website: z.string().optional(),
   companySize: z.enum(['startup', 'small', 'medium', 'large', 'enterprise']).optional(),
   annualRevenue: z.string().optional(), // Keep as string for form
   employeeCount: z.string().optional(), // Keep as string for form
@@ -89,7 +80,6 @@ export const baseClientObjectSchema = z.object({
   avatar: z.string().url().optional().or(z.literal("")),
   address: addressSchema,
   socialLinks: socialLinksSchema,
-  preferences: preferencesSchema,
   metadata: metadataSchema,
 
   // Security fields
@@ -225,6 +215,7 @@ export const clientQuerySchema = z.object({
   status: z.enum(['active', 'inactive', 'qualified', 'unqualified', 'deleted', '']).optional(),
   hasLead: z.coerce.boolean().optional(), // Filter clients with/without lead association
   company: z.string().optional().transform(val => val?.trim() || ''),
+  website: z.string().optional().transform(val => val?.trim() || ''),
 
   // Sort options
   sortBy: z.enum(CLIENT_CONSTANTS.SORT.ALLOWED_FIELDS).default('createdAt'),
@@ -290,6 +281,7 @@ export type ClientFilters = Partial<{
   status: string
   clientStatus: ClientStatus | ''
   company: string
+  website: string
   department: string
   hasLead: boolean
   qualifiedAfter: Date
@@ -343,7 +335,6 @@ export type ClientMutationResponse = {
   message: string
 }
 
-// Create form schema (string inputs for form handling)
 export const createClientFormSchema = z.object({
   // Basic Information
   name: z.string().min(CLIENT_CONSTANTS.NAME.MIN_LENGTH).max(CLIENT_CONSTANTS.NAME.MAX_LENGTH),
@@ -353,6 +344,7 @@ export const createClientFormSchema = z.object({
 
   // Company Information
   company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
+  website: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
   industry: z.string().optional(),
   companySize: z.enum(['', 'startup', 'small', 'medium', 'large', 'enterprise']).optional(),
   annualRevenue: z.string().optional(), // Keep as string for form
@@ -372,18 +364,11 @@ export const createClientFormSchema = z.object({
   }).optional(),
 
   // Social Links
-  socialLinks: z.object({
-    linkedin: z.string().url().optional().or(z.literal("")),
-    twitter: z.string().url().optional().or(z.literal("")),
-    github: z.string().url().optional().or(z.literal("")),
-  }).optional(),
+  socialLinks: z.array(z.object({
+    linkName: z.string().min(1, "Platform name is required"),
+    linkUrl: z.string().url("Must be a valid URL"),
+  })).optional(),
 
-  // Preferences
-  preferences: z.object({
-    theme: z.enum(['light', 'dark', 'system']).default('system'),
-    language: z.string().default('en'),
-    timezone: z.string().default('UTC'),
-  }).optional(),
 
   // Notes
   notes: z.string().max(2000).optional(),
@@ -399,6 +384,7 @@ export const updateClientFormSchema = z.object({
 
   // Company Information
   company: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
+  website: z.string().min(CLIENT_CONSTANTS.COMPANY.MIN_LENGTH).max(CLIENT_CONSTANTS.COMPANY.MAX_LENGTH),
   industry: z.string().optional(),
   companySize: z.enum(['', 'startup', 'small', 'medium', 'large', 'enterprise']).optional(),
   annualRevenue: z.string().optional(), // Keep as string for form
@@ -419,19 +405,11 @@ export const updateClientFormSchema = z.object({
   }).optional(),
 
   // Social Links
-  socialLinks: z.object({
-    linkedin: z.string().url().optional().or(z.literal("")),
-    twitter: z.string().url().optional().or(z.literal("")),
-    github: z.string().url().optional().or(z.literal("")),
-  }).optional(),
-
-  // Preferences
-  preferences: z.object({
-    theme: z.enum(['light', 'dark', 'system']).default('system'),
-    language: z.string().default('en'),
-    timezone: z.string().default('UTC'),
-  }).optional(),
-
+  socialLinks: z.array(z.object({
+    linkName: z.string().min(1, "Platform name is required"),
+    linkUrl: z.string().url("Must be a valid URL"),
+  })).optional(),
+  
   // Notes
   notes: z.string().max(2000).optional(),
 }).strict()

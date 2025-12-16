@@ -45,7 +45,7 @@ export function MessageNotification({
   } = useCommunications()
 
   // Get channels with unread messages
-  const unreadChannels = channels.filter(channel => channel.unreadCount > 0)
+  const unreadChannels = channels.filter(channel => (channel.unreadCount || 0) > 0)
 
   const handleNotificationClick = (channelId: string, messageId?: string) => {
     selectChannel(channelId)
@@ -57,8 +57,8 @@ export function MessageNotification({
 
   const handleMarkAllRead = () => {
     unreadChannels.forEach(channel => {
-      if (channel.lastMessage && !channel.lastMessage.isRead) {
-        markAsRead(channel.lastMessage._id, channel.channelId)
+      if (channel.last_message && !channel.last_message.read_receipts?.length ) {
+        markAsRead(channel.last_message.id, channel.id)
       }
     })
     clearNotifications()
@@ -71,17 +71,17 @@ export function MessageNotification({
   // Mock user lookup function (in real app, this would come from a users context)
   const getUserInfo = (senderId: string) => {
     const mockUsers: Record<string, any> = {
-      '1': { name: 'Afzal Habib', avatar: '/profile-image.jpg' },
-      '2': { name: 'Talha', avatar: '/profile-img-2.jpg' },
-      '3': { name: 'Zaid Khan', avatar: '/placeholder-user.jpg' },
-      '4': { name: 'Sarah Wilson', avatar: '/profile-image.jpg' }
+      'user1': { name: 'John Doe', avatar: undefined },
+      'user2': { name: 'Jane Smith', avatar: undefined },
+      'user3': { name: 'Bob Johnson', avatar: undefined },
+      'user4': { name: 'Alice Brown', avatar: undefined }
     }
     return mockUsers[senderId] || { name: 'Unknown User', avatar: '' }
   }
 
   const getChannelDisplayName = (channel: any, currentUserId: string) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find((p: any) => p._id !== currentUserId)
+      const otherParticipant = channel.participants.find((p: any) => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name
@@ -146,12 +146,12 @@ export function MessageNotification({
             <div className="space-y-1 p-2">
               {/* Recent notifications */}
               {notifications.slice(0, 3).map((notification) => {
-                const sender = getUserInfo(notification.message.senderId)
+                const sender = getUserInfo(notification.message.mongo_sender_id)
                 
                 return (
                   <div
                     key={notification.id}
-                    onClick={() => handleNotificationClick(notification.channelId, notification.message._id)}
+                    onClick={() => handleNotificationClick(notification.channelId, notification.message.id)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
                     <Avatar className="h-8 w-8 mt-0.5">
@@ -168,7 +168,7 @@ export function MessageNotification({
                       </div>
                       
                       <p className="text-sm text-muted-foreground line-clamp-2">
-                        {notification.message.message}
+                        {notification.message.content}
                       </p>
                       
                       <div className="flex items-center gap-2 mt-1">
@@ -184,20 +184,20 @@ export function MessageNotification({
 
               {/* Channels with unread messages */}
               {unreadChannels.map((channel) => {
-                const displayName = getChannelDisplayName(channel, '1') // Mock current user ID
-                const lastMessage = channel.lastMessage
-                const sender = lastMessage ? getUserInfo(lastMessage.senderId) : null
+                const displayName = getChannelDisplayName(channel, 'user1') // Mock current user ID
+                const last_message = channel.last_message
+                const sender = last_message ? getUserInfo(last_message.mongo_sender_id) : null
 
                 return (
                   <div
-                    key={channel._id}
-                    onClick={() => handleNotificationClick(channel.channelId)}
+                    key={channel.id}
+                    onClick={() => handleNotificationClick(channel.id)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
                     {channel.type === 'dm' && channel.participants.length > 0 ? (
                       <Avatar className="h-8 w-8 mt-0.5">
                         <AvatarImage 
-                          src={channel.participants.find((p: any) => p._id !== '1')?.avatar} 
+                          src={channel.participants.find((p) => p.mongo_member_id !== 'user1')?.avatar} 
                           alt={displayName} 
                         />
                         <AvatarFallback className="text-xs">
@@ -211,23 +211,23 @@ export function MessageNotification({
                     )}
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between">
                         <span className="font-medium text-sm truncate">{displayName}</span>
                         <Badge variant="default" className="text-xs">
-                          {channel.unreadCount}
+                          {channel.unreadCount || 0}
                         </Badge>
                       </div>
                       
-                      {lastMessage && (
+                      {last_message && (
                         <div>
                           <p className="text-sm text-muted-foreground line-clamp-1">
                             {sender && `${sender.name}: `}
-                            {lastMessage.message}
+                            {last_message.content}
                           </p>
                           
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(lastMessage.createdAt), { addSuffix: true })}
+                              {formatDistanceToNow(new Date(last_message.created_at), { addSuffix: true })}
                             </span>
                             
                             <Badge variant="outline" className="text-xs">

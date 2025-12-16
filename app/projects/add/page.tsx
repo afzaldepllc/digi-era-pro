@@ -32,11 +32,30 @@ export default function AddProjectPage() {
       name: "",
       description: "",
       clientId: clientId || "",
+      departmentIds: [],
+      status: "pending",
+      priority: "medium",
       budget: 0,
       startDate: "",
       endDate: "",
-      status: "pending",
-      priority: "medium",
+      projectType: "",
+      requirements: [],
+      customerServices: [],
+      timeline: "",
+      budgetBreakdown: {
+        development: 0,
+        design: 0,
+        testing: 0,
+        deployment: 0,
+        maintenance: 0,
+        contingency: 0,
+      },
+      resources: {
+        estimatedHours: 0,
+        actualHours: 0,
+        tools: [],
+        externalResources: [],
+      },
     },
   });
 
@@ -46,17 +65,67 @@ export default function AddProjectPage() {
 
   // Prefill project data from client if available
   useEffect(() => {
-    if (prefill && clientId && clients.length > 0) {
-      // Find the client and get related data for prefilling
-      const client = clients.find(c => c._id === clientId);
-      if (client && client._id) {
-        // Prefill basic client selection and disable it
-        form.setValue('clientId', client._id);
+    const fetchLeadAndPrefill = async () => {
+      if (prefill && clientId && clients.length > 0) {
+        // Find the client and get related data for prefilling
+        const client = clients.find(c => c._id === clientId);
+        if (client && client._id) {
+          // Prefill basic client selection and disable it
+          form.setValue('clientId', client._id);
 
-        // Set basic project name from client
-        form.setValue('name', `${client.name} Project`);
+          // Set basic project name from client
+          form.setValue('name', `${client.name} Project`);
+
+          // Fetch lead data associated with this client
+          try {
+            const response = await fetch(`/api/leads?clientId=${clientId}&limit=1`);
+            const data = await response.json();
+            if (data.success && data.data.leads.length > 0) {
+              const lead = data.data.leads[0];
+
+              // Populate form with lead's project-related data
+              if (lead.projectName) {
+                form.setValue('name', lead.projectName);
+              }
+              if (lead.projectDescription) {
+                form.setValue('description', lead.projectDescription);
+              }
+              if (lead.projectBudget) {
+                form.setValue('budget', lead.projectBudget);
+              }
+              if (lead.projectTimeline) {
+                form.setValue('timeline', lead.projectTimeline);
+              }
+              if (lead.complexity) {
+                form.setValue('complexity', lead.complexity);
+              }
+              if (lead.projectType) {
+                form.setValue('projectType', lead.projectType);
+              }
+              if (lead.projectRequirements) {
+                form.setValue('requirements', lead.projectRequirements);
+              }
+              if (lead.customerServices) {
+                form.setValue('customerServices', lead.customerServices);
+              }
+              if (lead.projectType) {
+                form.setValue('projectType', lead.projectType);
+              }
+              if (lead.estimatedHours) {
+                form.setValue('resources.estimatedHours', lead.estimatedHours);
+              }
+              if (lead.technologies) {
+                form.setValue('resources.tools', lead.technologies);
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching lead data:', error);
+          }
+        }
       }
-    }
+    };
+
+    fetchLeadAndPrefill();
   }, [prefill, clientId, clients, form]);
 
   const handleSubmit = async (data: CreateProjectFormData) => {
@@ -102,6 +171,7 @@ export default function AddProjectPage() {
 
   const formFields = [
     {
+      subform_title: "Basic Information",
       fields: [
         {
           name: "name",
@@ -112,86 +182,281 @@ export default function AddProjectPage() {
           description: "A clear, descriptive name for the project",
           cols: 12,
           mdCols: 6,
-          lgCols:4
-        },
-        {
-          name: "clientId",
-          label: "Client",
-          type: "select" as const,
-          searchable: true,
-          placeholder: "Select a client",
-          required: true,
-          disabled: !!clientId, // Disable if prefilled from client page
-          options: clientOptions,
-          loading: clientsLoading,
-          description: "The client for whom this project is being created",
-          cols: 12,
-          mdCols: 6,
-          lgCols:4
+          lgCols: 4,
         },
         {
           name: "status",
           label: "Status",
           type: "select" as const,
           searchable: true,
+          required: true,
           options: [
             { value: "pending", label: "Pending" },
             { value: "active", label: "Active" },
+            { value: "completed", label: "Completed" },
+            { value: "approved", label: "Approved" },
+            { value: "inactive", label: "Inactive" },
           ],
-          description: "Initial project status",
+          description: "Current project status",
+          defaultValue: "pending",
           cols: 12,
           mdCols: 6,
-          lgCols:4
+          lgCols: 4,
         },
         {
           name: "priority",
           label: "Priority",
           type: "select" as const,
           searchable: true,
+          required: true,
           options: [
             { value: "low", label: "Low" },
             { value: "medium", label: "Medium" },
             { value: "high", label: "High" },
             { value: "urgent", label: "Urgent" },
           ],
+          defaultValue: "medium",
           description: "Project priority level",
           cols: 12,
           mdCols: 6,
+          lgCols: 4,
         },
         {
-          name: "budget",
-          label: "Budget",
-          type: "text" as const,
-          placeholder: "50000",
-          description: "Total project budget (optional)",
+          name: "clientId",
+          label: "Client",
+          type: "select" as const,
+          searchable: true,
+          options: clientOptions,
+          placeholder: "Select a client",
+          required: true,
+          disabled: !!clientId, // Disable if prefilled from client page
+          description: "The client for whom this project is being created",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        // {
+        //   name: "projectType",
+        //   label: "Project Type",
+        //   type: "text" as const,
+        //   placeholder: "e.g., Web Development, Mobile App, etc.",
+        //   description: "The type or category of project",
+        //   cols: 12,
+        //   mdCols: 6,
+        //   lgCols: 6,
+        // },
+         {
+          name: "projectType",
+          label: "Project Type",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "web", label: "Web Development" },
+            { value: "mobile", label: "Mobile App" },
+            { value: "desktop", label: "Desktop Software" },
+            { value: "api", label: "API Development" },
+            { value: "consulting", label: "Consulting" },
+            { value: "other", label: "Other" },
+          ],
+          description: "Type of project",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        {
+          name: "complexity",
+          label: "Complexity",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "simple", label: "Simple" },
+            { value: "medium", label: "Medium" },
+            { value: "complex", label: "Complex" },
+          ],
+          description: "Project complexity level",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        {
+          name: "requirements",
+          label: "Key Requirements",
+          type: "array-input" as const,
+          placeholder: "List project requirements and specifications",
+          description: "Detailed project requirements",
           cols: 12,
           mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "customerServices",
+          label: "Customer Services",
+          type: "array-input" as const,
+          placeholder: "List customer services provided",
+          description: "Detailed customer services provided",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 6,
+        },
+        {
+          name: "description",
+          label: "Description",
+          type: "rich-text" as const,
+          placeholder: "Describe the project objectives and scope",
+          description: "Detailed project description",
+          cols: 12,
+          mdCols: 12,
+          lgCols: 12,
+        },
+      ]
+    },
+    {
+      subform_title: "Dates & Budget Breakdown",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "budget",
+          label: "Total Budget",
+          type: "number" as const,
+          placeholder: "Enter total budget",
+          description: "Total project budget",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
         },
         {
           name: "startDate",
           label: "Start Date",
           type: "date" as const,
-          description: "Planned project start date",
+          description: "Project start date",
           cols: 12,
           mdCols: 6,
+          lgCols: 4,
         },
         {
           name: "endDate",
           label: "End Date",
           type: "date" as const,
-          description: "Planned project end date",
+          description: "Project end date",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.development",
+          label: "Development Costs",
+          type: "number" as const,
+          placeholder: "Development costs",
+          description: "Estimated development costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.design",
+          label: "Design Costs",
+          type: "number" as const,
+          placeholder: "Design costs",
+          description: "Estimated design costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.testing",
+          label: "Testing Costs",
+          type: "number" as const,
+          placeholder: "Testing costs",
+          description: "Estimated testing costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.deployment",
+          label: "Deployment Costs",
+          type: "number" as const,
+          placeholder: "Deployment costs",
+          description: "Estimated deployment costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.maintenance",
+          label: "Maintenance Costs",
+          type: "number" as const,
+          placeholder: "Maintenance costs",
+          description: "Estimated maintenance costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "budgetBreakdown.contingency",
+          label: "Contingency",
+          type: "number" as const,
+          placeholder: "Contingency budget",
+          description: "Contingency budget for unexpected costs",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+      ]
+    },
+    {
+      subform_title: "Resources",
+      collapse: true,
+      defaultOpen: false,
+      fields: [
+        {
+          name: "timeline",
+          label: "Timeline",
+          type: "text" as const,
+          placeholder: "Expected project duration (e.g., 3-6 months)",
+          description: "Expected timeline or duration",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "resources.actualHours",
+          label: "Actual Hours",
+          type: "number" as const,
+          placeholder: "Actual hours spent",
+          description: "Actual hours spent so far",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "resources.estimatedHours",
+          label: "Estimated Hours",
+          type: "number" as const,
+          placeholder: "Total estimated hours",
+          description: "Total estimated hours for the project",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+        {
+          name: "resources.tools",
+          label: "Tools & Technologies",
+          type: "array-input" as const,
+          placeholder: "Add tool or technology",
+          description: "Tools and technologies used in the project",
           cols: 12,
           mdCols: 6,
         },
-        
-        
         {
-          name: "description",
-          label: "Description",
-          type: "rich-text" as const,
-          placeholder: "Brief project description",
-          description: "A short description of the project",
+          name: "resources.externalResources",
+          label: "External Resources",
+          type: "array-input" as const,
+          placeholder: "Add external resource",
+          description: "External resources and dependencies",
           cols: 12,
+          mdCols: 6,
         },
       ]
     }

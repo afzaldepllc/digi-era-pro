@@ -1,3 +1,4 @@
+@ -0,0 +1,471 @@
 crmdepllc: @workspace 
 Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
 in the given .md file there is the complete explanation of the of crud implementation with the mongodb 
@@ -18,9 +19,9 @@ what are minimal but all requirement changes i will apply to migrate to the supa
 
 give me the complete document for planning for this one in the .md file explanning each and every things on it which should be optimized and professional best practices
 
-Workspace: Collecting workspace information# Complete Migration Guide: From MongoDB to Supabase - DepLLC CRM
+Workspace: Collecting workspace information# Complete Migration Guide: From MongoDB to Supabase - Digi Era Pro CRM
 
-This comprehensive guide documents the migration from MongoDB to Supabase for the DepLLC CRM system, focusing on leveraging Supabase's real-time capabilities, authentication, storage, and database features. The migration optimizes for the specified modules: Real-time chat, Project/task management, Dynamic role-based permissions, Secure file sharing, Audio/video calls + screen sharing, Client portal, Email Integration, and Mobile-responsive design (Next.js + Tailwind).
+This comprehensive guide documents the migration from MongoDB to Supabase for the Digi Era Pro CRM system, focusing on leveraging Supabase's real-time capabilities, authentication, storage, and database features. The migration optimizes for the specified modules: Real-time chat, Project/task management, Dynamic role-based permissions, Secure file sharing, Audio/video calls + screen sharing, Client portal, Email Integration, and Mobile-responsive design (Next.js + Tailwind).
 
 ## Table of Contents
 

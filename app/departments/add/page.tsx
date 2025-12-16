@@ -27,6 +27,7 @@ export default function AddDepartmentPage() {
     resolver: zodResolver(createDepartmentSchema),
     defaultValues: {
       name: "",
+      category: "it",
       description: "",
       status: "active",
     },
@@ -72,7 +73,7 @@ export default function AddDepartmentPage() {
           placeholder: "Enter department name",
           description: "A unique name for the department",
           cols: 12,
-          mdCols: 8,
+          mdCols: 4,
         },
         {
           name: "status",
@@ -83,6 +84,21 @@ export default function AddDepartmentPage() {
           options: [
             { value: "active", label: "Active" },
             { value: "inactive", label: "Inactive" },
+          ],
+          cols: 12,
+          mdCols: 4,
+        },
+        {
+          name: "category",
+          label: "Category",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "sales", label: "Sales" },
+            { value: "support", label: "Support" },
+            { value: "it", label: "IT" },
+            { value: "management", label: "Management" },
           ],
           cols: 12,
           mdCols: 4,

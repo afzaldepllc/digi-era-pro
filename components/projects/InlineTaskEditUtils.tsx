@@ -23,22 +23,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import type { Task } from "@/types"
-
-// Color configurations
-export const statusColors: Record<string, string> = {
-  pending: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
-  "in-progress": "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800",
-  completed: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
-  "on-hold": "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800",
-}
-
-export const priorityColors: Record<string, string> = {
-  low: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/10 dark:text-green-400 dark:border-green-800",
-  medium: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-800",
-  high: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/10 dark:text-orange-400 dark:border-orange-800",
-  urgent: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/10 dark:text-red-400 dark:border-red-800",
-}
+import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants"
 
 export const priorityIcons: Record<string, React.ComponentType<any>> = {
   low: Clock,
@@ -63,7 +48,7 @@ export const InlineStatusDropdown = memo(function InlineStatusDropdown({
 }: InlineStatusDropdownProps) {
   const { toast } = useToast()
   const [isOpen, setIsOpen] = useState(false)
-  const statuses = ["pending", "in-progress", "on-hold","completed","closed", "deleted"]
+  const statuses = ["pending", "in-progress", "on-hold", "completed", "closed"]
 
   const handleStatusChange = async (newStatus: string) => {
     if (newStatus === task.status) {
@@ -90,10 +75,10 @@ export const InlineStatusDropdown = memo(function InlineStatusDropdown({
         <Button
           variant="ghost"
           size="sm"
-          disabled={!canUpdate || isLoading}
+          disabled={!canUpdate || isLoading || task.isDeleted}
           className={cn(
             "h-6 px-2 text-xs font-medium",
-            statusColors[task.status as keyof typeof statusColors],
+            STATUS_COLORS[task.status as keyof typeof STATUS_COLORS],
             isLoading && "opacity-60"
           )}
         >
@@ -109,7 +94,7 @@ export const InlineStatusDropdown = memo(function InlineStatusDropdown({
           <DropdownMenuItem
             key={status}
             onClick={() => handleStatusChange(status)}
-            disabled={isLoading}
+            disabled={isLoading || task.isDeleted}
             className={cn(task.status === status && "bg-accent")}
           >
             <Check className={cn("mr-2 h-3 w-3", task.status === status ? "opacity-100" : "opacity-0")} />
@@ -166,10 +151,10 @@ export const InlinePriorityDropdown = memo(function InlinePriorityDropdown({
         <Button
           variant="ghost"
           size="sm"
-          disabled={!canUpdate || isLoading}
+          disabled={!canUpdate || isLoading || task.isDeleted}
           className={cn(
             "h-6 px-2 text-xs font-medium",
-            priorityColors[task.priority as keyof typeof priorityColors],
+            PRIORITY_COLORS[task.priority as keyof typeof PRIORITY_COLORS],
             isLoading && "opacity-60"
           )}
         >
@@ -284,7 +269,7 @@ export const InlineDueDateInput = memo(function InlineDueDateInput({
     <Button
       variant="ghost"
       size="sm"
-      disabled={!canUpdate || isLoading}
+      disabled={!canUpdate || isLoading || task.isDeleted}
       onClick={() => setIsEditing(true)}
       className="h-6 px-2 text-xs"
     >
@@ -351,7 +336,7 @@ export const InlineAssigneeDropdown = memo(function InlineAssigneeDropdown({
         <Button
           variant="ghost"
           size="sm"
-          disabled={!canUpdate || isOperationLoading}
+          disabled={!canUpdate || isOperationLoading || task.isDeleted}
           className="h-6 px-1 text-xs"
         >
           {isOperationLoading && (
@@ -400,7 +385,7 @@ export const InlineAssigneeDropdown = memo(function InlineAssigneeDropdown({
           <>
             <DropdownMenuItem
               onClick={() => handleAssigneeChange("")}
-              disabled={isOperationLoading}
+              disabled={isOperationLoading || task.isDeleted}
               className={cn(!task.assigneeId && "bg-accent")}
             >
               <Check className={cn("mr-2 h-3 w-3", !task.assigneeId ? "opacity-100" : "opacity-0")} />

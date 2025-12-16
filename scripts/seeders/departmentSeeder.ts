@@ -3,6 +3,7 @@ import Department from '../../models/Department'
 
 export interface IDepartmentSeed {
   name: string
+  category: string
   description: string
   status: 'active' | 'inactive' | 'archived'
   metadata: {
@@ -14,6 +15,7 @@ export interface IDepartmentSeed {
 export const departmentSeeds: IDepartmentSeed[] = [
   {
     name: 'System',
+    category: 'management',
     description: 'System administration and core management',
     status: 'active',
     metadata: {
@@ -23,6 +25,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Web Development',
+    category: 'it',
     description: 'WordPress development and web solutions',
     status: 'active',
     metadata: {
@@ -31,6 +34,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Graphics',
+    category: 'it',
     description: 'Graphic design and visual content creation',
     status: 'active',
     metadata: {
@@ -39,6 +43,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'SEO',
+    category: 'it',
     description: 'Search Engine Optimization - On-Page and Off-Page',
     status: 'active',
     metadata: {
@@ -47,6 +52,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Sales',
+    category: 'sales',
     description: 'Sales and business development',
     status: 'active',
     metadata: {
@@ -55,6 +61,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Support',
+    category: 'support',
     description: 'Customer support and technical assistance',
     status: 'active',
     metadata: {
@@ -63,6 +70,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'GMB',
+    category: 'it',
     description: 'Google My Business management and local SEO',
     status: 'active',
     metadata: {
@@ -71,6 +79,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Social Media',
+    category: 'it',
     description: 'Social media management and marketing',
     status: 'active',
     metadata: {
@@ -79,6 +88,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'HR',
+    category: 'management',
     description: 'Human Resources and personnel management',
     status: 'active',
     metadata: {
@@ -87,6 +97,7 @@ export const departmentSeeds: IDepartmentSeed[] = [
   },
   {
     name: 'Accounting',
+    category: 'management',
     description: 'Financial management and accounting services',
     status: 'active',
     metadata: {
@@ -115,12 +126,14 @@ async function seedDepartments() {
         if (existing) {
           const hasChanges = 
             existing.description !== deptData.description ||
-            existing.status !== deptData.status
+            existing.status !== deptData.status ||
+            existing.category !== deptData.category
 
           if (hasChanges) {
             await Department.findByIdAndUpdate(existing._id, {
               description: deptData.description,
               status: deptData.status,
+              category: deptData.category,
               'metadata.updatedBy': 'system_seeder'
             })
             updated++

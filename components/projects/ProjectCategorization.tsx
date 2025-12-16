@@ -17,7 +17,6 @@ import { usePermissions } from "@/hooks/use-permissions"
 import { useToast } from "@/hooks/use-toast"
 import Swal from "sweetalert2"
 import { Grid3X3, List, Filter } from "lucide-react"
-import { apiRequest } from "@/lib/utils/api-client"
 import { InlineLoader } from '@/components/ui/loader'
 import { type DragEndEvent, type DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 
@@ -89,7 +88,13 @@ export const ProjectCategorization = memo(function ProjectCategorization({
     }, [projectId])
 
     const pointerSensor = useSensor(PointerSensor)
-    const sensors = useSensors(pointerSensor)
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8,
+            },
+        })
+    )
     const [draggingTask, setDraggingTask] = useState<any | null>(null)
 
     const { departments, loading: departmentsLoading, error: departmentsError } = useDepartments()
@@ -98,6 +103,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
         createTask,
         updateTask,
         deleteTask,
+        restoreTask,
         bulkOrderUpdate,
         loading: taskLoading,
         setFilters: setTaskFilters,
@@ -250,7 +256,6 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                     { value: 'on-hold', label: 'On Hold' },
                     { value: 'completed', label: 'Completed' },
                     { value: 'closed', label: 'Closed' },
-                    { value: 'deleted', label: 'Deleted' },
                 ], cols: 6
             },
             {
@@ -704,6 +709,56 @@ export const ProjectCategorization = memo(function ProjectCategorization({
         }
     }
 
+    const handleRestoreTask = async (taskId: string) => {
+        const result = await Swal.fire({
+            customClass: {
+                popup: "swal-bg",
+                title: "swal-title",
+                htmlContainer: "swal-content",
+            },
+            title: "Restore Task?",
+            text: "Are you sure you want to restore this task?",
+            icon: "question",
+            showCancelButton: true,
+            showConfirmButton: true,
+            confirmButtonText: "Yes, Restore",
+            cancelButtonText: "No",
+            confirmButtonColor: "#10b981",
+        })
+
+        if (result.isConfirmed) {
+            try {
+                await restoreTask(taskId)
+                // Invalidate queries
+                const taskToRestore = tasks.find(t => t._id?.toString() === taskId)
+                if (taskToRestore) {
+                    await queryClient.invalidateQueries({
+                        queryKey: ['tasks'],
+                        predicate: (query) => {
+                            const qFilters = (query.queryKey[3] as any)
+                            return qFilters?.departmentId === taskToRestore.departmentId?.toString()
+                        }
+                    })
+                }
+                if (onProjectUpdate) {
+                    onProjectUpdate()
+                }
+
+                toast({
+                    title: "Success",
+                    description: "Task restored successfully",
+                })
+            } catch (error) {
+                console.error("Error restoring task:", error)
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to restore task",
+                })
+            }
+        }
+    }
+
     // Inline update handlers for status, priority, due date, and assignee
     const handleInlineStatusChange = useCallback(async (taskId: string, newStatus: string) => {
         const task = tasks.find(t => t._id?.toString() === taskId)
@@ -714,7 +769,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
         dispatch(setTasks(tasks.map(t => t._id?.toString() === taskId ? { ...t, status: newStatus } : t)))
 
         try {
-            await updateTask(taskId, { status: newStatus as "pending" | "in-progress" | "completed" | "on-hold" | "cancelled" | "closed" | "deleted" })
+            await updateTask(taskId, { status: newStatus as "pending" | "in-progress" | "completed" | "on-hold" | "cancelled" | "closed" })
 
             // Invalidate task query for this department
             await queryClient.invalidateQueries({
@@ -1087,8 +1142,6 @@ export const ProjectCategorization = memo(function ProjectCategorization({
             }
 
             // Declare variables outside try for proper scope
-            let prevTasks: any[] = []
-            let prevQueryDatas: Array<{ key: any; data: any }> = []
             const sourceDeptId = taskToMove.departmentId?.toString() || ''
             const affectedDeptIds = [...new Set([sourceDeptId, destDeptId].filter(Boolean))]
 
@@ -1096,11 +1149,8 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                 // Cancel ongoing tasks queries to avoid racing with optimistic update
                 await queryClient.cancelQueries({ queryKey: ['tasks'] })
 
-                // Store previous state for rollback
-                prevTasks = tasks.map((t) => ({ ...t }))
-
                 // Optimistically update Redux state immediately
-                const optimistic = prevTasks.map((t) =>
+                const optimistic = tasks.map((t) =>
                     String(t._id) === taskId ? { ...t, status: destStatus, departmentId: destDeptId } : t
                 )
                 dispatch(setTasks(optimistic))
@@ -1117,7 +1167,6 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                         const qFilters = qKey[3] as any
                         if (!qFilters || qFilters.projectId !== projectId) continue
                         if (!qFilters.departmentId || affectedDeptIds.includes(qFilters.departmentId)) {
-                            prevQueryDatas.push({ key: qKey, data: qData })
                             // Update the task in place within the cache
                             queryClient.setQueryData(qKey, (old: any) => {
                                 if (!old) return old
@@ -1152,7 +1201,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                     updateData.departmentId = destDeptId
                 }
                 if (destStatus !== (taskToMove.status || "")) {
-                    updateData.status = destStatus as "pending" | "in-progress" | "completed" | "deleted" | "on-hold" | "cancelled" | "closed" | 'deleted' | undefined
+                    updateData.status = destStatus as "pending" | "in-progress" | "completed"  | "on-hold" | "cancelled" | "closed"  | undefined
                 }
 
                 if (Object.keys(updateData).length > 0) {
@@ -1204,16 +1253,6 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                     currentStatus: taskToMove?.status,
                     currentDept: taskToMove?.departmentId?.toString(),
                 })
-
-                // Rollback on error - use original task array
-                if (prevTasks.length > 0) {
-                    dispatch(setTasks(prevTasks))
-                }
-
-                // Rollback query caches
-                for (const item of prevQueryDatas) {
-                    queryClient.setQueryData(item.key, item.data)
-                }
 
                 toast({
                     variant: "destructive",
@@ -1337,6 +1376,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                             }}
                             onOpenCreateTaskModal={openCreateTaskModal}
                             onDeleteTask={handleDeleteTask}
+                            onRestoreTask={handleRestoreTask}
                             onOpenEditTaskModal={openEditTaskModal}
                             onOpenTaskDetails={openTaskDetails}
                             isActionLoadingForDepartment={isActionLoadingForDepartment}
@@ -1667,6 +1707,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                                                         onOpenCreateTaskModal={openCreateTaskModal}
                                                         onOpenEditTaskModal={openEditTaskModal}
                                                         onDeleteTask={handleDeleteTask}
+                                                        onRestoreTask={handleRestoreTask}
                                                         onToggleTaskCollapse={toggleTaskCollapse}
                                                         onSelectTaskForDetails={openTaskDetails}
                                                         getSubTasks={getSubTasks}
@@ -1695,6 +1736,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                                                         onOpenCreateTaskModal={openCreateTaskModal}
                                                         onOpenEditTaskModal={openEditTaskModal}
                                                         onDeleteTask={handleDeleteTask}
+                                                        onRestoreTask={handleRestoreTask}
                                                         onToggleTaskCollapse={toggleTaskCollapse}
                                                         onSelectTaskForDetails={openTaskDetails}
                                                         getSubTasks={getSubTasks}
@@ -1722,6 +1764,7 @@ export const ProjectCategorization = memo(function ProjectCategorization({
                                                         onOpenCreateTaskModal={openCreateTaskModal}
                                                         onOpenEditTaskModal={openEditTaskModal}
                                                         onDeleteTask={handleDeleteTask}
+                                                        onRestoreTask={handleRestoreTask}
                                                         onSelectTaskForDetails={openTaskDetails}
                                                         getDepartmentName={getDepartmentName}
                                                         sensors={sensors}

@@ -47,16 +47,12 @@ import {
   passwordChangeFormSchema,
   type ProfileFormData,
   type PasswordChangeFormData,
-  type ProfileResponse,
-  THEME_OPTIONS,
-  LANGUAGE_OPTIONS,
-  TIMEZONE_OPTIONS
 } from "@/lib/validations/profile"
 import { ImageUploader } from "../upload/image-uploader"
 import { useSession } from "next-auth/react"
 
 export function ProfileSettings() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'edit' | 'security' | 'preferences'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'edit' | 'security' >('overview')
   const [isEditing, setIsEditing] = useState(false)
   const [showPasswords, setShowPasswords] = useState({
     current: false,
@@ -169,7 +165,12 @@ export function ProfileSettings() {
     setError("")
     setSuccess("")
 
-    const result = await updateProfile(data)
+    const socialLinks = [];
+    if (data.socialLinks.linkedin) socialLinks.push({ linkName: 'LinkedIn', linkUrl: data.socialLinks.linkedin });
+    if (data.socialLinks.twitter) socialLinks.push({ linkName: 'Twitter', linkUrl: data.socialLinks.twitter });
+    if (data.socialLinks.github) socialLinks.push({ linkName: 'GitHub', linkUrl: data.socialLinks.github });
+
+    const result = await updateProfile({ ...data, socialLinks } as any)
     if (result.success) {
       setSuccess("Profile updated successfully")
       setIsEditing(false)
@@ -210,6 +211,15 @@ export function ProfileSettings() {
   // Set form defaults when profile data is loaded
   useEffect(() => {
     if (profileData) {
+      const socialLinksObj = { linkedin: "", twitter: "", github: "" };
+      if (profileData.socialLinks && Array.isArray(profileData.socialLinks)) {
+        profileData.socialLinks.forEach(link => {
+          const name = link.linkName.toLowerCase();
+          if (name.includes('linkedin')) socialLinksObj.linkedin = link.linkUrl;
+          else if (name.includes('twitter')) socialLinksObj.twitter = link.linkUrl;
+          else if (name.includes('github')) socialLinksObj.github = link.linkUrl;
+        });
+      }
       profileForm.reset({
         name: profileData.name,
         phone: profileData.phone || "",
@@ -222,16 +232,7 @@ export function ProfileSettings() {
           country: "",
           zipCode: "",
         },
-        socialLinks: profileData.socialLinks || {
-          linkedin: "",
-          twitter: "",
-          github: "",
-        },
-        preferences: profileData.preferences || {
-          theme: "system",
-          language: "en",
-          timezone: "UTC",
-        },
+        socialLinks: socialLinksObj,
       })
     }
   }, [profileData, profileForm])
@@ -252,8 +253,7 @@ export function ProfileSettings() {
           {[
             { id: 'overview', name: 'Overview', icon: User },
             { id: 'edit', name: 'Edit Profile', icon: Edit },
-            { id: 'security', name: 'Security', icon: Shield },
-            { id: 'preferences', name: 'Preferences', icon: Settings }
+            { id: 'security', name: 'Security', icon: Shield }
           ].map((tab) => {
             const Icon = tab.icon
             return (
@@ -855,62 +855,6 @@ export function ProfileSettings() {
           </div>
         )}
 
-        {/* Preferences Tab */}
-        {activeTab === 'preferences' && profileData && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Theme & Appearance</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Theme</Label>
-                  <Select
-                    value={profileForm.watch("preferences.theme")}
-                    onValueChange={(value: "light" | "dark" | "system") =>
-                      profileForm.setValue("preferences.theme", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">
-                        <div className="flex items-center gap-2">
-                          <Sun className="h-4 w-4" />
-                          Light
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="dark">
-                        <div className="flex items-center gap-2">
-                          <Moon className="h-4 w-4" />
-                          Dark
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="system">
-                        <div className="flex items-center gap-2">
-                          <Monitor className="h-4 w-4" />
-                          System
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="flex justify-end space-x-3 pt-4 border-t border-border">
-              <Button
-                onClick={profileForm.handleSubmit(onProfileSubmit)}
-                disabled={isLoading}
-              >
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Save className="mr-2 h-4 w-4" />
-                Save Preferences
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

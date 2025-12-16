@@ -1,6 +1,6 @@
 # AWS S3 Integration Setup
 
-This document outlines the setup process for AWS S3 integration in the DepLLC CRM system.
+This document outlines the setup process for AWS S3 integration in the Digi Era Pro CRM system.
 
 ## Overview
 

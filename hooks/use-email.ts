@@ -71,18 +71,18 @@ export function useEmail() {
     const sendWelcomeEmail = useCallback(async (email: string, name: string, isClient = false) => {
         return sendEmail({
             to: email,
-            subject: `Welcome to DepLLC CRM${isClient ? ' Client Portal' : ''}`,
+            subject: `Welcome to Digi Era Pro CRM${isClient ? ' Client Portal' : ''}`,
             htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Welcome to DepLLC CRM</h2>
+          <h2>Welcome to Digi Era Pro CRM</h2>
           <p>Hello ${name},</p>
-          <p>Welcome to the DepLLC CRM ${isClient ? 'Client Portal' : 'system'}! Your account has been created successfully.</p>
+          <p>Welcome to the Digi Era Pro CRM ${isClient ? 'Client Portal' : 'system'}! Your account has been created successfully.</p>
           <p>You can now access all the features available to you.</p>
           <p>If you have any questions, please don't hesitate to contact our support team.</p>
-          <p>Best regards,<br>The DepLLC Team</p>
+          <p>Best regards,<br>The Digi Era Pro Team</p>
         </div>
       `,
-            textContent: `Hello ${name},\n\nWelcome to DepLLC CRM! Your account has been created successfully.\n\nBest regards,\nThe DepLLC Team`,
+            textContent: `Hello ${name},\n\nWelcome to Digi Era Pro CRM! Your account has been created successfully.\n\nBest regards,\nThe Digi Era Pro Team`,
             category: isClient ? 'client-portal' : 'auth',
             priority: 'normal'
         })
@@ -93,12 +93,12 @@ export function useEmail() {
 
         return sendEmail({
             to: email,
-            subject: 'Password Reset - DepLLC CRM',
+            subject: 'Password Reset - Digi Era Pro CRM',
             htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>Password Reset Request</h2>
           <p>Hello ${name},</p>
-          <p>You requested a password reset for your DepLLC CRM account.</p>
+          <p>You requested a password reset for your Digi Era Pro CRM account.</p>
           <p><a href="${resetUrl}" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
           <p>This link will expire in 24 hours.</p>
           <p>If you didn't request this, please ignore this email.</p>
@@ -126,17 +126,17 @@ export function useEmail() {
             subject: params.subject,
             htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>DepLLC CRM Notification</h2>
+          <h2>Digi Era Pro CRM Notification</h2>
           <div style="margin: 20px 0;">
             ${params.message}
           </div>
           <hr style="margin: 20px 0;">
           <p style="color: #666; font-size: 12px;">
-            This is an automated notification from DepLLC CRM.
+            This is an automated notification from Digi Era Pro CRM.
           </p>
         </div>
       `,
-            textContent: `DepLLC CRM Notification\n\n${params.message}\n\n---\nThis is an automated notification from DepLLC CRM.`,
+            textContent: `Digi Era Pro CRM Notification\n\n${params.message}\n\n---\nThis is an automated notification from Digi Era Pro CRM.`,
             category: 'notification',
             priority: params.priority || 'normal'
         })

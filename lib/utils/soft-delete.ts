@@ -30,14 +30,39 @@ const DEPENDENCY_CHECKS: Record<string, DependencyCheck[]> = {
         }
     ],
     user: [], // Regular users have no dependencies by default
-    client: [], // Clients can be deleted (they are created from leads, so no dependencies)
+    client: [
+        {
+            model: 'Project',
+            field: 'clientId',
+            errorMessage: 'Cannot delete client: active projects are assigned to this client'
+        }
+    ], // Clients can be deleted (they are created from leads, so no dependencies)
     lead: [
         {
             model: 'User',
             field: 'leadId',
             errorMessage: 'Cannot delete lead: an active client is created from this lead. Delete the client first.'
         }
-    ] // Leads cannot be deleted if a client exists for them
+    ], // Leads cannot be deleted if a client exists for them
+    project: [
+        {
+            model: 'Task',
+            field: 'projectId',
+            errorMessage: 'Cannot delete project: active tasks are assigned to this project'
+        }
+    ],
+    task: [
+        {
+            model: 'Task',
+            field: 'parentTaskId',
+            errorMessage: 'Cannot delete task: active sub-tasks are assigned to this task'
+        },
+        {
+            model: 'TimeLog',
+            field: 'taskId',
+            errorMessage: 'Cannot delete task: time logs are recorded for this task'
+        }
+    ]
 }/**
  * Generic function to check if an entity can be soft deleted
  * @param modelName - The name of the model (lowercase)
@@ -171,31 +196,9 @@ export async function performSoftDelete(
                 message: `Model ${modelName} not found`
             }
         }
-
-        // Check if entity exists and is not already deleted
-        let existingEntity
-        if (modelName.toLowerCase() === 'lead') {
-            // For leads, check for active status (leads use different status values)
-            existingEntity = await Model.findOne({
-                _id: entityId,
-                isDeleted: false // Not already soft deleted
-            })
-        } else {
-            // For other models, use standard isDeleted check
-            existingEntity = await Model.findOne({
-                _id: entityId,
-                isDeleted: false
-            })
-        }
-
-        if (!existingEntity) {
-            return {
-                success: false,
-                message: `${modelName.charAt(0).toUpperCase() + modelName.slice(1)} not found or already deleted`
-            }
-        }
-
-        // Perform soft delete
+        console.log(`Performing soft delete for ${modelName} with ID ${entityId} by user ${userEmail}`)
+        
+        // Perform soft delete - existence check already done by calling endpoint
         let updatedEntity
         if (modelName.toLowerCase() === 'lead') {
             // For leads, set status to 'deleted' and soft delete fields
@@ -215,22 +218,20 @@ export async function performSoftDelete(
             )
         } else {
             // For other models, set status to 'deleted' and soft delete fields
-            const existingEntity = await Model.findById(entityId)
-            if (!existingEntity) {
-                return {
-                    success: false,
-                    message: `${modelName.charAt(0).toUpperCase() + modelName.slice(1)} not found`
-                }
-            }
-
-            existingEntity.status = 'deleted'
-            existingEntity.isDeleted = true
-            existingEntity.deletedAt = new Date()
-            existingEntity.deletedBy = userId
-            existingEntity.deletionReason = deletionReason
-            existingEntity.updatedAt = new Date()
-
-            updatedEntity = await existingEntity.save({ validateBeforeSave: false })
+            updatedEntity = await Model.findByIdAndUpdate(
+                entityId,
+                {
+                    $set: {
+                        status: 'deleted',
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        deletedBy: userId,
+                        deletionReason: deletionReason,
+                        updatedAt: new Date()
+                    }
+                },
+                { new: true, runValidators: false }
+            )
         }
 
         if (!updatedEntity) {

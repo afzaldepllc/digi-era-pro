@@ -129,7 +129,7 @@ export function useProjects() {
         queryKey: ['analytics'] 
       })
       // Also invalidate project-specific analytics for the new project
-      if (result.data?._id) {
+      if (result?.data?._id) {
         await queryClient.invalidateQueries({ 
           predicate: (query) => {
             const key = query.queryKey
@@ -176,6 +176,16 @@ export function useProjects() {
       throw error
     }
   }, [deleteMutation, queryClient])
+
+  const handleRestoreProject = useCallback(async (projectId: string) => {
+    return await updateMutation.mutateAsync({
+      id: projectId,
+      data: {
+        isDeleted: false,
+        status: 'pending'
+      }
+    })
+  }, [updateMutation])
 
   // Filter and sort operations
   const handleSetFilters = useCallback((newFilters: Partial<ProjectFilters>) => {
@@ -286,6 +296,7 @@ export function useProjects() {
     createProject: handleCreateProject,
     updateProject: handleUpdateProject,
     deleteProject: handleDeleteProject,
+    restoreProject: handleRestoreProject,
     handleApproveProject,
 
     // Filter and sort operations

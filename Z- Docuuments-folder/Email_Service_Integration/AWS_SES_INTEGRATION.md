@@ -1,7 +1,7 @@
 @ -0,0 +1,1767 @@
-# AWS SES Email Service Implementation - DepLLC CRM
+# AWS SES Email Service Implementation - Digi Era Pro CRM
 
-This document provides a comprehensive guide on how the AWS SES (Simple Email Service) is implemented within the DepLLC CRM application, including architecture, components, configuration, and usage patterns.
+This document provides a comprehensive guide on how the AWS SES (Simple Email Service) is implemented within the Digi Era Pro CRM application, including architecture, components, configuration, and usage patterns.
 
 ## Table of Contents
 
@@ -43,7 +43,6 @@ Application Architecture
 ├── Database Layer
 │   ├── EmailLog Model (Tracking)
 │   ├── Email Templates Storage
-│   └── User Preferences
 └── AWS Services
     ├── SES (Email Sending)
     ├── SNS (Event Notifications)
@@ -956,18 +955,18 @@ export function useEmail() {
     const sendWelcomeEmail = useCallback(async (email: string, name: string, isClient = false) => {
         return sendEmail({
             to: email,
-            subject: `Welcome to DepLLC CRM${isClient ? ' Client Portal' : ''}`,
+            subject: `Welcome to Digi Era Pro CRM${isClient ? ' Client Portal' : ''}`,
             htmlContent: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2>Welcome to DepLLC CRM</h2>
+                    <h2>Welcome to Digi Era Pro CRM</h2>
                     <p>Hello ${name},</p>
-                    <p>Welcome to the DepLLC CRM ${isClient ? 'Client Portal' : 'system'}! Your account has been created successfully.</p>
+                    <p>Welcome to the Digi Era Pro CRM ${isClient ? 'Client Portal' : 'system'}! Your account has been created successfully.</p>
                     <p>You can now access all the features available to you.</p>
                     <p>If you have any questions, please don't hesitate to contact our support team.</p>
-                    <p>Best regards,<br>The DepLLC Team</p>
+                    <p>Best regards,<br>The Digi Era Pro Team</p>
                 </div>
             `,
-            textContent: `Hello ${name},\n\nWelcome to DepLLC CRM! Your account has been created successfully.\n\nBest regards,\nThe DepLLC Team`,
+            textContent: `Hello ${name},\n\nWelcome to Digi Era Pro CRM! Your account has been created successfully.\n\nBest regards,\nThe Digi Era Pro Team`,
             category: isClient ? 'client-portal' : 'auth',
             priority: 'normal'
         })
@@ -978,12 +977,12 @@ export function useEmail() {
 
         return sendEmail({
             to: email,
-            subject: 'Password Reset - DepLLC CRM',
+            subject: 'Password Reset - Digi Era Pro CRM',
             htmlContent: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>Password Reset Request</h2>
                     <p>Hello ${name},</p>
-                    <p>You requested a password reset for your DepLLC CRM account.</p>
+                    <p>You requested a password reset for your Digi Era Pro CRM account.</p>
                     <p><a href="${resetUrl}" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
                     <p>This link will expire in 24 hours.</p>
                     <p>If you didn't request this, please ignore this email.</p>
@@ -1011,17 +1010,17 @@ export function useEmail() {
             subject: params.subject,
             htmlContent: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2>DepLLC CRM Notification</h2>
+                    <h2>Digi Era Pro CRM Notification</h2>
                     <div style="margin: 20px 0;">
                         ${params.message}
                     </div>
                     <hr style="margin: 20px 0;">
                     <p style="color: #666; font-size: 12px;">
-                        This is an automated notification from DepLLC CRM.
+                        This is an automated notification from Digi Era Pro CRM.
                     </p>
                 </div>
             `,
-            textContent: `DepLLC CRM Notification\n\n${params.message}\n\n---\nThis is an automated notification from DepLLC CRM.`,
+            textContent: `Digi Era Pro CRM Notification\n\n${params.message}\n\n---\nThis is an automated notification from Digi Era Pro CRM.`,
             category: 'notification',
             priority: params.priority || 'normal'
         })
@@ -1279,13 +1278,13 @@ The system includes predefined templates for common use cases:
 ```typescript
 // Welcome email template
 const welcomeTemplate = {
-    subject: 'Welcome to DepLLC CRM',
+    subject: 'Welcome to Digi Era Pro CRM',
     htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Welcome to DepLLC CRM</h2>
+            <h2>Welcome to Digi Era Pro CRM</h2>
             <p>Hello {{name}},</p>
             <p>Your account has been created successfully!</p>
-            <p>Best regards,<br>The DepLLC Team</p>
+            <p>Best regards,<br>The Digi Era Pro Team</p>
         </div>
     `,
     category: 'auth',
@@ -1294,7 +1293,7 @@ const welcomeTemplate = {
 
 // Password reset template
 const passwordResetTemplate = {
-    subject: 'Password Reset - DepLLC CRM',
+    subject: 'Password Reset - Digi Era Pro CRM',
     htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Password Reset Request</h2>
@@ -1407,8 +1406,8 @@ function MyComponent() {
             await sendEmail({
                 to: 'user@example.com',
                 subject: 'Test Email',
-                htmlContent: '<p>Hello from DepLLC CRM!</p>',
-                textContent: 'Hello from DepLLC CRM!',
+                htmlContent: '<p>Hello from Digi Era Pro CRM!</p>',
+                textContent: 'Hello from Digi Era Pro CRM!',
                 category: 'notification',
                 priority: 'normal'
             })
@@ -1731,7 +1730,7 @@ const cost = (recipientCount * 0.0001) + (attachmentCount * 0.0001)
 
 ## Conclusion
 
-The AWS SES email service implementation in DepLLC CRM provides a comprehensive, scalable, and secure email solution with the following key benefits:
+The AWS SES email service implementation in Digi Era Pro CRM provides a comprehensive, scalable, and secure email solution with the following key benefits:
 
 ### ✅ **Production-Ready Features**
 - **Multi-recipient Support**: TO, CC, BCC with validation

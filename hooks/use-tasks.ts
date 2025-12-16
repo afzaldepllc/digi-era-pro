@@ -85,7 +85,6 @@ export function useTasks() {
     true,
     {
       staleTime: 10 * 60 * 1000, // 10 minutes - prevent auto-refetch
-      cacheTime: 20 * 60 * 1000, // 20 minutes
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       retry: 2,
@@ -129,10 +128,7 @@ export function useTasks() {
           (!filters.departmentId || filters.departmentId === departmentId) &&
           (!filters.status || filters.status === (newTask.status || 'pending')) &&
           (!filters.assigneeId || filters.assigneeId === taskData.assigneeId) &&
-          (!filters.parentTaskId || filters.parentTaskId === taskData.parentTaskId) &&
-          // Phase and milestone filtering support
-          (!filters.phaseId || filters.phaseId === taskData.phaseId) &&
-          (!filters.milestoneId || filters.milestoneId === taskData.milestoneId)
+          (!filters.parentTaskId || filters.parentTaskId === taskData.parentTaskId)
         )
         
         if (shouldInclude) {
@@ -150,8 +146,6 @@ export function useTasks() {
           if (!qp?.filters) return true // Invalidate general queries
           if (departmentId && qp.filters.departmentId === departmentId) return true
           if (taskData.projectId && qp.filters.projectId === taskData.projectId) return true
-          if (taskData.phaseId && qp.filters.phaseId === taskData.phaseId) return true
-          if (taskData.milestoneId && qp.filters.milestoneId === taskData.milestoneId) return true
           return false
         }
       })
@@ -367,6 +361,16 @@ export function useTasks() {
       if (existingTask?.departmentId) dispatch(setActionLoadingForDepartment({ id: existingTask.departmentId as string, loading: false }))
     }
   }, [deleteMutation, dispatch, queryClient, taskOptions.entityName, tasks])
+
+  const handleRestoreTask = useCallback(async (taskId: string) => {
+    return await updateMutation.mutateAsync({
+      id: taskId,
+      data: {
+        isDeleted: false,
+        status: 'pending'
+      }
+    })
+  }, [updateMutation])
 
   // Special operations that require direct API calls
   const handleAssignTask = useCallback(async (id: string, assigneeId: string) => {
@@ -1023,23 +1027,6 @@ export function useTasks() {
   const totalPages = pagination.pages
   const totalItems = pagination.total
 
-  // Phase and Milestone utility operations
-  const handleSetPhaseFilter = useCallback((phaseId: string | undefined) => {
-    dispatch(setFilters({ phaseId }))
-  }, [dispatch])
-
-  const handleSetMilestoneFilter = useCallback((milestoneId: string | undefined) => {
-    dispatch(setFilters({ milestoneId }))
-  }, [dispatch])
-
-  const handleAssociateWithPhase = useCallback(async (taskId: string, phaseId: string | undefined) => {
-    return handleUpdateTask(taskId, { phaseId })
-  }, [handleUpdateTask])
-
-  const handleAssociateWithMilestone = useCallback(async (taskId: string, milestoneId: string | undefined) => {
-    return handleUpdateTask(taskId, { milestoneId })
-  }, [handleUpdateTask])
-
   // Status-based getters
   const pendingTasks = tasks.filter((t: any) => t.status === 'pending')
   const inProgressTasks = tasks.filter((t: any) => t.status === 'in-progress')
@@ -1078,19 +1065,6 @@ export function useTasks() {
 
   const getSubTasksByParent = useCallback((parentTaskId: string) => {
     return tasks.filter((t: any) => t.parentTaskId === parentTaskId)
-  }, [tasks])
-
-  // Phase and Milestone specific getters
-  const getTasksByPhase = useCallback((phaseId: string) => {
-    return tasks.filter((t: any) => t.phaseId === phaseId)
-  }, [tasks])
-
-  const getTasksByMilestone = useCallback((milestoneId: string) => {
-    return tasks.filter((t: any) => t.milestoneId === milestoneId)
-  }, [tasks])
-
-  const getUnassociatedTasks = useCallback(() => {
-    return tasks.filter((t: any) => !t.phaseId && !t.milestoneId)
   }, [tasks])
 
   const getMyTasks = useCallback((userId: string) => {
@@ -1179,6 +1153,7 @@ export function useTasks() {
     assignTask: handleAssignTask,
     updateTaskStatus: handleUpdateTaskStatus,
     deleteTask: handleDeleteTask,
+    restoreTask: handleRestoreTask,
     bulkOrderUpdate: handleBulkOrderUpdate,
 
     // Filter and sort operations
@@ -1221,15 +1196,6 @@ export function useTasks() {
     getMyTasks,
     getOverdueTasks,
     getTasksCompletionRate,
-
-    // Phase and Milestone specific functions
-    getTasksByPhase,
-    getTasksByMilestone,
-    getUnassociatedTasks,
-    setPhaseFilter: handleSetPhaseFilter,
-    setMilestoneFilter: handleSetMilestoneFilter,
-    associateWithPhase: handleAssociateWithPhase,
-    associateWithMilestone: handleAssociateWithMilestone,
 
     // Convenience functions for inline editing
     updateTaskDueDate,

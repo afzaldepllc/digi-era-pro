@@ -43,7 +43,7 @@ export function useGenericQuery<T extends GenericEntity>(
   enabled: boolean = true,
   queryOptions?: {
     staleTime?: number
-    cacheTime?: number
+    gcTime?: number
     refetchOnWindowFocus?: boolean
     refetchOnMount?: boolean
     retry?: number
@@ -65,7 +65,7 @@ export function useGenericQuery<T extends GenericEntity>(
     queryKey,
     enabled,
     staleTime: queryOptions?.staleTime ?? 2 * 60 * 1000, // Default 2 minutes
-    cacheTime: queryOptions?.cacheTime ?? 5 * 60 * 1000, // Default 5 minutes
+    gcTime: queryOptions?.gcTime ?? 5 * 60 * 1000, // Default 5 minutes
     refetchOnWindowFocus: queryOptions?.refetchOnWindowFocus ?? false,
     refetchOnMount: queryOptions?.refetchOnMount ?? false,
     retry: queryOptions?.retry ?? 1,
@@ -244,7 +244,7 @@ export function useGenericCreate<T extends GenericEntity>(
           body: JSON.stringify(data)
         })
         reduxDispatchers?.setActionLoading?.(false)
-        return response.data?.data || response.data
+        return response
       } catch (error) {
         reduxDispatchers?.setError?.(error)
         reduxDispatchers?.setActionLoading?.(false)
@@ -277,7 +277,7 @@ export function useGenericUpdate<T extends GenericEntity>(
           body: JSON.stringify(data)
         })
         reduxDispatchers?.setActionLoading?.(false)
-        return response.data?.data || response.data
+        return response
       } catch (error) {
         reduxDispatchers?.setError?.(error)
         reduxDispatchers?.setActionLoading?.(false)

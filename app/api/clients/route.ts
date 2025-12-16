@@ -126,12 +126,11 @@ export async function GET(request: NextRequest) {
           .limit(validatedParams.limit)
           .populate('role', 'name')
           .populate('department', 'name')
+          .populate('projects','name status startDate endDate')
           .populate('leadId', 'name projectName status createdAt')
           .select('-password -resetPasswordToken -resetPasswordExpire')
           .lean()
       }, cacheKey, CACHE_TTL),
-
-
 
       executeGenericDbQuery(async () => {
         return await User.countDocuments(filter)
@@ -275,6 +274,7 @@ async function createClientFromLead(data: any, user: any) {
       return await User.findById(client._id)
         .populate('role', 'name')
         .populate('department', 'name')
+        .populate('projects')
         .populate('leadId', 'name projectName status createdAt')
         .select('-password -resetPasswordToken -resetPasswordExpire')
         .lean()
@@ -346,6 +346,7 @@ async function createClientDirectly(data: any, user: any) {
       return await User.findById(client._id)
         .populate('role', 'name')
         .populate('department', 'name')
+        .populate('projects')
         .select('-password -resetPasswordToken -resetPasswordExpire')
         .lean()
     })

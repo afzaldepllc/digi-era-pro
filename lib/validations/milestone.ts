@@ -103,7 +103,8 @@ export const updateMilestoneSchema = z.object({
   
   phaseId: optionalObjectIdSchema,
   
-  dueDate: dateSchema.optional(),
+  // dueDate: dateSchema.optional(),
+  dueDate: optionalDateSchema,
   
   status: z.enum(MILESTONE_CONSTANTS.STATUS.VALUES).optional(),
   

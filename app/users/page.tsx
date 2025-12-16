@@ -28,6 +28,7 @@ import { useRoles } from "@/hooks/use-roles";
 import { useUsers } from "@/hooks/use-users";
 import { useNavigation } from "@/components/providers/navigation-provider";
 import GenericReportExporter from "@/components/shared/GenericReportExporter";
+import { STATUS_COLORS } from '@/lib/colorConstants';
 
 
 
@@ -481,15 +482,8 @@ export default function UsersPage() {
       label: 'Status',
       sortable: true,
       render: (value) => {
-        const statusColors = {
-          active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
-          inactive: 'bg-muted text-muted-foreground border-border',
-          suspended: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 border-red-200 dark:border-red-800',
-          deleted: 'text-muted bg-red-600 border-white-200',
-        };
-
         return (
-          <Badge className={`${statusColors[value as keyof typeof statusColors]} border`}>
+          <Badge className={`${STATUS_COLORS[value as keyof typeof STATUS_COLORS] || STATUS_COLORS.inactive} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
         );

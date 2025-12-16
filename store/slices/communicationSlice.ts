@@ -71,7 +71,7 @@ const initialState: CommunicationState = {
   messagesLoading: false,
   error: null,
   filters: {},
-  sort: { field: 'createdAt', direction: 'asc' },
+  sort: { field: 'created_at', direction: 'asc' },
   pagination: { page: 1, limit: 50, total: 0, pages: 0 },
   currentUser: null,
   unreadCount: 0,
@@ -85,19 +85,10 @@ const communicationSlice = createSlice({
     // Channel management
     setActiveChannel: (state, action: PayloadAction<string>) => {
       state.activeChannelId = action.payload
-      state.selectedChannel = state.channels.find(ch => ch.channelId === action.payload) || null
-      
-      // Mark channel messages as read
-      if (state.messages[action.payload]) {
-        state.messages[action.payload] = state.messages[action.payload].map(msg => ({
-          ...msg,
-          isRead: true,
-          readAt: msg.readAt || new Date().toISOString() as any
-        }))
-      }
+      state.selectedChannel = state.channels.find(ch => ch.id === action.payload) || null
       
       // Update channel unread count
-      const channelIndex = state.channels.findIndex(ch => ch.channelId === action.payload)
+      const channelIndex = state.channels.findIndex(ch => ch.id === action.payload)
       if (channelIndex !== -1) {
         state.channels[channelIndex].unreadCount = 0
       }
@@ -119,11 +110,11 @@ const communicationSlice = createSlice({
       state.messages[channelId].push(message)
       
       // Update channel's last message and unread count
-      const channelIndex = state.channels.findIndex(ch => ch.channelId === channelId)
+      const channelIndex = state.channels.findIndex(ch => ch.id === channelId)
       if (channelIndex !== -1) {
-        state.channels[channelIndex].lastMessage = message
-        if (channelId !== state.activeChannelId && message.senderId !== state.currentUser?._id) {
-          state.channels[channelIndex].unreadCount += 1
+        state.channels[channelIndex].last_message = message
+        if (channelId !== state.activeChannelId && message.mongo_sender_id !== state.currentUser?.mongo_member_id) {
+          state.channels[channelIndex].unreadCount = (state.channels[channelIndex].unreadCount || 0) + 1
           state.unreadCount += 1
         }
       }
@@ -133,12 +124,11 @@ const communicationSlice = createSlice({
       const { channelId, messageId, updates } = action.payload
       
       if (state.messages[channelId]) {
-        const messageIndex = state.messages[channelId].findIndex(msg => msg._id === messageId)
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
         if (messageIndex !== -1) {
           state.messages[channelId][messageIndex] = {
             ...state.messages[channelId][messageIndex],
-            ...updates,
-            updatedAt: new Date().toISOString() as any
+            ...updates
           }
         }
       }
@@ -174,10 +164,10 @@ const communicationSlice = createSlice({
       // Update participants online status in channels
       state.channels = state.channels.map(channel => ({
         ...channel,
-        participants: channel.participants.map(participant => ({
+        participants: channel.participants?.map(participant => ({
           ...participant,
-          isOnline: action.payload.some(user => user._id === participant._id && user.isOnline)
-        }))
+          isOnline: action.payload.some(user => user.mongo_member_id === participant.mongo_member_id && user.isOnline)
+        })) || []
       }))
     },
     
@@ -228,7 +218,7 @@ const communicationSlice = createSlice({
         id: Date.now().toString(),
         channelId: action.payload.channelId,
         message: action.payload.message,
-        timestamp: new Date().toISOString() as any
+        timestamp: new Date()
       })
     },
     

@@ -40,7 +40,7 @@ import RichTextEditor from "./rich-text-editor";
 export interface FormFieldConfig {
   name: string;
   label: string;
-  type: "text" | "email" | "password" | "number" | "textarea" | "rich-text" | "select" | "multi-select" | "checkbox" | "switch" | "date" | "array-input" | "array-object";
+  type: "text" | "email" | "url" | "password" | "number" | "textarea" | "rich-text" | "select" | "multi-select" | "checkbox" | "switch" | "date" | "array-input" | "array-object";
   placeholder?: string;
   description?: string;
   options?: { label: string; value: string | number }[];

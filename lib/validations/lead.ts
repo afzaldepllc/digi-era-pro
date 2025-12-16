@@ -66,11 +66,6 @@ export const LEAD_CONSTANTS = {
     PROBABILITY_MIN: 0,
     PROBABILITY_MAX: 100
   },
-  PREFERENCES: {
-    CONTACT_METHOD: { VALUES: ['email', 'phone', 'meeting', 'chat'] as const },
-    TIMEZONE_MAX: 50,
-    LANGUAGE_MAX: 50
-  },
   PAGINATION: { DEFAULT_PAGE: 1, DEFAULT_LIMIT: 10, MAX_LIMIT: 100, MIN_PAGE: 1 },
   SORT: { ALLOWED_FIELDS: ['name', 'email', 'projectName', 'status', 'priority', 'score', 'createdAt', 'updatedAt'] as const },
   UNQUALIFIED_REASON: { MAX_LENGTH: 500 },
@@ -227,6 +222,12 @@ const addressSchema = z.object({
   country: z.string().max(LEAD_CONSTANTS.ADDRESS.COUNTRY.MAX_LENGTH).transform(s => s.trim()).optional(),
 }).optional()
 
+// Social links schema
+const socialLinksSchema = z.array(z.object({
+  linkName: z.string().min(1, "Social media platform name is required").max(50, "Platform name must not exceed 50 characters"),
+  linkUrl: z.string().url("Invalid URL format").or(z.literal("")).optional(),
+})).optional()
+
 // Company details schemas
 const industrySchema = z
   .string()
@@ -317,22 +318,6 @@ const conversionProbabilitySchema = z
   .max(LEAD_CONSTANTS.SCORING.PROBABILITY_MAX, "Conversion probability cannot exceed 100")
   .optional()
 
-// Preferences schemas
-const preferredContactMethodSchema = z
-  .enum(LEAD_CONSTANTS.PREFERENCES.CONTACT_METHOD.VALUES)
-  .optional()
-
-const timezoneSchema = z
-  .string()
-  .max(LEAD_CONSTANTS.PREFERENCES.TIMEZONE_MAX, `Timezone must not exceed ${LEAD_CONSTANTS.PREFERENCES.TIMEZONE_MAX} characters`)
-  .transform((tz) => tz.trim())
-  .optional()
-
-const languageSchema = z
-  .string()
-  .max(LEAD_CONSTANTS.PREFERENCES.LANGUAGE_MAX, `Language must not exceed ${LEAD_CONSTANTS.PREFERENCES.LANGUAGE_MAX} characters`)
-  .transform((lang) => lang.trim())
-  .optional()
 
 // Tags validation
 const tagsSchema = z
@@ -394,6 +379,7 @@ export const baseLeadSchema = z.object({
   position: positionSchema,
   website: websiteSchema,
   address: addressSchema,
+  socialLinks: socialLinksSchema,
 
   // Company Details
   industry: industrySchema,
@@ -451,6 +437,7 @@ export const createLeadSchema = z.object({
   position: positionSchema,
   website: websiteSchema,
   address: addressSchema,
+  socialLinks: socialLinksSchema,
 
   // Company Details
   industry: industrySchema,
@@ -493,10 +480,6 @@ export const createLeadSchema = z.object({
   hotLead: hotLeadSchema,
   conversionProbability: conversionProbabilitySchema,
 
-  // Preferences & Communication
-  preferredContactMethod: preferredContactMethodSchema,
-  timezone: timezoneSchema,
-  language: languageSchema,
 
   // Metadata
   tags: tagsSchema,
@@ -519,6 +502,10 @@ export const createLeadFormSchema = z.object({
     zipCode: z.string().optional(),
     country: z.string().optional(),
   }).optional(),
+  socialLinks: z.array(z.object({
+    linkName: z.string().min(1).max(50),
+    linkUrl: z.string().url().or(z.literal("")).optional(),
+  })).optional(),
 
   // Company Details
   industry: z.string().optional(),
@@ -582,6 +569,10 @@ export const updateLeadFormSchema = z.object({
     zipCode: z.string().optional(),
     country: z.string().optional(),
   }).optional(),
+  socialLinks: z.array(z.object({
+    linkName: z.string().min(1).max(50),
+    linkUrl: z.string().url().or(z.literal("")).optional(),
+  })).optional(),
   industry: z.string().optional(),
   companySize: z.enum(LEAD_CONSTANTS.COMPANY_SIZE.VALUES).optional(),
   annualRevenue: z.string().optional(),
@@ -660,6 +651,7 @@ export const leadQuerySchema = z.object({
   source: z.enum([...LEAD_CONSTANTS.SOURCE.VALUES, '']).optional(),
   priority: z.enum([...LEAD_CONSTANTS.PRIORITY.VALUES, '']).optional(),
   createdBy: z.union([objectIdSchema, z.literal(''), z.undefined()]).optional().transform(val => val === '' ? undefined : val),
+  clientId: z.union([objectIdSchema, z.literal('')]).optional().transform(val => val === '' ? undefined : val),
   sortBy: z.enum(LEAD_CONSTANTS.SORT.ALLOWED_FIELDS).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 

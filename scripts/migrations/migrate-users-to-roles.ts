@@ -13,74 +13,6 @@ import mongoose from "mongoose"
 import seedSystemPermissions from '../seeders/systemPermissionsSeeder'
 import seedSystemRoles from '../seeders/systemRolesSeeder'
 
-// Legacy role to new role mapping with default department-specific roles
-const LEGACY_ROLE_MAPPING = {
-  'admin': {
-    systemRole: 'super_admin',
-    fallbackPermissions: [
-      { resource: "users", actions: ["create", "read", "update", "delete", "assign"], conditions: { subordinates: true } },
-      { resource: "departments", actions: ["create", "read", "update", "delete", "assign"] },
-      { resource: "roles", actions: ["create", "read", "update", "delete", "assign"] },
-      { resource: "system", actions: ["read", "update", "archive", "export", "import"] },
-      { resource: "audit_logs", actions: ["read", "export", "archive"] },
-      { resource: "reports", actions: ["create", "read", "update", "delete", "export"] },
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"] },
-      { resource: "settings", actions: ["read", "update"] },
-      { resource: "backup", actions: ["create", "read", "export", "import"] },
-    ]
-  },
-  'manager': {
-    departmentRole: true,
-    permissions: [
-      { resource: "users", actions: ["create", "read", "update"], conditions: { department: true } },
-      { resource: "departments", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "roles", actions: ["read"], conditions: { department: true } },
-      { resource: "reports", actions: ["create", "read", "export"], conditions: { department: true } },
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"], conditions: { department: true } },
-    ]
-  },
-  'hr': {
-    departmentRole: true,
-    permissions: [
-      { resource: "users", actions: ["create", "read", "update"], conditions: { department: true } },
-      { resource: "departments", actions: ["read"] },
-      { resource: "roles", actions: ["create", "read", "update"], conditions: { department: true } },
-      { resource: "reports", actions: ["create", "read", "export"], conditions: { department: true } },
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"], conditions: { department: true } },
-    ]
-  },
-  'finance': {
-    departmentRole: true,
-    permissions: [
-      { resource: "users", actions: ["read"], conditions: { department: true } },
-      { resource: "departments", actions: ["read"] },
-      { resource: "reports", actions: ["create", "read", "export"], conditions: { department: true } },
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"], conditions: { department: true } },
-    ]
-  },
-  'sales': {
-    departmentRole: true,
-    permissions: [
-      { resource: "users", actions: ["read"], conditions: { department: true } },
-      { resource: "departments", actions: ["read"] },
-      { resource: "reports", actions: ["create", "read", "export"], conditions: { department: true } },
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"], conditions: { department: true } },
-    ]
-  },
-  'user': {
-    departmentRole: true,
-    permissions: [
-      { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-      { resource: "dashboard", actions: ["read"], conditions: { own: true } },
-    ]
-  }
-}
-
 async function createDefaultDepartment(): Promise<mongoose.Types.ObjectId> {
   // Check if default department exists
   let defaultDept = await Department.findOne({ name: 'General' })
@@ -89,6 +21,7 @@ async function createDefaultDepartment(): Promise<mongoose.Types.ObjectId> {
     console.log('📁 Creating default department: General')
     defaultDept = new Department({
       name: 'General',
+      category: 'management',
       description: 'Default department for users without specific department assignment',
       status: 'active'
     })
@@ -183,131 +116,75 @@ export async function migrateUsersToNewRoleSystem() {
       return { success: true, migrated: 0 }
     }
 
-    // Step 5: Group users by legacy role and department
-    const roleGrouping: Record<string, Record<string, any[]>> = {}
+    // Step 5: Group users by department
+    const departmentGrouping: Record<string, any[]> = {}
 
     for (const user of usersToMigrate) {
-      const legacyRole = (user.role as unknown as string) || 'user'
       const department = (user.department as unknown as string) || defaultDepartmentId.toString()
       
-      if (!roleGrouping[legacyRole]) {
-        roleGrouping[legacyRole] = {}
+      if (!departmentGrouping[department]) {
+        departmentGrouping[department] = []
       }
       
-      if (!roleGrouping[legacyRole][department]) {
-        roleGrouping[legacyRole][department] = []
-      }
-      
-      roleGrouping[legacyRole][department].push(user)
+      departmentGrouping[department].push(user)
     }
 
-    // Step 6: Create department-specific roles and migrate users
+    // Step 6: Assign client role to users by department
     let migratedUsers = 0
-    const migrationResults = []
 
-    for (const [legacyRole, departments] of Object.entries(roleGrouping)) {
-      console.log(`\n🔄 Processing legacy role: ${legacyRole}`)
+    for (const [departmentId, users] of Object.entries(departmentGrouping)) {
+      console.log(`\n🔄 Processing department: ${departmentId}`)
       
-      const roleMapping = LEGACY_ROLE_MAPPING[legacyRole as keyof typeof LEGACY_ROLE_MAPPING]
-      if (!roleMapping) {
-        console.log(`⚠️  No mapping found for role: ${legacyRole}`)
-        continue
+      // Ensure department exists
+      let deptId: mongoose.Types.ObjectId
+      if (mongoose.Types.ObjectId.isValid(departmentId)) {
+        deptId = new mongoose.Types.ObjectId(departmentId)
+        const dept = await Department.findById(deptId)
+        if (!dept) {
+          console.log(`  ⚠️  Department not found, using default: ${departmentId}`)
+          deptId = defaultDepartmentId
+        }
+      } else {
+        console.log(`  ⚠️  Invalid department ID, using default: ${departmentId}`)
+        deptId = defaultDepartmentId
       }
 
-      // Handle system roles (admin)
-      if ('systemRole' in roleMapping && roleMapping.systemRole) {
-        console.log(`  📋 Assigning system role: ${roleMapping.systemRole}`)
-        
-        const systemRole = await Role.findOne({ 
-          name: roleMapping.systemRole, 
-          isSystemRole: true 
+      // Find or create 'client' role for this department
+      let roleDoc = await Role.findOne({ name: 'client', department: deptId })
+      if (!roleDoc) {
+        console.log(`  🎭 Creating client role for department: ${deptId}`)
+        roleDoc = new Role({
+          name: 'client',
+          displayName: 'Client',
+          description: 'Client role with basic permissions',
+          department: deptId,
+          permissions: [
+            { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
+            { resource: "dashboard", actions: ["read"], conditions: { own: true } },
+          ],
+          hierarchyLevel: 1,
+          isSystemRole: false,
+          status: 'active',
+          metadata: {
+            createdBy: 'migration_script'
+          }
         })
-        
-        if (!systemRole) {
-          console.log(`  ❌ System role not found: ${roleMapping.systemRole}`)
-          continue
-        }
-
-        // Migrate all users with this legacy role to the system role
-        for (const [_, users] of Object.entries(departments)) {
-          for (const user of users) {
-            // Ensure department is properly handled
-            let userDepartment = defaultDepartmentId
-            if (user.department) {
-              if (mongoose.Types.ObjectId.isValid(user.department)) {
-                userDepartment = new mongoose.Types.ObjectId(user.department as string)
-              }
-            }
-            
-            // Use direct MongoDB update to bypass Mongoose validation
-            await mongoose.connection.db?.collection('users').updateOne(
-              { _id: new mongoose.Types.ObjectId(user._id) },
-              {
-                $set: {
-                  role: systemRole._id,
-                  legacyRole: legacyRole,
-                  department: userDepartment
-                }
-              }
-            )
-            migratedUsers++
-          }
-        }
+        await roleDoc.save()
       }
-      
-      // Handle department-specific roles
-      else if ('departmentRole' in roleMapping && roleMapping.departmentRole) {
-        for (const [departmentId, users] of Object.entries(departments)) {
-          console.log(`  📂 Processing department: ${departmentId}`)
-          
-          // Ensure department exists
-          let deptId: mongoose.Types.ObjectId
-          if (mongoose.Types.ObjectId.isValid(departmentId)) {
-            deptId = new mongoose.Types.ObjectId(departmentId)
-            const dept = await Department.findById(deptId)
-            if (!dept) {
-              console.log(`  ⚠️  Department not found, using default: ${departmentId}`)
-              deptId = defaultDepartmentId
+
+      // Assign role to users
+      for (const user of users) {
+        // Use direct MongoDB update to bypass Mongoose validation
+        await mongoose.connection.db?.collection('users').updateOne(
+          { _id: new mongoose.Types.ObjectId(user._id) },
+          {
+            $set: {
+              role: roleDoc._id,
+              department: deptId
             }
-          } else {
-            console.log(`  ⚠️  Invalid department ID, using default: ${departmentId}`)
-            deptId = defaultDepartmentId
           }
-
-          // Create role for this department and legacy role combination
-          const roleName = `${legacyRole}_${deptId.toString().slice(-6)}`
-          const displayName = `${legacyRole.charAt(0).toUpperCase() + legacyRole.slice(1)} (Department)`
-          
-          const roleId = await createDepartmentRole(
-            displayName,
-            deptId,
-            roleMapping.permissions,
-            legacyRole === 'manager' ? 5 : legacyRole === 'hr' ? 4 : 2
-          )
-
-          // Migrate users to new role
-          for (const user of users) {
-            // Use direct MongoDB update to bypass Mongoose validation
-            await mongoose.connection.db?.collection('users').updateOne(
-              { _id: new mongoose.Types.ObjectId(user._id) },
-              {
-                $set: {
-                  role: roleId,
-                  legacyRole: legacyRole,
-                  department: deptId
-                }
-              }
-            )
-            migratedUsers++
-          }
-
-          migrationResults.push({
-            legacyRole,
-            departmentId: deptId.toString(),
-            newRoleId: roleId.toString(),
-            usersCount: users.length
-          })
-        }
+        )
+        migratedUsers++
       }
     }
 
@@ -321,12 +198,6 @@ export async function migrateUsersToNewRoleSystem() {
     console.log('\n📊 Migration Summary:')
     console.log(`   👥 Total Users Migrated: ${migratedUsers}`)
     console.log(`   ✅ Users with New Role System: ${verificationCount}`)
-    console.log(`   🎭 Roles Created: ${migrationResults.length}`)
-
-    console.log('\n🎭 Migration Results by Role:')
-    migrationResults.forEach(result => {
-      console.log(`   ${result.legacyRole}: ${result.usersCount} users (Role ID: ${result.newRoleId})`)
-    })
 
     // Get final statistics
     const finalStats = await User.aggregate([
@@ -371,9 +242,7 @@ export async function migrateUsersToNewRoleSystem() {
     return {
       success: true,
       migrated: migratedUsers,
-      rolesCreated: migrationResults.length,
       verificationCount,
-      migrationResults,
       finalStats
     }
 

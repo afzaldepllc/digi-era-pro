@@ -11,16 +11,6 @@ import seedSystemRoles from '../seeders/systemRolesSeeder'
 // Load environment variables
 dotenv.config({ path: '.env.local' })
 
-interface LegacyUser {
-  _id: string
-  name: string
-  email: string
-  password: string
-  role: string
-  department: string
-  [key: string]: any
-}
-
 export async function freshMigration() {
   try {
     console.log('🚀 Starting fresh migration to new role system...')
@@ -51,6 +41,7 @@ export async function freshMigration() {
     if (!defaultDepartment) {
       defaultDepartment = await Department.create({
         name: 'General',
+        category: 'management',
         description: 'Default department for users without specific department assignment',  
         status: 'active',
         metadata: {
@@ -92,18 +83,14 @@ export async function freshMigration() {
             }
           }
 
-          // Determine role based on legacy role
+          // Assign super admin role to all users in fresh migration
           let roleId = superAdminRole._id
-          if (legacyUser.role === 'admin') {
-            roleId = superAdminRole._id
-          }
 
           const newUser = new User({
             name: legacyUser.name,
             email: legacyUser.email,
             password: legacyUser.password,
             role: roleId,
-            legacyRole: legacyUser.role,
             department: departmentId,
             avatar: legacyUser.avatar || '',
             phone: legacyUser.phone || '',
@@ -112,16 +99,6 @@ export async function freshMigration() {
             phoneVerified: legacyUser.phoneVerified || false,
             twoFactorEnabled: legacyUser.twoFactorEnabled || false,
             permissions: legacyUser.permissions || [],
-            preferences: legacyUser.preferences || {
-              theme: 'system',
-              language: 'en',
-              timezone: 'UTC',
-              notifications: {
-                email: true,
-                push: true,
-                sms: false
-              }
-            },
             metadata: legacyUser.metadata || {
               tags: []
             },

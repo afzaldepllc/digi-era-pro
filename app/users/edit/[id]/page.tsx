@@ -63,12 +63,6 @@ export default function EditUserPage() {
         country: "",
         zipCode: "",
       },
-      // Preferences
-      preferences: {
-        theme: "system",
-        language: "en",
-        timezone: "UTC",
-      },
     },
   });
 
@@ -169,12 +163,6 @@ export default function EditUserPage() {
           state: user.address?.state || "",
           country: user.address?.country || "",
           zipCode: user.address?.zipCode || "",
-        },
-        // Preferences
-        preferences: {
-          theme: user.preferences?.theme || "system",
-          language: user.preferences?.language || "en",
-          timezone: user.preferences?.timezone || "UTC",
         },
       });
 
@@ -397,42 +385,6 @@ export default function EditUserPage() {
         },
       ]
     },
-    {
-      subform_title: "Preferences",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "preferences.language",
-          label: "Language",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "en", label: "English" },
-            { value: "es", label: "Spanish" },
-            { value: "fr", label: "French" },
-            { value: "de", label: "German" },
-          ],
-          cols: 12,
-          mdCols: 6,
-        },
-        {
-          name: "preferences.timezone",
-          label: "Timezone",
-          type: "select" as const,
-          searchable: true,
-          options: [
-            { value: "UTC", label: "UTC" },
-            { value: "America/New_York", label: "Eastern Time" },
-            { value: "America/Chicago", label: "Central Time" },
-            { value: "America/Denver", label: "Mountain Time" },
-            { value: "America/Los_Angeles", label: "Pacific Time" },
-          ],
-          cols: 12,
-          mdCols: 6,
-        },
-      ]
-    }
   ];
 
   if (userError && !isLoading) {

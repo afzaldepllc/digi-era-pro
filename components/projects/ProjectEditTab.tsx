@@ -25,8 +25,6 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
   // Use actionLoading from the hook in addition to local loading state
   const { toast } = useToast();
   const { clients } = useClients();
-  const { departments } = useDepartments();
-  const { users } = useUsers();
   const { updateProject, actionLoading } = useProject();
 
   const form = useForm<UpdateProjectFormData>({
@@ -37,7 +35,9 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       description: "",
       clientId: "",
       requirements: [],
+      customerServices: [],
       projectType: "",
+      complexity: "",
       timeline: "",
       budget: undefined,
       startDate: "",
@@ -45,7 +45,6 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       status: "pending",
       priority: "medium",
       departmentIds: [],
-
       // Enhanced professional CRM fields
       budgetBreakdown: {
         development: undefined,
@@ -74,7 +73,9 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
         description: project.description || "",
         clientId: project.clientId,
         requirements: project.requirements || [],
+        customerServices: project.customerServices || [],
         projectType: project.projectType || "",
+        complexity: project.complexity || "",
         timeline: project.timeline || "",
         budget: project.budget || 0,
         startDate: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : "",
@@ -224,6 +225,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           label: "Status",
           type: "select" as const,
           searchable: true,
+           required: true,
           options: [
             { value: "pending", label: "Pending" },
             { value: "active", label: "Active" },
@@ -242,6 +244,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           label: "Priority",
           type: "select" as const,
           searchable: true,
+           required: true,
           options: [
             { value: "low", label: "Low" },
             { value: "medium", label: "Medium" },
@@ -254,22 +257,81 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           mdCols: 6,
           lgCols: 4,
         },
-        {
+         {
+          name: "clientId",
+          label: "Client",
+          type: "select" as const,
+          searchable: true,
+          options: clients?.filter(client => client._id).map(client => ({
+            value: client._id as string,
+            label: `${client.name}${client.company ? ` (${client.company})` : ''}`
+          })) || [],
+          placeholder: "Select a client",
+          required: true,
+          description: "The client for this project",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        // {
+        //   name: "projectType",
+        //   label: "Project Type",
+        //   type: "text" as const,
+        //   placeholder: "e.g., Web Development, Mobile App, etc.",
+        //   description: "The type or category of project",
+        //   cols: 12,
+        //   mdCols: 6,
+        //   lgCols: 6,
+        // },
+         {
           name: "projectType",
           label: "Project Type",
-          type: "text" as const,
-          placeholder: "e.g., Web Development, Mobile App, etc.",
-          description: "The type or category of project",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "web", label: "Web Development" },
+            { value: "mobile", label: "Mobile App" },
+            { value: "desktop", label: "Desktop Software" },
+            { value: "api", label: "API Development" },
+            { value: "consulting", label: "Consulting" },
+            { value: "other", label: "Other" },
+          ],
+          description: "Type of project",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        {
+          name: "complexity",
+          label: "Complexity",
+          type: "select" as const,
+          searchable: true,
+          options: [
+            { value: "simple", label: "Simple" },
+            { value: "medium", label: "Medium" },
+            { value: "complex", label: "Complex" },
+          ],
+          description: "Project complexity level",
+          cols: 12,
+          mdCols: 4,
+          lgCols: 4,
+        },
+        {
+          name: "requirements",
+          label: "Key Requirements",
+          type: "array-input" as const,
+          placeholder: "List project requirements and specifications",
+          description: "Detailed project requirements",
           cols: 12,
           mdCols: 6,
           lgCols: 6,
         },
         {
-          name: "requirements",
-          label: "Requirements",
+          name: "customerServices",
+          label: "Customer Services",
           type: "array-input" as const,
-          placeholder: "List project requirements and specifications",
-          description: "Detailed project requirements",
+          placeholder: "List customer services provided",
+          description: "Detailed customer services provided",
           cols: 12,
           mdCols: 6,
           lgCols: 6,
@@ -288,54 +350,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       ]
     },
     {
-      subform_title: "Project Details",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
-        {
-          name: "clientId",
-          label: "Client",
-          type: "select" as const,
-          searchable: true,
-          options: clients?.filter(client => client._id).map(client => ({
-            value: client._id as string,
-            label: `${client.name}${client.company ? ` (${client.company})` : ''}`
-          })) || [],
-          placeholder: "Select a client",
-          required: true,
-          description: "The client for this project",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-        // {
-        //   name: "departmentIds",
-        //   label: "Departments",
-        //   type: "multi-select" as const,
-        //   options: departments?.filter(dept => dept._id).map(dept => ({
-        //     value: dept._id as string,
-        //     label: dept.name
-        //   })) || [],
-        //   placeholder: "Select departments",
-        //   description: "Departments involved in this project",
-        //   cols: 12,
-        //   mdCols: 6,
-        //   lgCols: 4,
-        // },
-        {
-          name: "timeline",
-          label: "Timeline",
-          type: "text" as const,
-          placeholder: "Expected project duration (e.g., 3-6 months)",
-          description: "Expected timeline or duration",
-          cols: 12,
-          mdCols: 6,
-          lgCols: 6,
-        },
-      ]
-    },
-    {
-      subform_title: "Budget & Dates",
+      subform_title: "Dates & Budget Breakdown",
       collapse: true,
       defaultOpen: false,
       fields: [
@@ -367,13 +382,6 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           mdCols: 6,
           lgCols: 4,
         },
-      ]
-    },
-    {
-      subform_title: "Budget Breakdown",
-      collapse: true,
-      defaultOpen: false,
-      fields: [
         {
           name: "budgetBreakdown.development",
           label: "Development Costs",
@@ -442,16 +450,16 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
       defaultOpen: false,
       fields: [
         {
-          name: "resources.estimatedHours",
-          label: "Estimated Hours",
-          type: "number" as const,
-          placeholder: "Total estimated hours",
-          description: "Total estimated hours for the project",
+          name: "timeline",
+          label: "Timeline",
+          type: "text" as const,
+          placeholder: "Expected project duration (e.g., 3-6 months)",
+          description: "Expected timeline or duration",
           cols: 12,
           mdCols: 6,
           lgCols: 4,
         },
-        {
+         {
           name: "resources.actualHours",
           label: "Actual Hours",
           type: "number" as const,
@@ -461,6 +469,18 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
           mdCols: 6,
           lgCols: 4,
         },
+        {
+
+          name: "resources.estimatedHours",
+          label: "Estimated Hours",
+          type: "number" as const,
+          placeholder: "Total estimated hours",
+          description: "Total estimated hours for the project",
+          cols: 12,
+          mdCols: 6,
+          lgCols: 4,
+        },
+       
         {
           name: "resources.tools",
           label: "Tools & Technologies",
@@ -572,7 +592,7 @@ export function ProjectEditTab({ project, onProjectUpdate }: ProjectEditTabProps
                 Edit Project
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Update project information 
+                Update project information
               </p>
             </div>
             <Badge variant="outline">

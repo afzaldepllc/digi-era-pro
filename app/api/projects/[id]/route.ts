@@ -4,6 +4,7 @@ import Project from "@/models/Project"
 import Department from "@/models/Department"
 import { updateProjectSchema, updateProjectFormSchema, projectIdSchema, categorizeDepartmentsSchema } from "@/lib/validations/project"
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { performSoftDelete, addSoftDeleteFilter } from "@/lib/utils/soft-delete"
 import mongoose from 'mongoose'
 
 interface RouteParams {
@@ -122,8 +123,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         filter.departmentIds = user.departmentId
       }
 
+      // Apply soft delete filtering
+      addSoftDeleteFilter(filter, isSuperAdmin)
+
       const projectData = await Project.findOne(filter)
-        .populate('client', 'name email phone status')
+        .populate('client', 'name email phone status address')
         .populate('departments', 'name status description')
         .populate('creator', 'name email')
         .populate('approver', 'name email')
@@ -254,6 +258,55 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       delete project.tasks
     }
     
+    // Calculate overall project progress based on completed tasks
+    const totalTasks = project.departmentTasks?.reduce((total: number, dept: any) => total + dept.taskCount + dept.subTaskCount, 0) || 0
+    const completedTasks = project.departmentTasks?.reduce((total: number, dept: any) => {
+      const deptCompleted = dept.tasks?.reduce((deptTotal: number, task: any) => {
+        // Count main task as completed if status is completed
+        const mainCompleted = task.status === 'completed' ? 1 : 0
+        // Count sub-tasks completed
+        const subCompleted = task.subTasks?.filter((sub: any) => sub.status === 'completed').length || 0
+        return deptTotal + mainCompleted + subCompleted
+      }, 0) || 0
+      return total + deptCompleted
+    }, 0) || 0
+    
+    project.progress = {
+      overall: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      totalTasks,
+      completedTasks
+    }
+
+    // Calculate quality metrics
+    const now = new Date()
+    const endDate = project.endDate ? new Date(project.endDate) : null
+    const isOnTime = endDate ? endDate >= now : true // If no end date, consider on time
+    const budgetBreakdown = project.budgetBreakdown || {}
+    const totalAllocated = Object.values(budgetBreakdown).reduce((sum: number, val: any) => sum + (val || 0), 0)
+    const isWithinBudget = project.budget ? totalAllocated <= project.budget : true
+
+    project.qualityMetrics = {
+      ...project.qualityMetrics,
+      onTimeDelivery: isOnTime,
+      withinBudget: isWithinBudget
+    }
+
+    // Calculate budget health
+    const budgetUtilization = project.budget && project.budget > 0 ? Math.round((totalAllocated / project.budget) * 100) : 0
+    project.budgetHealth = budgetUtilization <= 100 ? 'good' : budgetUtilization <= 110 ? 'warning' : 'critical'
+
+    // Calculate timeline health
+    let timelineHealth = 'good'
+    if (endDate) {
+      const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      const progress = project.progress.overall
+      // If progress is low but time is running out, it's critical
+      if (daysRemaining < 7 && progress < 50) timelineHealth = 'critical'
+      else if (daysRemaining < 14 && progress < 75) timelineHealth = 'warning'
+      else if (daysRemaining < 0) timelineHealth = 'critical' // Overdue
+    }
+    project.timelineHealth = timelineHealth
+    
 
     return NextResponse.json({
       success: true,
@@ -287,7 +340,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT /api/projects/[id] - Update project
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'update')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'projects', 'update')
 
     // Resolve params (Next.js passes params as a Promise in RouteParams)
     const resolvedParams = await params
@@ -361,6 +414,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
         filter.departmentIds = user.departmentId
       }
+
+      // Apply soft delete filtering
+      addSoftDeleteFilter(filter, isSuperAdmin)
 
       const existingProject = await Project.findOne(filter)
       
@@ -479,88 +535,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // PATCH /api/projects/[id] - Update project (alias for PUT)
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   return PUT(request, { params });
-}
-
-// DELETE /api/projects/[id] - Soft delete project
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
-    const { session, user, userEmail } = await genericApiRoutesMiddleware(request, 'projects', 'delete')
-
-    // Resolve params here as well
-    const resolvedParams = await params
-    const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
-
-    // Soft delete project with automatic connection management
-    const deletedProject = await executeGenericDbQuery(async () => {
-      // Only support team can delete projects
-      if (user.role == 'super_admin' || !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
-        throw new Error('Only support team can delete projects')
-      }
-
-      const filter: any = { 
-        _id: validatedParams.id,
-        status: { $ne: 'inactive' }
-      }
-
-      const existingProject = await Project.findOne(filter)
-      
-      if (!existingProject) {
-        throw new Error('Project not found or already deleted')
-      }
-
-      // Check if project has active tasks
-      const Task = mongoose.model('Task')
-      const activeTasks = await Task.countDocuments({
-        projectId: validatedParams.id,
-        status: { $in: ['pending', 'in-progress'] }
-      })
-
-      if (activeTasks > 0) {
-        throw new Error('Cannot delete project with active tasks')
-      }
-
-      // Soft delete by setting status to inactive
-      return await Project.findByIdAndUpdate(
-        validatedParams.id,
-        { 
-          status: 'inactive',
-          updatedAt: new Date()
-        },
-        { new: true }
-      )
-    })
-
-    // Clear relevant cache patterns after deletion
-    clearCache('projects')
-    clearCache(`project-${validatedParams.id}`)
-
-    return NextResponse.json({
-      success: true,
-      data: deletedProject,
-      message: 'Project deleted successfully'
-    })
-
-  } catch (error: any) {
-    console.error('Error deleting project:', error)
-
-    // Handle middleware errors (like permission denied)
-    if (error instanceof Response) {
-      return error
-    }
-
-    if (error.name === 'ZodError') {
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid project ID',
-        details: error.errors
-      }, { status: 400 })
-    }
-
-    return NextResponse.json({
-      success: false,
-      error: error.message || 'Failed to delete project'
-    }, { status: 500 })
-  }
 }
 
 // Helper function to handle department categorization
@@ -760,6 +734,67 @@ async function handleApproveProject(projectId: string, user: any) {
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to approve project'
+    }, { status: 500 })
+  }
+}
+
+// DELETE /api/projects/[id] - Soft delete project
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    // Apply middleware (rate limiting + authentication + permissions)
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'projects', 'delete')
+
+    // Validate project ID
+    const resolvedParams = await params
+    const validatedParams = projectIdSchema.parse({ id: resolvedParams.id })
+
+    // Check if project exists and user has access (same filtering as GET)
+    const existingProject = await executeGenericDbQuery(async () => {
+      const filter: any = {
+        _id: validatedParams.id,
+        status: { $ne: 'inactive' }
+      }
+
+      // If user is not in support/admin, filter by their department
+      if (user.departmentId && !['support', 'admin'].includes(user.department?.name?.toLowerCase())) {
+        filter.departmentIds = user.departmentId
+      }
+
+      // Apply soft delete filtering (exclude deleted projects like departments)
+      addSoftDeleteFilter(filter, false)
+
+      return await Project.findOne(filter)
+    })
+
+    if (!existingProject) {
+      return NextResponse.json({
+        success: false,
+        error: 'Project not found or access denied'
+      }, { status: 404 })
+    }
+
+    // Perform soft delete using the generic utility
+    const deleteResult = await performSoftDelete('project', validatedParams.id, userEmail)
+
+    if (!deleteResult.success) {
+      return NextResponse.json({
+        success: false,
+        error: deleteResult.message
+      }, { status: 400 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: deleteResult.message,
+      data: deleteResult.data
+    })
+
+  } catch (error: any) {
+    console.error('Error deleting project:', error)
+
+    return NextResponse.json({
+      success: false,
+      error: error.message || 'Failed to delete project'
     }, { status: 500 })
   }
 }

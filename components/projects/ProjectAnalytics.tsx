@@ -57,13 +57,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  AreaChart,
-  Area,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar
 } from 'recharts';
 import GenericReportExporter from '@/components/shared/GenericReportExporter';
 import GenericFilter, { FilterConfig } from '@/components/ui/generic-filter';
@@ -468,8 +461,8 @@ export function ProjectAnalytics({ projectId }: ProjectAnalyticsProps) {
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Timeline Health</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold">{kpiData?.timelineHealth || 0}%</span>
-                  {(kpiData?.timelineHealth || 0) >= 80 ?
+                  <span className="text-2xl font-bold">{kpiData?.overallHealth || 0}%</span>
+                  {(kpiData?.overallHealth || 0) >= 80 ?
                     <TrendingUp className="h-4 w-4 text-green-500" /> :
                     <TrendingDownIcon className="h-4 w-4 text-red-500" />
                   }
@@ -616,9 +609,9 @@ export function ProjectAnalytics({ projectId }: ProjectAnalyticsProps) {
                     <div>
                       <div className="flex justify-between text-sm mb-2">
                         <span>Timeline Health</span>
-                        <span>{analyticsData.kpi.timelineHealth || 0}%</span>
+                        <span>{analyticsData.kpi.overallHealth || 0}%</span>
                       </div>
-                      <Progress value={analyticsData.kpi.timelineHealth || 0} className="h-2" />
+                      <Progress value={analyticsData.kpi.overallHealth || 0} className="h-2" />
                     </div>
                   </div>
                 ) : (
@@ -746,158 +739,42 @@ export function ProjectAnalytics({ projectId }: ProjectAnalyticsProps) {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Team Performance Overview
+                <Award className="h-5 w-5" />
+                Individual Member Progress
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                A comprehensive view of key team performance indicators across different dimensions
-              </p>
             </CardHeader>
             <CardContent>
-              {teamData?.summary ? (
-                <div className="space-y-4">
-                  <ResponsiveContainer width="100%" height={450}>
-                    <RadarChart
-                      data={[
-                        {
-                          metric: 'Productivity',
-                          value: teamData.summary.avgIndividualProductivity || 0,
-                          benchmark: 85,
-                          description: 'Average individual productivity score'
-                        },
-                        {
-                          metric: 'Task Completion',
-                          value: analyticsData?.kpi?.taskCompletion || 0,
-                          benchmark: 90,
-                          description: 'Overall project task completion rate'
-                        },
-                        {
-                          metric: 'Efficiency',
-                          value: teamData.departments?.reduce((sum, d) => sum + (d.efficiency || 0), 0) / (teamData.departments?.length || 1) || 0,
-                          benchmark: 80,
-                          description: 'Department operational efficiency'
-                        },
-                        {
-                          metric: 'Collaboration',
-                          value: collaborationData?.communicationScore || 0,
-                          benchmark: 75,
-                          description: 'Team communication and coordination'
-                        },
-                        {
-                          metric: 'Timeline Adherence',
-                          value: analyticsData?.kpi?.timelineHealth || 0,
-                          benchmark: 85,
-                          description: 'Project timeline and deadline compliance'
-                        },
-                        {
-                          metric: 'Quality Assurance',
-                          value: Math.max(0, 100 - (risks?.length || 0) * 10),
-                          benchmark: 90,
-                          description: 'Risk-adjusted quality performance'
-                        }
-                      ]}
-                      margin={{ top: 40, right: 40, bottom: 40, left: 40 }}
-                    >
-                      <PolarGrid gridType="polygon" stroke="#e5e7eb" strokeWidth={1} />
-                      <PolarAngleAxis
-                        dataKey="metric"
-                        tick={{ fontSize: 11, fill: '#374151', fontWeight: 500 }}
-                        className="font-medium"
-                      />
-                      <PolarRadiusAxis
-                        domain={[0, 100]}
-                        tick={{ fontSize: 9, fill: '#6b7280' }}
-                        tickCount={6}
-                        axisLine={false}
-                        tickFormatter={(value) => `${value}%`}
-                      />
-                      {/* Benchmark reference line */}
-                      <Radar
-                        name="Target Benchmark"
-                        dataKey="benchmark"
-                        stroke="#d1d5db"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        fill="transparent"
-                        dot={false}
-                      />
-                      {/* Actual performance */}
-                      <Radar
-                        name="Current Performance"
-                        dataKey="value"
-                        stroke="#3b82f6"
-                        fill="#3b82f6"
-                        fillOpacity={0.15}
-                        strokeWidth={3}
-                        dot={{ fill: '#3b82f6', strokeWidth: 2, r: 5 }}
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg max-w-xs">
-                                <div className="font-semibold text-gray-900 mb-2">{data.metric}</div>
-                                <div className="text-sm text-gray-600 mb-3">{data.description}</div>
-                                <div className="space-y-1">
-                                  <div className="flex justify-between">
-                                    <span className="text-sm text-blue-600">Current:</span>
-                                    <span className="font-medium">{data.value}%</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-sm text-gray-500">Target:</span>
-                                    <span className="font-medium">{data.benchmark}%</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1 border-t">
-                                    <span className="text-sm text-gray-700">Gap:</span>
-                                    <span className={`font-medium ${data.value >= data.benchmark ? 'text-green-600' : 'text-red-600'}`}>
-                                      {data.value >= data.benchmark ? '+' : ''}{(data.value - data.benchmark).toFixed(1)}%
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Legend
-                        wrapperStyle={{ paddingTop: '20px' }}
-                        iconType="rect"
-                      />
-                    </RadarChart>
-                  </ResponsiveContainer>
-
-                  {/* Performance Summary */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {Math.round((teamData.summary.avgIndividualProductivity + (analyticsData?.kpi?.taskCompletion || 0)) / 2)}%
-                      </div>
-                      <div className="text-sm text-muted-foreground">Overall Score</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        {teamData.departments?.filter(d => (d.productivity || 0) >= 80).length || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">High-Performing Teams</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {risks?.length || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Active Risks</div>
-                    </div>
-                  </div>
-                </div>
+              {teamData?.individuals && teamData.individuals.length > 0 ? (
+                <ResponsiveContainer width="100%" height={500}>
+                  <BarChart 
+                    data={teamData.individuals.map((m: any) => ({
+                      name: m.name,
+                      completedTasks: m.completedTasks || 0,
+                      totalTasks: m.totalTasks || 0,
+                      productivity: m.productivity || 0
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis dataKey="name" type="category" width={90} />
+                    <Tooltip 
+                      formatter={(value, name) => {
+                        if (name === 'Productivity') return [`${value}%`, name];
+                        return [value, name];
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="completedTasks" fill="#10b981" name="Completed Tasks" />
+                    <Bar dataKey="totalTasks" fill="#3b82f6" name="Total Tasks" />
+                    <Bar dataKey="productivity" fill="#f59e0b" name="Productivity %" />
+                  </BarChart>
+                </ResponsiveContainer>
               ) : (
-                <div className="text-center py-12">
-                  <Target className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-medium mb-2">No Performance Data Available</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto">
-                    Team performance metrics will appear here once sufficient project data is collected.
-                    This includes task completion rates, productivity scores, and collaboration metrics.
-                  </p>
+                <div className="text-center py-8">
+                  <Award className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-muted-foreground">No individual performance data available.</p>
                 </div>
               )}
             </CardContent>

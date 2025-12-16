@@ -430,13 +430,13 @@ export default async function seedLeads(): Promise<void> {
               password: hashedPassword,
               phone: leadData.phone,
               role: clientRole._id,
-              legacyRole: 'user',
               department: null, // Clients don't belong to departments
               avatar: '',
               status: 'active',
               leadId: lead._id, // Link to the lead
               isClient: true,
               company: leadData.company, // Required for clients
+              website: leadData.company ? `https://www.${leadData.company.toLowerCase().replace(/\s+/g, '')}.com` : `https://${leadData.email.split('@')[1]}`, // Generate website from company or email domain
               clientStatus: 'qualified' // Required for clients
             })
 

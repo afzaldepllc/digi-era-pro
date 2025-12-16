@@ -181,14 +181,10 @@ export async function PUT(
       return createErrorResponse('Super Administrator role cannot be modified. This role is protected to maintain system security.', 403)
     }
 
-    if (superAdminUser) {
-      return createErrorResponse('Super Administrator role cannot be modified. This role is protected to maintain system security.', 403)
-    }
-
     // Prevent updating system roles
-    if (existingRole.isSystemRole) {
-      return createErrorResponse('System roles cannot be modified', 403)
-    }
+    // if (existingRole.isSystemRole) {
+    //   return createErrorResponse('System roles cannot be modified', 403)
+    // }
 
     // Extra protection for super admin roles by name
     if (existingRole.name === 'super_admin' || existingRole.name === 'superadmin' || (existingRole.metadata as any)?.isImmutable) {

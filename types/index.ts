@@ -12,10 +12,21 @@ export interface Client {
   position?: string
   status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
   permissions: string[]
+  projects: Array<{
+    _id: string
+    name: string
+    status: string
+    startDate?: string
+    endDate?: string
+  }>
   isClient: true
-  leadId?: string
+  leadId?: {
+    _id: string
+    name: string
+  }
   clientStatus: 'qualified' | 'unqualified'
   company: string
+  website: string
   industry?: string
   companySize?: 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
   annualRevenue?: string
@@ -27,16 +38,10 @@ export interface Client {
     zipCode?: string
     country?: string
   }
-  socialLinks?: {
-    linkedin?: string
-    twitter?: string
-    github?: string
-  }
-  preferences?: {
-    theme: 'light' | 'dark' | 'system'
-    language: string
-    timezone: string
-  }
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl: string
+  }>
   notes?: string
   createdAt: Date
   updatedAt: Date
@@ -52,6 +57,7 @@ export interface CreateClientData {
   phone?: string
   leadId?: string
   company: string
+  website: string
   password?: string
   role?: string
   department?: string
@@ -59,7 +65,6 @@ export interface CreateClientData {
   avatar?: string
   address?: User['address']
   socialLinks?: User['socialLinks']
-  preferences?: User['preferences']
   metadata?: User['metadata']
   clientStatus?: 'qualified' | 'unqualified'
   status?: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
@@ -110,6 +115,7 @@ export interface CreateClientFormData {
   phone?: string
   position?: string
   company: string
+  website: string
   industry?: string
   companySize?: '' | 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
   annualRevenue?: string
@@ -123,16 +129,10 @@ export interface CreateClientFormData {
     zipCode?: string
     country?: string
   }
-  socialLinks?: {
-    linkedin?: string
-    twitter?: string
-    github?: string
-  }
-  preferences?: {
-    theme: 'light' | 'dark' | 'system'
-    language: string
-    timezone: string
-  }
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl: string
+  }>
   notes?: string
 }
 
@@ -142,6 +142,7 @@ export interface UpdateClientFormData {
   phone?: string
   position?: string
   company: string
+  website: string
   industry?: string
   companySize?: '' | 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
   annualRevenue?: string
@@ -159,11 +160,6 @@ export interface UpdateClientFormData {
     linkedin?: string
     twitter?: string
     github?: string
-  }
-  preferences?: {
-    theme: 'light' | 'dark' | 'system'
-    language: string
-    timezone: string
   }
   notes?: string
 }
@@ -244,13 +240,12 @@ export interface Role {
 }
 
 export interface User {
-  _id?: string
+  _id: string
   name: string
   email: string
   password?: string
   // role: string | Role // Reference to Role ID or populated Role object
   role: string | Role // Reference to Role ID or populated Role object
-  legacyRole?: "admin" | "user" | "manager" | "hr" | "finance" | "sales" // For backward compatibility
   avatar?: string
   phone?: string
   department: Department // Reference to Department ID or populated Department object
@@ -263,6 +258,7 @@ export interface User {
   leadId?: string | Lead // Reference to Lead model (for clients created from leads)
   clientStatus?: "qualified" | "unqualified" // Client-specific status
   company?: string // Client's company name
+  website?: string // Client's company name
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
@@ -275,16 +271,10 @@ export interface User {
     country?: string
     zipCode?: string
   }
-  socialLinks?: {
-    linkedin?: string
-    twitter?: string
-    github?: string
-  }
-  preferences?: {
-    theme: "light" | "dark" | "system"
-    language: string
-    timezone: string
-  }
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl: string
+  }>
   metadata?: {
     createdBy?: string
     updatedBy?: string
@@ -336,6 +326,7 @@ export interface PaginatedResponse<T> {
 export interface Department {
   _id?: string
   name: string
+  category: 'sales' | 'support' | 'it' | 'management' | 'clients'
   description?: string
   status: 'active' | 'inactive' | 'deleted'
   createdAt?: Date | string
@@ -345,6 +336,7 @@ export interface Department {
 export interface DepartmentFilters {
   search?: string
   status?: 'active' | 'inactive' | 'deleted' | ''
+  category?: 'sales' | 'support' | 'it' | 'management' | 'clients' | ''
 }
 
 export interface DepartmentSort {
@@ -431,6 +423,10 @@ export interface Lead {
     zipCode?: string
     country?: string
   }
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl?: string
+  }>
 
   // Company Details
   industry?: string
@@ -448,9 +444,8 @@ export interface Lead {
   technologies?: string[] // Required technologies/frameworks
   projectType?: 'web' | 'mobile' | 'desktop' | 'api' | 'consulting' | 'other'
   complexity?: 'simple' | 'medium' | 'complex'
-
-  // Project Scope & Details
   estimatedHours?: number
+
 
   // Lead Management
   status: 'active' | 'inactive' | 'qualified' | 'unqualified' | 'deleted'
@@ -487,10 +482,6 @@ export interface Lead {
   hotLead?: boolean
   conversionProbability?: number // Percentage
 
-  // Preferences & Communication
-  preferredContactMethod?: 'email' | 'phone' | 'meeting' | 'chat'
-  timezone?: string
-  language?: string
 
   // Metadata
   tags?: string[]
@@ -513,6 +504,10 @@ export interface CreateLeadData {
   email: string
   phone?: string
   company?: string
+  socialLinks?: Array<{
+    linkName: string
+    linkUrl?: string
+  }>
 
   // Project Basic Info Section  
   projectName: string
@@ -650,7 +645,9 @@ export interface Project {
   startDate?: string
   endDate?: string
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
   createdBy: string
   approvedBy?: string
@@ -697,6 +694,7 @@ export interface Project {
   departments?: Array<{
     _id: string
     name: string
+    category: string
     status: string
     description?: string
   }>
@@ -712,6 +710,7 @@ export interface Project {
       department?: {
         _id: string
         name: string
+        category: string
         status?: string
         description?: string
       }
@@ -745,6 +744,7 @@ export interface Project {
     email: string
   }
   taskCount?: number
+  isDeleted?: boolean
 }
 
 export interface ProjectFilters {
@@ -771,7 +771,9 @@ export interface CreateProjectData {
   startDate?: Date
   endDate?: Date
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
 }
 
@@ -786,8 +788,35 @@ export interface CreateProjectFormData {
   startDate?: string
   endDate?: string
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
+
+  // Professional CRM fields
+  budgetBreakdown?: {
+    development?: number
+    design?: number
+    testing?: number
+    deployment?: number
+    maintenance?: number
+    contingency?: number
+  }
+
+  risks?: {
+    description: string
+    impact: 'low' | 'medium' | 'high' | 'critical'
+    probability: 'low' | 'medium' | 'high'
+    mitigation?: string
+    status: 'identified' | 'mitigated' | 'occurred'
+  }[]
+
+  resources?: {
+    estimatedHours?: number
+    actualHours?: number
+    tools?: string[]
+    externalResources?: string[]
+  }
 }
 
 export interface UpdateProjectData extends Partial<CreateProjectData> { }
@@ -803,7 +832,9 @@ export interface UpdateProjectFormData {
   startDate?: string
   endDate?: string
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
 
   // Professional CRM fields
@@ -885,7 +916,9 @@ export interface ProjectPrefillData {
   leadId?: string
   name?: string
   projectType?: string
+  complexity?: string
   requirements?: string[]
+  customerServices?: string[]
   timeline?: string
   budget?: number
 }

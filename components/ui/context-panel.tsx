@@ -61,8 +61,8 @@ export function ContextPanel({
     }
   }
 
-  const mockProjectInfo = channel.projectId ? {
-    name: 'DepLLC CRM Development',
+  const mockProjectInfo = channel.mongo_project_id ? {
+    name: 'Digi Era Pro CRM Development',
     description: 'Complete CRM system with advanced features',
     status: 'In Progress',
     deadline: '2025-12-31'
@@ -131,7 +131,7 @@ export function ContextPanel({
                 
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created:</span>
-                  <span>{format(new Date(channel.createdAt), 'MMM d, yyyy')}</span>
+                  <span>{format(new Date(channel.created_at), 'MMM d, yyyy')}</span>
                 </div>
                 
                 <div className="flex justify-between">
@@ -139,7 +139,7 @@ export function ContextPanel({
                   <span>{channel.participants.length}</span>
                 </div>
                 
-                {!channel.isInternal && (
+                {!channel.is_private && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Visibility:</span>
                     <Badge variant="secondary">External</Badge>
@@ -248,7 +248,7 @@ export function ContextPanel({
               
               <div className="space-y-2">
                 {channel.participants.map((participant) => (
-                  <div key={participant._id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                  <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                     <div className="relative">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={participant.avatar} alt={participant.name} />

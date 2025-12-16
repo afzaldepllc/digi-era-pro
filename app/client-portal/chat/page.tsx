@@ -46,13 +46,13 @@ export default function ClientChatPage() {
   
   useEffect(() => {
     if (channels.length === 0) {
-      fetchChannels({ isInternal: false })
+      fetchChannels({ is_private: false })
     }
   }, [channels.length, fetchChannels])
 
   useEffect(() => {
     if (supportChannel) {
-      selectChannel(supportChannel.channelId)
+      selectChannel(supportChannel.id)
     }
   }, [supportChannel, selectChannel])
 
@@ -76,8 +76,7 @@ export default function ClientChatPage() {
     try {
       await sendMessage({
         ...messageData,
-        communicationType: 'chat',
-        priority: 'medium'
+        content_type: 'text',
       })
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -86,7 +85,7 @@ export default function ClientChatPage() {
 
   const handleMessageRead = (messageId: string) => {
     if (supportChannel) {
-      markAsRead(messageId, supportChannel.channelId)
+      markAsRead(messageId, supportChannel.id)
     }
   }
 
@@ -197,7 +196,7 @@ export default function ClientChatPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{clientInfo.accountManager.name}</p>
                     <p className="text-xs text-muted-foreground">{clientInfo.accountManager.role}</p>
-                    <p className="text-xs text-muted-foreground truncate">{clientInfo.accountManager.email}</p>
+                    <p className="text-xs text-muted-foreground truncate mt-1">{clientInfo.accountManager.email}</p>
                     
                     <div className="flex gap-2 mt-2">
                       <Button size="sm" variant="outline" className="h-7 px-2">
@@ -314,7 +313,7 @@ export default function ClientChatPage() {
                     <MessageList
                       messages={messages}
                       typingUsers={typingUsers}
-                      currentUserId={currentUser._id}
+                      currentUserId={currentUser.mongo_member_id}
                       onMessageRead={handleMessageRead}
                     />
                   )
@@ -325,7 +324,7 @@ export default function ClientChatPage() {
               {supportChannel && (
                 <div className="border-t">
                   <MessageInput
-                    channelId={supportChannel.channelId}
+                    channelId={supportChannel.id}
                     onSend={handleSendMessage}
                     disabled={actionLoading}
                     placeholder="Type your message to support..."

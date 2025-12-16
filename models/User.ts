@@ -6,7 +6,6 @@ export interface IUser extends Document {
   email: string
   password: string
   role: mongoose.Types.ObjectId // Reference to Role model
-  legacyRole?: "admin" | "user" | "manager" | "hr" | "finance" | "sales" // Keep for backward compatibility
   avatar?: string
   phone?: string
   department?: mongoose.Types.ObjectId // Reference to Department model (optional for clients)
@@ -18,8 +17,10 @@ export interface IUser extends Document {
   // Client-specific fields
   isClient: boolean // Flag to identify client users
   leadId?: mongoose.Types.ObjectId // Reference to Lead model (for clients created from leads)
+  project?: mongoose.Types.ObjectId // Reference to Project model (for clients created from leads)
   clientStatus?: "qualified" | "unqualified" // Client-specific status
   company?: string // Client's company name
+  website?: string // Client's website
   lastLogin?: Date
   emailVerified: boolean
   phoneVerified: boolean
@@ -38,15 +39,9 @@ export interface IUser extends Document {
     zipCode?: string
   }
   socialLinks?: {
-    linkedin?: string
-    twitter?: string
-    github?: string
-  }
-  preferences?: {
-    theme: "light" | "dark" | "system"
-    language: string
-    timezone: string
-  }
+    linkName?: string
+    linkUrl?: string
+  }[]
   metadata?: {
     createdBy?: string
     updatedBy?: string
@@ -96,12 +91,6 @@ const UserSchema = new Schema<IUser>(
       ref: 'Role',
       required: [true, "Role is required"],
       // index: true, // Removed - covered by compound indexes
-    },
-    legacyRole: {
-      type: String,
-      enum: ["admin", "user", "manager", "hr", "finance", "sales"],
-      // index: true, // Removed - legacy field, index not needed
-      // Keep for backward compatibility during migration
     },
     avatar: {
       type: String,
@@ -159,6 +148,11 @@ const UserSchema = new Schema<IUser>(
       ref: 'Lead',
       required: false,
     },
+    project: {
+      type: Schema.Types.ObjectId,
+      ref: 'Project',
+      required: false,
+    },
     clientStatus: {
       type: String,
       enum: ["qualified", "unqualified"],
@@ -171,6 +165,14 @@ const UserSchema = new Schema<IUser>(
       type: String,
       trim: true,
       maxlength: [200, "Company name cannot exceed 200 characters"],
+      required: function (this: IUser) {
+        return this.isClient; // Company required for clients
+      },
+    },
+    website: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Company website cannot exceed 200 characters"],
       required: function (this: IUser) {
         return this.isClient; // Company required for clients
       },
@@ -221,26 +223,10 @@ const UserSchema = new Schema<IUser>(
       country: { type: String, trim: true },
       zipCode: { type: String, trim: true },
     },
-    socialLinks: {
-      linkedin: { type: String, trim: true },
-      twitter: { type: String, trim: true },
-      github: { type: String, trim: true },
-    },
-    preferences: {
-      theme: {
-        type: String,
-        enum: ["light", "dark", "system"],
-        default: "system",
-      },
-      language: {
-        type: String,
-        default: "en",
-      },
-      timezone: {
-        type: String,
-        default: "UTC",
-      },
-    },
+    socialLinks: [{
+      linkName: { type: String, required: true, trim: true },
+      linkUrl: { type: String, required: true, trim: true },
+    }],
     metadata: {
       createdBy: { type: String },
       updatedBy: { type: String },
@@ -303,6 +289,7 @@ UserSchema.index({ emailVerified: 1, status: 1 });
 UserSchema.index({ isClient: 1, status: 1 }); // Filter clients vs regular users
 UserSchema.index({ isClient: 1, clientStatus: 1 }); // Client status filtering
 UserSchema.index({ leadId: 1 }, { sparse: true }); // Link to leads
+UserSchema.index({ project: 1 }, { sparse: true }); // Link to projects
 UserSchema.index({ isClient: 1, createdAt: -1 }); // Client chronological listing
 UserSchema.index({ company: 1 }, { sparse: true }); // Company-based searches
 
@@ -333,6 +320,21 @@ UserSchema.virtual('leadDetails', {
   localField: 'leadId',
   foreignField: '_id',
   justOne: true,
+});
+
+// Virtual to populate project details (for clients)
+UserSchema.virtual('projectDetails', {
+  ref: 'Project',
+  localField: 'project',
+  foreignField: '_id',
+  justOne: true,
+});
+
+// Virtual to populate all projects for this client
+UserSchema.virtual('projects', {
+  ref: 'Project',
+  localField: '_id',
+  foreignField: 'clientId',
 });
 
 // Hash password before saving
@@ -527,6 +529,7 @@ UserSchema.statics.createClientFromLead = async function (leadData: any, created
     email: leadData.email,
     phone: leadData.phone,
     company: leadData.company,
+    website: leadData.website,
     role: clientRole._id,
     isClient: true, // Explicitly enforce
     clientStatus: 'qualified',

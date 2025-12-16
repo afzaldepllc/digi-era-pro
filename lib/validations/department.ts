@@ -9,6 +9,10 @@ export const DEPARTMENT_CONSTANTS = {
   DESCRIPTION: {
     MAX_LENGTH: 2000, // Increased to handle HTML content
   },
+  CATEGORY: {
+    VALUES: ['sales', 'support', 'it', 'management'] as const,
+    DEFAULT: 'it' as const,
+  },
   STATUS: {
     VALUES: ['active', 'inactive', 'deleted'] as const,
     DEFAULT: 'active' as const,
@@ -64,6 +68,9 @@ export const baseDepartmentSchema = z.object({
     (name) => name && name.length > 0,
     'Department name is required'
   ),
+  category: z.enum(['sales', 'support', 'it', 'management'], {
+    errorMap: () => ({ message: 'Category must be one of: sales, support, it, management' })
+  }),
 
   description: z.string()
     .max(DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH, `Description cannot exceed ${DEPARTMENT_CONSTANTS.DESCRIPTION.MAX_LENGTH} characters`)
@@ -111,6 +118,7 @@ export const departmentWithIdSchema = baseDepartmentSchema.extend({
 export const departmentFiltersSchema = z.object({
   search: z.string().optional(),
   status: z.enum(['active', 'inactive', '']).optional(),
+  category: z.enum(['sales', 'support', 'it', 'management', '']).optional(),
 })
 
 // Department sort schema
@@ -156,6 +164,17 @@ export const departmentQuerySchema = z.object({
     .optional()
     .transform(val => val || undefined), // Convert empty string to undefined
 
+  category: z.string()
+    .trim()
+    .optional()
+    .transform(val => {
+      if (!val || val === 'all') return ''
+      return val
+    })
+    .refine(val => {
+      if (val === '' || val === undefined) return true
+      return DEPARTMENT_CONSTANTS.CATEGORY.VALUES.includes(val as any)
+    }, 'Invalid category value'),
   status: z.string()
     .trim()
     .optional()
@@ -167,6 +186,7 @@ export const departmentQuerySchema = z.object({
       if (val === '' || val === undefined) return true
       return DEPARTMENT_CONSTANTS.STATUS.VALUES.includes(val as any)
     }, 'Invalid status value'),
+
 
   // Sorting
   sortBy: z.enum([...DEPARTMENT_CONSTANTS.SORT.ALLOWED_FIELDS])

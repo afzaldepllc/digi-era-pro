@@ -28,7 +28,12 @@ export interface ITask extends Document {
   assignedBy?: mongoose.Types.ObjectId
   createdAt: Date
   updatedAt: Date
+  isDeleted: boolean
+  deletedAt?: Date
+  deletedBy?: mongoose.Types.ObjectId
+  deletionReason?: string
 }
+
 
 // Static methods interface
 export interface TaskModel extends mongoose.Model<ITask> {
@@ -144,6 +149,21 @@ const TaskSchema = new Schema<ITask>({
     type: Schema.Types.ObjectId,
     ref: 'User',
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -158,6 +178,7 @@ TaskSchema.index({ parentTaskId: 1, status: 1 })
 TaskSchema.index({ type: 1, status: 1 })
 TaskSchema.index({ status: 1, dueDate: 1 })
 TaskSchema.index({ createdBy: 1, status: 1 })
+TaskSchema.index({ isDeleted: 1, status: 1, createdAt: -1 })
 
 // Compound indexes for efficient queries
 TaskSchema.index({ projectId: 1, departmentId: 1, type: 1 })

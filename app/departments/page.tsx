@@ -20,6 +20,7 @@ import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2';
 import { useNavigation } from "@/components/providers/navigation-provider";
 import GenericReportExporter from "@/components/shared/GenericReportExporter";
+import { STATUS_COLORS } from '@/lib/colorConstants';
 
 export default function DepartmentsPage() {
   const router = useRouter();
@@ -70,8 +71,8 @@ export default function DepartmentsPage() {
         type: 'text',
         placeholder: 'Search departments...',
         cols: 12, // Full width on mobile
-        mdCols: 6, // Larger width on medium screens
-        lgCols: 6, // Larger width on large screens
+        mdCols: 4, // Larger width on medium screens
+        lgCols: 4, // Larger width on large screens
       },
       {
         key: 'status',
@@ -80,12 +81,29 @@ export default function DepartmentsPage() {
         searchable: true,
         placeholder: 'All Statuses',
         cols: 12, // Full width on mobile
-        mdCols: 6, // Smaller width on medium screens
-        lgCols: 6, // Smaller width on large screens
+        mdCols: 4, // Smaller width on medium screens
+        lgCols: 4, // Smaller width on large screens
         options: [
           { value: 'all', label: 'All Statuses' },
           { value: 'active', label: 'Active' },
           { value: 'inactive', label: 'Inactive' },
+        ],
+      },
+      {
+        key: 'category',
+        label: 'Category',
+        type: 'select',
+        searchable: true,
+        placeholder: 'All Categories',
+        cols: 12, // Full width on mobile
+        mdCols: 4, // Smaller width on medium screens
+        lgCols: 4, // Smaller width on large screens
+        options: [
+          { value: 'all', label: 'All Categories' },
+          { value: 'sales', label: 'Sales' },
+          { value: 'support', label: 'Support' },
+          { value: 'it', label: 'IT' },
+          { value: 'management', label: 'Management' },
         ],
       },
     ],
@@ -99,7 +117,8 @@ export default function DepartmentsPage() {
   const uiFilters = useMemo(() => ({
     search: filters.search || '',
     status: filters.status || 'all',
-  }), [filters.search, filters.status]);
+    category: filters.category || 'all',
+  }), [filters.search, filters.status, filters.category]);
 
   // Filter handlers - Updated to match clients/leads page pattern
   const handleFilterChange = useCallback((newFilters: Record<string, any>) => {
@@ -107,6 +126,7 @@ export default function DepartmentsPage() {
     const departmentFilters: DepartmentFilters = {
       search: newFilters.search || '',
       status: newFilters.status === 'all' ? '' : (newFilters.status || ''),
+      category: newFilters.category === 'all' ? '' : (newFilters.category || ''),
     };
     setFilters(departmentFilters);
   }, [setFilters]);
@@ -115,6 +135,7 @@ export default function DepartmentsPage() {
     const defaultFilters: DepartmentFilters = {
       search: '',
       status: '',
+      category: '',
     };
     setFilters(defaultFilters);
   }, [setFilters]);
@@ -135,7 +156,7 @@ export default function DepartmentsPage() {
           <div className="flex flex-col">
             <span className="font-medium text-foreground">{value}</span>
             <span className="text-sm text-muted-foreground">
-              ID: {row._id?.slice(-8) || 'N/A'}
+              Category: {row.category || 'N/A'}
             </span>
           </div>
         </div>
@@ -164,14 +185,8 @@ export default function DepartmentsPage() {
       label: 'Status',
       sortable: true,
       render: (value) => {
-        const statusColors = {
-          active: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800',
-          inactive: 'bg-muted text-muted-foreground border-border',
-          deleted: 'text-muted bg-red-600 border-white-200',
-        };
-
         return (
-          <Badge className={`${statusColors[value as keyof typeof statusColors]} border`}>
+          <Badge className={`${STATUS_COLORS[value as keyof typeof STATUS_COLORS] || STATUS_COLORS.inactive} border`}>
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Badge>
         );
@@ -378,8 +393,9 @@ export default function DepartmentsPage() {
   // Memoize filters and sort to prevent unnecessary re-renders
   const memoizedFilters = useMemo(() => ({
     search: filters.search,
-    status: filters.status
-  }), [filters.search, filters.status])
+    status: filters.status,
+    category: filters.category
+  }), [filters.search, filters.status, filters.category])
 
   const memoizedSort = useMemo(() => ({
     field: sort.field,
@@ -399,6 +415,7 @@ export default function DepartmentsPage() {
       limit: memoizedPagination.limit,
       search: memoizedFilters.search,
       status: memoizedFilters.status,
+      category: memoizedFilters.category,
       sortField: memoizedSort.field,
       sortDirection: memoizedSort.direction
     })
@@ -414,7 +431,7 @@ export default function DepartmentsPage() {
         sort: memoizedSort,
       })
     }
-  }, [memoizedPagination.page, memoizedPagination.limit, memoizedFilters.search, memoizedFilters.status, memoizedSort.field, memoizedSort.direction, fetchDepartments])
+  }, [memoizedPagination.page, memoizedPagination.limit, memoizedFilters.search, memoizedFilters.status,memoizedFilters.category, memoizedSort.field, memoizedSort.direction, fetchDepartments])
 
   // Error handling effect
   useEffect(() => {
@@ -613,6 +630,10 @@ export default function DepartmentsPage() {
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Name</label>
                       <p className="mt-1">{selectedDepartmentForView.name}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Category</label>
+                      <p className="mt-1">{selectedDepartmentForView.category}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Status</label>

@@ -14,9 +14,7 @@ import {
   Clock
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useUsers } from "@/hooks/use-users"
 import { useCommunications } from "@/hooks/use-communications"
-import { useAuthUser } from "@/hooks/use-auth-user"
 import { User } from "@/types"
 
 interface UserDirectoryProps {
@@ -27,22 +25,15 @@ interface UserDirectoryProps {
 export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { users, loading: usersLoading, fetchUsers } = useUsers()
-  const { createChannel, loading: channelLoading, selectChannel } = useCommunications()
-  const { user: currentUser } = useAuthUser()
+  const { createChannel, loading: channelLoading, selectChannel, mockUsers, mockCurrentUser } = useCommunications()
 
-  // Fetch users on mount
-  useEffect(() => {
-    fetchUsers()
-  }, [fetchUsers])
-  console.log('Users36:', users);
   // Filter active users (exclude current user and inactive users, and clients)
-  const activeUsers = users.filter(user =>
-    user._id !== currentUser?.id
+  const activeUsers = mockUsers.filter(user =>
+    user._id !== mockCurrentUser?._id
     //  &&
     // user.isClient === false
   );
-  console.log('ActiveUsers42:', activeUsers);
+
   // Filter users based on search
   const filteredUsers = activeUsers.filter(user => {
     if (!searchQuery) return true
@@ -55,7 +46,7 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   })
 
   const handleStartDM = async (user: User) => {
-    if (!currentUser || !currentUser.id) {
+    if (!mockCurrentUser || !mockCurrentUser._id) {
       console.error('No current user found or user id missing')
       return
     }
@@ -64,13 +55,13 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       // Create DM channel
       const channel = await createChannel({
         type: 'dm',
-        participants: [currentUser.id, user._id as string],
-        name: `DM with ${user.name || user.email}`
+        participants: [mockCurrentUser._id, user._id as string],
+        is_private: true
       })
 
       if (channel) {
         // Select the new channel
-        selectChannel(channel.channelId)
+        selectChannel(channel.id)
       }
     } catch (error) {
       console.error('Failed to create DM:', error)
@@ -129,19 +120,7 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       {/* User List */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {usersLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg animate-pulse">
-                  <div className="w-10 h-10 bg-muted rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-muted rounded w-3/4" />
-                    <div className="h-3 bg-muted rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filteredUsers.length === 0 ? (
+          {filteredUsers.length === 0 ? (
             <div className="text-center py-8">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">
@@ -179,9 +158,6 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {user.email}
-                    </p>
                   </div>
 
                   {/* Action Button */}

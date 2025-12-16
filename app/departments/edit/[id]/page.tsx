@@ -43,6 +43,7 @@ const { navigateTo } = useNavigation()
     defaultValues: {
       name: "",
       description: "",
+      category: "it",
       status: "active",
     },
   });
@@ -54,6 +55,7 @@ const { navigateTo } = useNavigation()
         name: department.name,
         description: department.description || "",
         status: department.status,
+        category: department.category,
       });
     }
   }, [department, form]);
@@ -103,7 +105,22 @@ const { navigateTo } = useNavigation()
           placeholder: "Enter department name",
           description: "A unique name for the department",
           cols: 12,
-          mdCols: 8,
+          mdCols: 4,
+        },
+        {
+          name: "category",
+          label: "Category",
+          type: "select" as const,
+          searchable: true,
+          required: true,
+          options: [
+            { value: "sales", label: "Sales" },
+            { value: "support", label: "Support" },
+            { value: "it", label: "IT" },
+            { value: "management", label: "Management" },
+          ],
+          cols: 12,
+          mdCols: 4,
         },
         {
           name: "status",

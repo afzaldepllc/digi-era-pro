@@ -76,15 +76,9 @@ const socialLinksSchema = z.object({
   linkedin: urlSchema,
   twitter: urlSchema,
   github: urlSchema,
-})
+}).optional()
 
 
-// Preferences schema
-const preferencesSchema = z.object({
-  theme: themeSchema.default("system"),
-  language: z.string().min(2, "Language must be at least 2 characters").default("en"),
-  timezone: z.string().min(3, "Timezone must be at least 3 characters").default("UTC"),
-})
 
 // =============================================================================
 // MAIN VALIDATION SCHEMAS
@@ -98,7 +92,6 @@ const baseProfileSchema = z.object({
   avatar: avatarSchema,
   address: addressSchema.optional(),
   socialLinks: socialLinksSchema.optional(),
-  preferences: preferencesSchema.optional(),
 })
 
 // Update profile schema
@@ -124,15 +117,6 @@ export const updateProfileSchema = baseProfileSchema.partial().extend({
     cleanData.socialLinks = Object.keys(cleanSocialLinks).length > 0 ? cleanSocialLinks : undefined
   }
   
-  // Clean preferences
-  if (cleanData.preferences) {
-    // Ensure preferences have proper defaults
-    cleanData.preferences = {
-      theme: cleanData.preferences.theme || "system",
-      language: cleanData.preferences.language || "en",
-      timezone: cleanData.preferences.timezone || "UTC",
-    }
-  }
   
   return cleanData
 })
@@ -163,10 +147,6 @@ export const profileFormSchema = z.object({
   linkedin: z.string().optional(),
   twitter: z.string().optional(),
   github: z.string().optional(),
-  // Preferences
-  theme: themeSchema.optional(),
-  language: z.string().optional(),
-  timezone: z.string().optional(),
 }).transform((data) => {
   // Transform flat form data to nested structure
   return {
@@ -185,11 +165,6 @@ export const profileFormSchema = z.object({
       linkedin: data.linkedin || "",
       twitter: data.twitter || "",
       github: data.github || "",
-    },
-    preferences: {
-      theme: data.theme || "system",
-      language: data.language || "en",
-      timezone: data.timezone || "UTC",
     },
   }
 })
@@ -220,7 +195,6 @@ export const profileResponseSchema = z.object({
   sessionStartTime: z.string(),
   address: addressSchema.optional(),
   socialLinks: socialLinksSchema.optional(),
-  preferences: preferencesSchema,
   emailVerified: z.boolean(),
   phoneVerified: z.boolean(),
   twoFactorEnabled: z.boolean(),

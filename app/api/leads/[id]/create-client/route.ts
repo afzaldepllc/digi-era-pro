@@ -29,7 +29,7 @@ export async function POST(
     const result = await executeGenericDbQuery(async () => {
       // 1. Fetch the lead with all required data
       const lead = await Lead.findById(validatedParams.id)
-
+      console.log('Lead fetched for client creation:', lead)
       if (!lead) {
         throw new Error('Lead not found')
       }
@@ -90,7 +90,21 @@ export async function POST(
         email: lead.email.toLowerCase(),
         password: hashedPassword,
         phone: lead.phone || '',
+        position: lead.position || '',
         company: lead.company || lead.name || 'Not specified',
+        website: lead.website || '',
+        industry: lead.industry || '',
+        companySize: lead.companySize || undefined,
+        annualRevenue: lead.annualRevenue || '',
+        employeeCount: lead.employeeCount || '',
+        address: lead.address || {
+          street: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          country: '',
+        },
+        socialLinks: lead.socialLinks || [],
         role: clientRole._id,
         department: salesDepartment._id,
         leadId: lead._id, // Link back to the lead
@@ -101,11 +115,6 @@ export async function POST(
         phoneVerified: false,
         twoFactorEnabled: false,
         permissions: [],
-        preferences: {
-          theme: 'system',
-          language: 'en',
-          timezone: 'UTC',
-        },
         metadata: {
           tags: ['converted_from_lead'],
           createdBy: user.id,
@@ -180,3 +189,4 @@ export async function POST(
     )
   }
 }
+
