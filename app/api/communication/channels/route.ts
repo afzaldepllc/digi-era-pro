@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         
         // Enrich channels with user data from MongoDB
         const enrichedChannels = await Promise.all(
-            channels.map(channel => enrichChannelWithUserData(channel, User))
+            channels.map((channel: any) => enrichChannelWithUserData(channel, User))
         )
 
         return NextResponse.json({ channels: enrichedChannels })

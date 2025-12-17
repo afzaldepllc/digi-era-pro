@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
 
     const body = await request.json()
-    const { channel_id, content, content_type, thread_id, mongo_mentioned_user_ids } = body
+    const { channel_id, content, content_type, thread_id, parent_message_id, mongo_mentioned_user_ids } = body
 
     if (!channel_id || !content) {
       return NextResponse.json(
@@ -81,13 +81,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the message
+    // Create the message (with optional reply support)
     const message = await messageOperations.create({
       channel_id,
       mongo_sender_id: session.user.id,
       content,
       content_type: content_type || 'text',
       thread_id,
+      parent_message_id, // For replies
       mongo_mentioned_user_ids: mongo_mentioned_user_ids || [],
     })
 

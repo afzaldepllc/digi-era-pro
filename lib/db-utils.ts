@@ -67,25 +67,102 @@ export const messageOperations = {
     content: string
     content_type?: string
     thread_id?: string
+    parent_message_id?: string // For replies
     mongo_mentioned_user_ids?: string[]
   }) => {
-    return await prisma.message.create({
+    const message = await prisma.message.create({
       data: {
         channel_id: data.channel_id,
         mongo_sender_id: data.mongo_sender_id,
         content: data.content,
         content_type: data.content_type ?? 'text',
         thread_id: data.thread_id,
+        parent_message_id: data.parent_message_id,
         mongo_mentioned_user_ids: data.mongo_mentioned_user_ids ?? [],
+      },
+      include: {
+        messages: true, // parent_message
+        other_messages: { // replies
+          take: 3,
+          orderBy: { created_at: 'asc' },
+        },
+        read_receipts: true,
+        reactions: true,
+        attachments: true,
+      },
+    })
+
+    // If this is a reply, increment parent's reply_count
+    if (data.parent_message_id) {
+      await prisma.message.update({
+        where: { id: data.parent_message_id },
+        data: { reply_count: { increment: 1 } },
+      })
+    }
+
+    return message
+  },
+
+  // Update a message (edit)
+  update: async (message_id: string, content: string) => {
+    return await prisma.message.update({
+      where: { id: message_id },
+      data: {
+        content,
+        is_edited: true,
+        edited_at: new Date(),
+      },
+      include: {
+        messages: true, // parent_message
+        read_receipts: true,
+        reactions: true,
+        attachments: true,
       },
     })
   },
 
-  // Get messages for a channel
+  // Delete a message
+  delete: async (message_id: string) => {
+    const message = await prisma.message.findUnique({
+      where: { id: message_id },
+      select: { parent_message_id: true },
+    })
+
+    // If this is a reply, decrement parent's reply_count
+    if (message?.parent_message_id) {
+      await prisma.message.update({
+        where: { id: message.parent_message_id },
+        data: { 
+          reply_count: { 
+            decrement: 1 
+          } 
+        },
+      }).catch(() => {
+        // Ignore errors if parent was already deleted
+      })
+    }
+
+    return await prisma.message.delete({
+      where: { id: message_id },
+    })
+  },
+
+  // Get messages for a channel with replies
   getChannelMessages: async (channel_id: string, limit: number = 50, offset: number = 0) => {
     return await prisma.message.findMany({
-      where: { channel_id },
+      where: {
+        channel_id,
+        parent_message_id: null, // Only get top-level messages (not replies)
+      },
       include: {
+        other_messages: { // Get first few replies
+          take: 3,
+          orderBy: { created_at: 'asc' },
+          include: {
+            read_receipts: true,
+            reactions: true,
+          },
+        },
         read_receipts: true,
         reactions: true,
         attachments: true,
@@ -93,6 +170,22 @@ export const messageOperations = {
       orderBy: { created_at: 'desc' },
       take: limit,
       skip: offset,
+    })
+  },
+
+  // Get replies for a specific message
+  getReplies: async (parent_message_id: string, limit: number = 50) => {
+    return await prisma.message.findMany({
+      where: {
+        parent_message_id,
+      },
+      include: {
+        read_receipts: true,
+        reactions: true,
+        attachments: true,
+      },
+      orderBy: { created_at: 'asc' },
+      take: limit,
     })
   },
 

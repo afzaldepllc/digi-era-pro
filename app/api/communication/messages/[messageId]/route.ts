@@ -43,20 +43,8 @@ export async function PUT(
       )
     }
 
-    // Update message
-    const updatedMessage = await prisma.message.update({
-      where: { id: messageId },
-      data: {
-        content,
-        is_edited: true,
-        edited_at: new Date(),
-      },
-      include: {
-        read_receipts: true,
-        reactions: true,
-        attachments: true,
-      },
-    })
+    // Update message using messageOperations
+    const updatedMessage = await messageOperations.update(messageId, content)
 
     // Note: Supabase Realtime with Postgres Changes will automatically
     // notify all subscribers about the message update
@@ -102,10 +90,8 @@ export async function DELETE(
       )
     }
 
-    // Delete message (cascade will delete related data)
-    await prisma.message.delete({
-      where: { id: messageId },
-    })
+    // Delete message using messageOperations (handles reply_count decrement)
+    await messageOperations.delete(messageId)
 
     // Note: Supabase Realtime with Postgres Changes will automatically
     // notify all subscribers about the message deletion
