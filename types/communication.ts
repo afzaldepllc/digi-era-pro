@@ -64,7 +64,7 @@ export interface ITypingIndicator {
   channelId: string
   userId: string
   userName: string
-  timestamp: string // ISO string to avoid Redux serialization issues
+  timestamp: Date
 }
 
 // Filter and Query Types

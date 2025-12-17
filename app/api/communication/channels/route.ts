@@ -32,11 +32,7 @@ export async function GET(request: NextRequest) {
         const channels = await prisma.channel.findMany({
             where,
             include: {
-                channel_members: {
-                    include: {
-                        _count: true,
-                    },
-                },
+                channel_members: true,
                 messages: {
                     orderBy: { created_at: 'desc' },
                     take: 1,
@@ -51,7 +47,16 @@ export async function GET(request: NextRequest) {
             orderBy: { updated_at: 'desc' },
         })
 
-        return NextResponse.json({ channels })
+        // Import User model dynamically to avoid circular dependencies
+        const { default: User } = await import('@/models/User')
+        const { enrichChannelWithUserData } = await import('@/lib/db-utils')
+        
+        // Enrich channels with user data from MongoDB
+        const enrichedChannels = await Promise.all(
+            channels.map(channel => enrichChannelWithUserData(channel, User))
+        )
+
+        return NextResponse.json({ channels: enrichedChannels })
     } catch (error) {
         console.error('Error fetching channels:', error)
         return NextResponse.json(
@@ -114,7 +119,12 @@ export async function POST(request: NextRequest) {
             },
         })
 
-        return NextResponse.json({ channel: completeChannel })
+        // Enrich channel with user data from MongoDB
+        const { default: User } = await import('@/models/User')
+        const { enrichChannelWithUserData } = await import('@/lib/db-utils')
+        const enrichedChannel = await enrichChannelWithUserData(completeChannel, User)
+
+        return NextResponse.json({ channel: enrichedChannel })
     } catch (error) {
         console.error('Error creating channel:', error)
         return NextResponse.json(
