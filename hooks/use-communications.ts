@@ -45,11 +45,14 @@ import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager } from '@/lib/realtime-manager'
 import { enrichChannelWithUserData } from '@/lib/communication/utils'
 
+// Global flag to prevent multiple channel fetches across component remounts
+let globalChannelsFetched = false
+
 export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
-  const realtimeManager = getRealtimeManager()
+  const realtimeManager = useMemo(() => getRealtimeManager(), [])
   const hasInitialized = useRef(false)
   const hasUsersInitialized = useRef(false)
   
@@ -79,67 +82,6 @@ export function useCommunications() {
     notifications
   } = useAppSelector((state) => state.communications)
 
-  // Initialize realtime manager with event handlers
-  useEffect(() => {
-    console.log('🔧 Updating realtime handlers')
-    realtimeManager.updateHandlers({
-      onNewMessage: (message) => {
-        console.log('📩 onNewMessage handler called with:', message)
-        dispatch(addMessage({ channelId: message.channel_id, message }))
-      },
-      onMessageUpdate: (message) => {
-        console.log('📝 onMessageUpdate handler called')
-        dispatch(updateMessage({
-          channelId: message.channel_id,
-          messageId: message.id,
-          updates: message
-        }))
-      },
-      onMessageDelete: (messageId) => {
-        // Handle message deletion
-        console.log('🗑️ Message deleted:', messageId)
-      },
-      onUserJoined: (member) => {
-        // Handle user joined
-        console.log('👋 User joined:', member)
-      },
-      onUserLeft: (memberId) => {
-        // Handle user left
-        console.log('👋 User left:', memberId)
-      },
-      onUserOnline: (userId) => {
-        // Update online users list
-        const updatedUsers = [...onlineUsers]
-        const userIndex = updatedUsers.findIndex(u => u.mongo_member_id === userId)
-        if (userIndex !== -1) {
-          updatedUsers[userIndex].isOnline = true
-        }
-        dispatch(updateOnlineUsers(updatedUsers))
-      },
-      onUserOffline: (userId) => {
-        // Update online users list
-        const updatedUsers = [...onlineUsers]
-        const userIndex = updatedUsers.findIndex(u => u.mongo_member_id === userId)
-        if (userIndex !== -1) {
-          updatedUsers[userIndex].isOnline = false
-        }
-        dispatch(updateOnlineUsers(updatedUsers))
-      },
-      onTypingStart: (userId) => {
-        dispatch(setTyping({
-          channelId: activeChannelId || '',
-          userId,
-          userName: 'Unknown User', // Will be resolved later
-          timestamp: new Date().toISOString()
-        }))
-      },
-      onTypingStop: (userId) => {
-        dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
-      }
-    })
-    console.log('✅ Realtime handlers updated')
-  }, [dispatch, realtimeManager, activeChannelId])
-
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
     id?: string
@@ -152,11 +94,83 @@ export function useCommunications() {
   }
   
   const sessionUser = session?.user as ExtendedSessionUser | undefined
+  const sessionUserId = useMemo(() => (session?.user as ExtendedSessionUser)?.id, [session?.user])
+
+  // Memoized event handlers for realtime manager
+  const onNewMessage = useCallback((message: any) => {
+    console.log('📩 onNewMessage handler called with:', message)
+    dispatch(addMessage({ channelId: message.channel_id, message }))
+  }, [dispatch])
+
+  const onMessageUpdate = useCallback((message: any) => {
+    console.log('📝 onMessageUpdate handler called')
+    dispatch(updateMessage({
+      channelId: message.channel_id,
+      messageId: message.id,
+      updates: message
+    }))
+  }, [dispatch])
+
+  const onMessageDelete = useCallback((messageId: any) => {
+    console.log('🗑️ Message deleted:', messageId)
+  }, [])
+
+  const onUserJoined = useCallback((member: any) => {
+    console.log('👋 User joined:', member)
+  }, [])
+
+  const onUserLeft = useCallback((memberId: any) => {
+    console.log('👋 User left:', memberId)
+  }, [])
+
+  const onUserOnline = useCallback((userId: any) => {
+    const updatedUsers = onlineUsers.map(u =>
+      u.mongo_member_id === userId ? { ...u, isOnline: true } : u
+    )
+    dispatch(updateOnlineUsers(updatedUsers))
+  }, [dispatch, onlineUsers])
+
+  const onUserOffline = useCallback((userId: any) => {
+    const updatedUsers = onlineUsers.map(u =>
+      u.mongo_member_id === userId ? { ...u, isOnline: false } : u
+    )
+    dispatch(updateOnlineUsers(updatedUsers))
+  }, [dispatch, onlineUsers])
+
+  const onTypingStart = useCallback((userId: any) => {
+    dispatch(setTyping({
+      channelId: activeChannelId || '',
+      userId,
+      userName: 'Unknown User',
+      timestamp: new Date().toISOString()
+    }))
+  }, [dispatch, activeChannelId])
+
+  const onTypingStop = useCallback((userId: any) => {
+    dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
+  }, [dispatch, activeChannelId])
+
+  // Initialize realtime manager with event handlers
+  useEffect(() => {
+    console.log('🔧 Updating realtime handlers')
+    realtimeManager.updateHandlers({
+      onNewMessage,
+      onMessageUpdate,
+      onMessageDelete,
+      onUserJoined,
+      onUserLeft,
+      onUserOnline,
+      onUserOffline,
+      onTypingStart,
+      onTypingStop
+    })
+    console.log('✅ Realtime handlers updated')
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop])
 
   // Fetch all users on mount for user directory
   useEffect(() => {
     const fetchAllUsers = async () => {
-      if (sessionUser?.id && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
+      if (sessionUserId && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
         hasUsersInitialized.current = true
         try {
           setUsersLoading(true)
@@ -171,16 +185,18 @@ export function useCommunications() {
     }
     
     fetchAllUsers()
-  }, [sessionUser?.id])
+  }, [sessionUserId])
 
   // Fetch channels on mount - but only if not already initialized globally
   useEffect(() => {
-    if (!hasInitialized.current && sessionUser?.id) {
-      hasInitialized.current = true
+    console.log('🔄 Channels fetch useEffect running, globalChannelsFetched:', globalChannelsFetched, 'sessionUserId:', sessionUserId, 'loading:', loading)
+    if (!globalChannelsFetched && sessionUserId && !loading) {
+      globalChannelsFetched = true
+      console.log('🚀 Fetching channels')
       fetchChannels()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionUser?.id]) // Re-run if channelsInitialized changes
+  }, [sessionUserId]) // Only depend on sessionUserId
 
   // Subscribe to active channel
   useEffect(() => {
@@ -200,6 +216,7 @@ export function useCommunications() {
 
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
+    console.log('🔄 fetchChannels called with params:', params)
     try {
       dispatch(setLoading(true))
       // Build query string
@@ -212,7 +229,9 @@ export function useCommunications() {
       const url = `/api/communication/channels${queryString ? `?${queryString}` : ''}`
       
       const response = await apiRequest(url)
-      const enrichedChannels = response.channels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
+      console.log('Raw response from API:', response)
+      const enrichedChannels = response.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
+      console.log('Enriched channels:', enrichedChannels)
       dispatch(setChannels(enrichedChannels))
       return enrichedChannels
     } catch (error) {
