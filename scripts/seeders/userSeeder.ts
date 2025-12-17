@@ -28,6 +28,16 @@ export const userSeeds: IUserSeed[] = [
     status: 'active',
     twoFactorEnabled: false
   },
+  {
+    name: 'Super Administrator Test',
+    email: 'adminali@gmail.com',
+    password: 'AdminAli@123',
+    departmentName: 'System',
+    roleName: 'super_admin',
+    phone: '1234567801',
+    status: 'active',
+    twoFactorEnabled: false
+  },
   // Super Admin
   {
     name: 'Super Administrator Depllc',
@@ -36,7 +46,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'System',
     roleName: 'super_admin',
     phone: '1234567801',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
 
 
@@ -48,7 +59,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'HR',
     roleName: 'hr_manager',
     phone: '1234567803',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
 
   // Department Leads
@@ -59,7 +71,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Web Development',
     roleName: 'team_lead',
     phone: '1234567804',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
   {
     name: 'Anna',
@@ -68,7 +81,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Graphics',
     roleName: 'team_lead',
     phone: '1234567805',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
   {
     name: 'David',
@@ -77,7 +91,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'SEO',
     roleName: 'team_lead',
     phone: '1234567806',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
   {
     name: 'Robert',
@@ -86,7 +101,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Sales',
     roleName: 'team_lead',
     phone: '1234567807',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
   {
     name: 'Emma',
@@ -95,7 +111,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Support',
     roleName: 'team_lead',
     phone: '1234567808',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
 
   // Team members
@@ -106,16 +123,18 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Web Development',
     roleName: 'team_member',
     phone: '1234567809',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
   {
-    name: 'Jane',
-    email: 'jane.graphicslead@company.com',
-    password: 'TeamLead@123',
+    name: 'Testing user',
+    email: 'bc230202687maf@vu.edu.pk',
+    password: 'Test@123',
     departmentName: 'Graphics',
-    roleName: 'team_member',
-    phone: '1234567810',
-    status: 'active'
+    roleName: 'super_admin',
+    phone: '1234567801',
+    status: 'active',
+    twoFactorEnabled: false
   },
   {
     name: 'Mark',
@@ -124,7 +143,8 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Social Media',
     roleName: 'team_member',
     phone: '1234567811',
-    status: 'active'
+    status: 'active',
+    twoFactorEnabled: true
   },
 
   // Clients
@@ -137,7 +157,8 @@ export const userSeeds: IUserSeed[] = [
     phone: '1234567829',
     status: 'active',
     company: 'ABC Company',
-    website: 'https://www.abccompany.com'
+    website: 'https://www.abccompany.com',
+    twoFactorEnabled: false
   },
   {
     name: 'XYZ Corporation',
@@ -148,7 +169,8 @@ export const userSeeds: IUserSeed[] = [
     phone: '1234567830',
     status: 'active',
     company: 'XYZ Corporation',
-    website: 'https://www.xyzcorp.com'
+    website: 'https://www.xyzcorp.com',
+    twoFactorEnabled: false
   }
 ]
 
@@ -160,7 +182,7 @@ async function seedUsers() {
     // Get existing users to check for duplicates
     const existingUsers = await User.find({}).select('email').lean()
     const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()))
-    
+
     console.log(`📋 Found ${existingUsers.length} existing users in database`)
 
     // Get all roles (both system and department roles)
@@ -205,7 +227,7 @@ async function seedUsers() {
             }
           }
         }
-        
+
         return {
           role: systemRole,
           department: assignedDepartment
@@ -224,8 +246,8 @@ async function seedUsers() {
       }
 
       // For department roles, find by role name and department
-      const departmentRole = departmentRoles.find(role => 
-        role.name === targetRoleName && 
+      const departmentRole = departmentRoles.find(role =>
+        role.name === targetRoleName &&
         role.department.toString() === departmentDoc._id.toString()
       )
 
@@ -237,8 +259,8 @@ async function seedUsers() {
       }
 
       // Fallback: try to find a client role for this department
-      const clientRole = departmentRoles.find(role => 
-        role.name === 'client' && 
+      const clientRole = departmentRoles.find(role =>
+        role.name === 'client' &&
         role.department.toString() === departmentDoc._id.toString()
       )
 
@@ -279,7 +301,7 @@ async function seedUsers() {
         status: 'active',
         emailVerified: true,
         phoneVerified: false,
-        twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
+        twoFactorEnabled: userData.twoFactorEnabled,
         isClient: isClientUser,
         // Client-specific fields
         ...(isClientUser && {
@@ -305,18 +327,18 @@ async function seedUsers() {
 
     for (const userData of usersToCreate) {
       const emailLower = userData.email.toLowerCase()
-      
+
       if (existingEmails.has(emailLower)) {
         // Update existing user
         const existingUser = await User.findOne({ email: emailLower })
         if (existingUser) {
           // Only update if there are meaningful changes
-          const hasChanges = 
+          const hasChanges =
             existingUser.name !== userData.name ||
             existingUser.role?.toString() !== userData.role.toString() ||
             existingUser.department?.toString() !== userData.department?.toString() ||
             existingUser.status !== userData.status ||
-            existingUser.twoFactorEnabled !== (userData.email === 'superadmin@gmail.com' ? false : true)
+            existingUser.twoFactorEnabled !== userData.twoFactorEnabled
 
           if (hasChanges) {
             await User.findByIdAndUpdate(existingUser._id, {
@@ -327,7 +349,7 @@ async function seedUsers() {
               status: userData.status,
               emailVerified: userData.emailVerified,
               phoneVerified: userData.phoneVerified,
-              twoFactorEnabled: userData.email === 'superadmin@gmail.com' ? false : true,
+              twoFactorEnabled: userData.twoFactorEnabled,
               permissions: userData.permissions,
               'metadata.updatedBy': 'system_seeder',
               'metadata.tags': userData.metadata.tags
@@ -408,7 +430,7 @@ async function seedUsers() {
     // Verify users were actually saved to database
     const verifyCount = await User.countDocuments()
     console.log(`\n🔍 Verification: ${verifyCount} users in database`)
-    
+
     if (verifyCount !== createdUsers.length) {
       console.warn(`⚠️  Warning: Expected ${createdUsers.length} users but found ${verifyCount} in database`)
     }

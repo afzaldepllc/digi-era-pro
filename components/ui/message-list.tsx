@@ -300,7 +300,7 @@ export function MessageList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full", className)}>
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-1">
+        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full max-h-[60vh]">
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
