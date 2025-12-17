@@ -139,6 +139,8 @@ export const ChannelList = memo(function ChannelList({
     const subtitle = getChannelSubtitle(channel)
     const hasUnread = (channel.unreadCount || 0) > 0
 
+    console.log("channel  info 142",channel);
+
     return (
       <div
         onClick={() => onChannelSelect(channel.id)}
