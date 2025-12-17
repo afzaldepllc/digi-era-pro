@@ -3,13 +3,14 @@
 ## Current Issue
 Messages are not appearing in real-time. Users need to refresh to see new messages, even the sender needs to refresh.
 
-## ⚠️ CRITICAL: Most Likely Issue - Supabase Authentication
+## ⚠️ CRITICAL: Setup Required - Disable RLS in Supabase
 
-**The most common reason Realtime doesn't work is missing Supabase authentication!**
+**Security Model:** This application uses API-level authentication with MongoDB. Supabase is only accessible via API keys (server-side), not direct client access. Row Level Security (RLS) must be DISABLED for Realtime to work.
 
-Supabase Realtime with Row Level Security (RLS) requires an authenticated Supabase session. We use Next-Auth for authentication, but this doesn't automatically authenticate with Supabase.
-
-**Quick Fix:** Run the SQL script at `scripts/setup-supabase-realtime.sql` in your Supabase SQL Editor to enable Realtime and set up proper policies.
+**Quick Fix:** Run the SQL script at `scripts/setup-supabase-realtime.sql` in your Supabase SQL Editor to:
+1. Enable Realtime on tables
+2. Disable RLS (security handled by API endpoints)
+3. Verify configuration
 
 ## Recent Changes
 1. ✅ Added duplicate message prevention in Redux `addMessage` action
@@ -68,40 +69,24 @@ For Postgres Changes to work, you need:
 - Row Level Security (RLS) policies that allow SELECT on the table
 - The user must have proper authentication
 
-### 3. Check RLS Policies
-Go to: Database → Policies
+### 3. Verify RLS is DISABLED
+Go to: Database → Tables → messages
 
-For the `messages` table, you should have a policy like:
-```sql
--- Allow all users to SELECT messages they have access to
-CREATE POLICY "Allow SELECT on messages for channel members"
-ON messages FOR SELECT
-USING (
-  channel_id IN (
-    SELECT channel_id 
-    FROM channel_members 
-    WHERE mongo_member_id = current_setting('request.jwt.claim.sub', true)
-  )
-);
-```
+**RLS MUST BE DISABLED for this setup to work.**
 
-**Important:** Postgres Changes respect RLS policies. If users can't SELECT the row, they won't receive real-time updates for it.
+Check that "Enable Row Level Security" toggle is OFF for:
+- messages
+- channels
+- channel_members
+- reactions
 
-### 4. Check Supabase Client Auth
-Verify your Supabase client is authenticated:
+If RLS is enabled, Realtime won't work without authentication policies. Since we handle all security in the API layer, RLS should be disabled.
 
-Add this to your code temporarily:
-```typescript
-// In use-communications.ts, add to useEffect
-useEffect(() => {
-  const checkAuth = async () => {
-    const { data, error } = await supabase.auth.getSession()
-    console.log('🔐 Supabase auth session:', data)
-    console.log('🔐 Supabase auth error:', error)
-  }
-  checkAuth()
-}, [])
-```
+### 4. Verify Supabase Configuration
+Since we're using API-level security (no Supabase auth), ensure:
+- RLS is DISABLED on all communication tables
+- Realtime is ENABLED in dashboard
+- NEXT_PUBLIC_SUPABASE_ANON_KEY is set in your .env file
 
 ### 5. Test Direct Database Insert
 Open Supabase SQL Editor and run:
@@ -136,15 +121,17 @@ Watch your browser console - you should see the realtime event logs.
 **Cause:** Network issues or Supabase service down
 **Fix:** Check Supabase status, check network connectivity
 
-### Issue 4: "RLS Policy blocking updates"
+### Issue 4: "RLS is blocking Realtime"
 **Symptoms:** Can INSERT but no real-time updates
-**Cause:** RLS policy blocks SELECT
-**Fix:** Add proper SELECT policy (see #3 above)
+**Cause:** Row Level Security is enabled
+**Fix:** Run the SQL script to disable RLS (see setup section)
 
 ### Issue 5: "Optimistic update works, but no realtime for others"
 **Symptoms:** Sender sees message, others don't
-**Cause:** Probably Realtime not enabled
-**Fix:** Enable Realtime in dashboard
+**Cause:** Either Realtime not enabled OR RLS is still enabled
+**Fix:** 
+1. Enable Realtime in dashboard
+2. Disable RLS via SQL script
 
 ## Next Steps
 
@@ -163,8 +150,9 @@ Watch your browser console - you should see the realtime event logs.
 - [ ] See "✅ Calling onNewMessage handler"?
 - [ ] See "📩 onNewMessage handler called with: [data]"?
 - [ ] See "Message already exists, skipping duplicate" for sender's optimistic update?
-- [ ] Realtime enabled in Supabase Dashboard for messages table?
-- [ ] RLS policy allows SELECT on messages?
+- [ ] Realtime ENABLED in Supabase Dashboard for messages table?
+- [ ] RLS DISABLED on messages, channels, channel_members, reactions tables?
+- [ ] Ran the SQL script at scripts/setup-supabase-realtime.sql?
 
 ## Contact Support
 

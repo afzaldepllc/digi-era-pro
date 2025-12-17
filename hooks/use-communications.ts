@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import { useSession } from 'next-auth/react'
 import type { User } from '@/types'
-import { useSupabaseAuth } from './use-supabase-auth'
 import {
   setActiveChannel,
   clearActiveChannel,
@@ -48,10 +47,6 @@ export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
-  
-  // Sync Next-Auth with Supabase auth for Realtime
-  useSupabaseAuth()
-  
   const realtimeManager = getRealtimeManager()
   const hasInitialized = useRef(false)
   
