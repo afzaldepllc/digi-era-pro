@@ -31,16 +31,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { UserDirectory } from "@/components/ui/user-directory"
 import { handleAPIError } from "@/lib/utils/api-client"
+import { CreateChannelModal } from "@/components/communication/create-channel-modal"
 
 export default function CommunicationsPage() {
   const router = useRouter()
@@ -346,48 +338,20 @@ export default function CommunicationsPage() {
         </div>
       </div>
 
-      {/* Create Channel Dialog */}
-      <Dialog open={isCreateChannelOpen} onOpenChange={setIsCreateChannelOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle>Start a Conversation</DialogTitle>
-            <DialogDescription>
-              Choose a user to start a direct message or create a new channel
-            </DialogDescription>
-          </DialogHeader>
-
-          <UserDirectory
-            onStartDM={async (userId: string) => {
-              try {
-                const channel = await createChannel({
-                  type: 'dm',
-                  participants: [userId],
-                  is_private: true
-                })
-
-                if (channel) {
-                  setIsCreateChannelOpen(false)
-                  selectChannel(channel.id)
-                  // Update URL
-                  const url = new URL(window.location.href)
-                  url.searchParams.set('channel', channel.id)
-                  window.history.replaceState({}, '', url.toString())
-                }
-              } catch (error) {
-                console.error('Failed to create DM:', error)
-                setError('Failed to start conversation. Please try again.')
-              }
-            }}
-            className="max-h-96"
-          />
-
-          <div className="flex justify-end pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsCreateChannelOpen(false)}>
-              Cancel
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Create Channel Modal */}
+      <CreateChannelModal
+        isOpen={isCreateChannelOpen}
+        onClose={() => setIsCreateChannelOpen(false)}
+        onChannelCreated={(channel) => {
+          if (channel) {
+            selectChannel(channel.id)
+            // Update URL
+            const url = new URL(window.location.href)
+            url.searchParams.set('channel', channel.id)
+            window.history.replaceState({}, '', url.toString())
+          }
+        }}
+      />
     </div>
   )
 }

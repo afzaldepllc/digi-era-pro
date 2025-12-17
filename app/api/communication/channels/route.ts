@@ -32,11 +32,7 @@ export async function GET(request: NextRequest) {
         const channels = await prisma.channel.findMany({
             where,
             include: {
-                channel_members: {
-                    include: {
-                        _count: true,
-                    },
-                },
+                channel_members: true,
                 messages: {
                     orderBy: { created_at: 'desc' },
                     take: 1,
@@ -51,7 +47,16 @@ export async function GET(request: NextRequest) {
             orderBy: { updated_at: 'desc' },
         })
 
-        return NextResponse.json({ channels })
+        // Import User model dynamically to avoid circular dependencies
+        const { default: User } = await import('@/models/User')
+        const { enrichChannelWithUserData } = await import('@/lib/db-utils')
+        
+        // Enrich channels with user data from MongoDB
+        const enrichedChannels = await Promise.all(
+            channels.map(channel => enrichChannelWithUserData(channel, User))
+        )
+
+        return NextResponse.json({ channels: enrichedChannels })
     } catch (error) {
         console.error('Error fetching channels:', error)
         return NextResponse.json(
@@ -64,57 +69,106 @@ export async function GET(request: NextRequest) {
 // POST /api/communication/channels - Create a new channel
 export async function POST(request: NextRequest) {
     try {
-            const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+        const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'create')
 
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
         const body = await request.json()
-        const { type, name, participants, mongo_department_id, mongo_project_id, is_private } = body
+        const {
+            type,
+            name,
+            participants,
+            mongo_department_id,
+            mongo_project_id,
+            is_private,
+            category,
+            categories,
+            client_id
+        } = body
 
-        if (!type || !participants || participants.length === 0) {
+        // Validate required fields based on type
+        if (!type) {
             return NextResponse.json(
-                { error: 'Type and participants are required' },
+                { error: 'Channel type is required' },
                 { status: 400 }
             )
         }
 
-        // Create the channel
-        const channel = await channelOperations.create({
+        // Import channel helpers
+        const {
+            getChannelMembers,
+            generateChannelName
+        } = await import('@/lib/communication/channel-helpers')
+
+        // Get channel members based on type
+        const memberIds = await getChannelMembers({
             type,
-            name: name || undefined,
-            mongo_department_id,
-            mongo_project_id,
-            mongo_creator_id: session.user.id,
-            is_private: is_private || false,
+            creator_id: session.user.id,
+            name,
+            department_id: mongo_department_id,
+            project_id: mongo_project_id,
+            participants,
+            category,
+            categories,
+            client_id,
+            is_private
         })
 
-        // Add creator as member
-        await channelOperations.addMember(channel.id, session.user.id, 'admin')
-
-        // Add other participants
-        for (const participantId of participants) {
-            if (participantId !== session.user.id) {
-                await channelOperations.addMember(channel.id, participantId, 'member')
-            }
+        if (memberIds.length === 0) {
+            return NextResponse.json(
+                { error: 'No members found for this channel' },
+                { status: 400 }
+            )
         }
 
-        // Update member count
-        await prisma.channel.update({
-            where: { id: channel.id },
-            data: { member_count: participants.length },
+        // Generate channel name
+        const channelName = await generateChannelName({
+            type,
+            creator_id: session.user.id,
+            name,
+            department_id: mongo_department_id,
+            project_id: mongo_project_id,
+            category,
+            categories,
+            client_id
         })
 
-        // Fetch the complete channel with members
-        const completeChannel = await prisma.channel.findUnique({
-            where: { id: channel.id },
+        // Create the channel with categories field
+        const channel = await prisma.channel.create({
+            data: {
+                type,
+                name: channelName,
+                mongo_department_id,
+                mongo_project_id,
+                mongo_creator_id: session.user.id,
+                is_private: is_private || false,
+                member_count: memberIds.length,
+                categories: categories || [], // Store categories for multi-category channels
+                channel_members: {
+                    create: memberIds.map((memberId) => ({
+                        mongo_member_id: memberId,
+                        role: memberId === session.user.id ? 'owner' : 'member',
+                        is_online: false,
+                    })),
+                },
+            },
             include: {
                 channel_members: true,
+                messages: {
+                    orderBy: { created_at: 'desc' },
+                    take: 1,
+                },
             },
         })
 
-        return NextResponse.json({ channel: completeChannel })
+        // Enrich with user data
+        const { enrichChannelWithUserData } = await import('@/lib/db-utils')
+        const { default: User } = await import('@/models/User')
+        const enrichedChannel = await enrichChannelWithUserData(channel, User)
+
+        return NextResponse.json({ channel: enrichedChannel }, { status: 201 })
     } catch (error) {
         console.error('Error creating channel:', error)
         return NextResponse.json(
