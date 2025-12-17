@@ -81,7 +81,7 @@ export function MessageNotification({
 
   const getChannelDisplayName = (channel: any, currentUserId: string) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find((p: any) => p.mongo_member_id !== currentUserId)
+      const otherParticipant = channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name
@@ -194,10 +194,10 @@ export function MessageNotification({
                     onClick={() => handleNotificationClick(channel.id)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
-                    {channel.type === 'dm' && channel.participants.length > 0 ? (
+                    {channel.type === 'dm' && channel.channel_members.length > 0 ? (
                       <Avatar className="h-8 w-8 mt-0.5">
                         <AvatarImage 
-                          src={channel.participants.find((p) => p.mongo_member_id !== 'user1')?.avatar} 
+                          src={channel.channel_members.find((p) => p.mongo_member_id !== 'user1')?.avatar} 
                           alt={displayName} 
                         />
                         <AvatarFallback className="text-xs">

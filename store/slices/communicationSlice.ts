@@ -170,12 +170,12 @@ const communicationSlice = createSlice({
     updateOnlineUsers: (state, action: PayloadAction<IParticipant[]>) => {
       state.onlineUsers = action.payload
       
-      // Update participants online status in channels
+      // Update channel_members online status in channels
       state.channels = state.channels.map(channel => ({
         ...channel,
-        participants: channel.participants?.map(participant => ({
-          ...participant,
-          isOnline: action.payload.some(user => user.mongo_member_id === participant.mongo_member_id && user.isOnline)
+        channel_members: channel.channel_members?.map(member => ({
+          ...member,
+          isOnline: action.payload.some(user => user.mongo_member_id === member.mongo_member_id && user.isOnline)
         })) || []
       }))
     },

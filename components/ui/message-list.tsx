@@ -42,7 +42,7 @@ interface MessageListProps {
   onDelete?: (messageId: string) => void
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
-  participants?: IParticipant[] // For showing who read
+  channel_members?: IParticipant[] // For showing who read
 }
 
 export function MessageList({
@@ -55,7 +55,7 @@ export function MessageList({
   onDelete,
   className,
   readReceipts = [],
-  participants = []
+  channel_members = []
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -164,7 +164,7 @@ export function MessageList({
     const isReadByCurrentUser = receipts.some(r => r.mongo_user_id === currentUserId)
 
     // For sender, show who has read
-    const readers = participants.filter(p =>
+    const readers = channel_members.filter(p =>
       receipts.some(r => r.mongo_user_id === p.mongo_member_id)
     )
 
@@ -300,9 +300,9 @@ export function MessageList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full", className)}>
         {/* Messages */}
-        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full max-h-[60vh]">
+        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full min-h-[60vh]">
           {messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground h-full">
               <div className="text-center">
                 <p>No messages yet</p>
                 <p className="text-sm mt-1">Start the conversation!</p>

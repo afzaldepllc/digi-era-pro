@@ -67,7 +67,7 @@ export const baseChannelSchema = z.object({
 
 // Create channel schema
 export const createChannelSchema = baseChannelSchema.extend({
-  participants: z.array(z.string()).optional(),
+  channel_members: z.array(z.string()).optional(),
   category: z.enum(CHANNEL_CONSTANTS.DEPARTMENT_CATEGORY.VALUES).optional(),
 })
 

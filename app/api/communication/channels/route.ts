@@ -7,8 +7,8 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { enrichChannelWithUserData } from '@/lib/communication/utils'
 import { default as User } from '@/models/User'
+import { executeGenericDbQuery } from '@/lib/mongodb'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
-import { executeGenericDbQuery } from "@/lib/mongodb"
 
 
 // Helper to create consistent error responses
@@ -132,27 +132,63 @@ export async function POST(request: NextRequest) {
       name: validatedData.name,
       department_id: validatedData.mongo_department_id,
       project_id: validatedData.mongo_project_id,
-      participants: validatedData.participants,
+      channel_members: validatedData.channel_members,
       category: validatedData.category,
       categories: validatedData.categories,
       client_id: validatedData.client_id,
       is_private: validatedData.is_private
     })
 
-    if (memberIds.length === 0) {
-      return createErrorResponse('Cannot create channel without members', 400)
+    // For DM channels, check if one already exists between these users
+    if (validatedData.type === 'dm' && memberIds.length === 2) {
+      const sortedMembers = memberIds.sort()
+      const existingDM = await prisma.channels.findFirst({
+        where: {
+          type: 'dm',
+          channel_members: {
+            every: {
+              mongo_member_id: { in: sortedMembers }
+            }
+          },
+          AND: [
+            { channel_members: { some: { mongo_member_id: sortedMembers[0] } } },
+            { channel_members: { some: { mongo_member_id: sortedMembers[1] } } }
+          ]
+        },
+        include: {
+          channel_members: true,
+        },
+      })
+
+      if (existingDM) {
+        // Fetch all users for enrichment
+        const allUsers = await executeGenericDbQuery(async () => {
+          return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
+        })
+
+        // Enrich existing channel with user data
+        const enrichedChannel = await enrichChannelWithUserData(existingDM, allUsers)
+
+        return NextResponse.json({
+          success: true,
+          data: enrichedChannel,
+          message: 'DM channel already exists'
+        })
+      }
     }
 
     // Generate channel name if not provided
     const channelName = validatedData.name || await generateChannelName({
       type: validatedData.type,
       creator_id: session.user.id,
+      name: validatedData.name,
       department_id: validatedData.mongo_department_id,
       project_id: validatedData.mongo_project_id,
-      participants: validatedData.participants,
+      channel_members: validatedData.channel_members,
       category: validatedData.category,
       categories: validatedData.categories,
-      client_id: validatedData.client_id
+      client_id: validatedData.client_id,
+      is_private: validatedData.is_private
     })
 
     // Create channel

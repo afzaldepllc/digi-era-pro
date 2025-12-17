@@ -21,7 +21,7 @@ interface ChannelCreationParams {
   project_id?: string
   
   // For DM/group channels
-  participants?: string[]
+  channel_members?: string[]
   
   // For client support
   client_id?: string
@@ -162,9 +162,9 @@ export async function getChannelMembers(params: ChannelCreationParams): Promise<
   switch (params.type) {
     case 'dm':
     case 'group':
-      // Direct participants
-      if (params.participants) {
-        params.participants.forEach(p => members.add(p))
+      // Direct channel_members
+      if (params.channel_members) {
+        params.channel_members.forEach(p => members.add(p))
       }
       break
       

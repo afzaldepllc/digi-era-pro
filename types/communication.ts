@@ -34,20 +34,28 @@ export interface IChannel {
   // UI helper fields (not in schema)
   last_message?: ICommunication
   unreadCount?: number
-  participants: IChannelMember[] // Required for UI
+  channel_members: IChannelMember[] // Enriched channel members with user data
 }
 
 // Channel members table interface
-export interface IChannelMember extends IParticipant {
+export interface IChannelMember {
+  // Prisma fields
+  id: string // Supabase UUID
   channel_id: string // Supabase channel UUID
   mongo_member_id: string // MongoDB user ID
-  role: 'admin' | 'member' // Channel role
-  last_read_at: string // Last read timestamp
-  is_muted: boolean // Mute status
-  notification_level: 'all' | 'mentions' | 'none' // Notification preference
+  channelRole: 'admin' | 'member' // Channel role (renamed from role)
   joined_at: string // Join timestamp
-  mongo_invited_by_id?: string // Who invited this member
-  // UI helper fields (not in schema) - inherited from IParticipant
+  last_seen_at?: string // Last seen timestamp
+  is_online: boolean // Online status
+  notifications_enabled: boolean // Notification preference
+  
+  // Enriched user fields
+  userRole: string // User role from MongoDB
+  name: string // User name
+  email: string // User email
+  avatar?: string // User avatar
+  userType: 'User' | 'Client' // User type
+  isOnline: boolean // Online status (alias for is_online)
 }
 
 export interface IParticipant {
@@ -103,7 +111,7 @@ export interface CreateMessageData {
 export interface CreateChannelData {
   name?: string
   type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Updated to match schema
-  participants: string[] // MongoDB User IDs
+  channel_members: string[] // MongoDB User IDs
   mongo_project_id?: string
   mongo_department_id?: string
   is_private?: boolean // Changed from 'isInternal'

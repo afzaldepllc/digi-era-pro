@@ -77,22 +77,24 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
             ))}
           </div>
         ) : (
-          <div className="p-2 space-y-4">
+          <div className="pt-2 pr-0 pl-0 space-y-2">
             {/* Channels Section */}
             <div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto font-medium text-sm"
-                onClick={() => setShowChannels(!showChannels)}
-              >
-                {showChannels ? (
-                  <ChevronDown className="h-4 w-4 mr-2" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 mr-2" />
-                )}
-                <Hash className="h-4 w-4 mr-2" />
-                Channels ({channels.length})
-              </Button>
+              <div className="px-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start p-2 h-auto font-medium text-sm"
+                  onClick={() => setShowChannels(!showChannels)}
+                >
+                  {showChannels ? (
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 mr-2" />
+                  )}
+                  <Hash className="h-4 w-4 mr-2" />
+                  Channels ({channels.length})
+                </Button>
+              </div>
 
               {showChannels && (
                 <div className="mt-2">
@@ -112,19 +114,21 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
 
             {/* Users Section */}
             <div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto font-medium text-sm"
-                onClick={() => setShowUsers(!showUsers)}
-              >
-                {showUsers ? (
-                  <ChevronDown className="h-4 w-4 mr-2" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 mr-2" />
-                )}
-                <Users className="h-4 w-4 mr-2" />
-                Direct Messages
-              </Button>
+              <div className="px-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start p-2 h-auto font-medium text-sm"
+                  onClick={() => setShowUsers(!showUsers)}
+                >
+                  {showUsers ? (
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 mr-2" />
+                  )}
+                  <Users className="h-4 w-4 mr-2" />
+                  Direct Messages
+                </Button>
+              </div>
 
               <div className={cn("mt-2", !showUsers && "hidden")}>
                 <UserDirectory

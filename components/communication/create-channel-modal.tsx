@@ -90,7 +90,7 @@ export function CreateChannelModal({
             toast({ title: 'Error', description: 'Please select at least one member', variant: 'destructive' })
             return
           }
-          payload.participants = selectedMembers
+          payload.channel_members = selectedMembers
           break
 
         case 'department':

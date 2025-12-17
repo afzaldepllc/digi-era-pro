@@ -74,7 +74,7 @@ export const ChannelList = memo(function ChannelList({
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
       // For DM, show the other participant's name
-      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
+      const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name || 'Unnamed Channel'
@@ -82,24 +82,24 @@ export const ChannelList = memo(function ChannelList({
 
   const getChannelSubtitle = (channel: IChannel) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
-      return otherParticipant?.role || otherParticipant?.userType || ''
+      const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
+      return otherParticipant?.userRole || otherParticipant?.userType || ''
     }
     
     if (channel.type === 'project') {
-      return `${channel.participants.length} members`
+      return `${channel.channel_members.length} members`
     }
     
     if (channel.type === 'client-support') {
       return 'Client Support'
     }
     
-    return `${channel.participants.length} members`
+    return `${channel.channel_members.length} members`
   }
 
   const getChannelAvatar = (channel: IChannel): IParticipant | null => {
     if (channel.type === 'dm') {
-      return channel.participants.find(p => p.mongo_member_id !== currentUserId) as IParticipant || null
+      return channel.channel_members.find(p => p.mongo_member_id !== currentUserId) as IParticipant || null
     }
     return null
   }
@@ -114,12 +114,12 @@ export const ChannelList = memo(function ChannelList({
       const query = searchQuery.toLowerCase()
       const channelName = getChannelDisplayName(channel).toLowerCase()
       const matchesName = channelName.includes(query)
-      const matchesParticipants = channel.participants.some(p => 
+      const matchesChannelMembers = channel.channel_members.some(p => 
         p.name.toLowerCase().includes(query)
       )
       const matchesLastMessage = channel.last_message?.content.toLowerCase().includes(query)
       
-      if (!matchesName && !matchesParticipants && !matchesLastMessage) {
+      if (!matchesName && !matchesChannelMembers && !matchesLastMessage) {
         return false
       }
     }
@@ -244,8 +244,8 @@ export const ChannelList = memo(function ChannelList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-gradient-to-b from-card to-card/95 border-r border-border/50 shadow-sm overflow-hidden", className)}>
         {/* Header */}
-        <div className="p-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        <div className="p-2 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary" />
               <h2 className="font-semibold text-lg tracking-tight">Messages</h2>

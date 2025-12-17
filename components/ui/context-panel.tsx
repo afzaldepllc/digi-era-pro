@@ -115,7 +115,7 @@ export function ContextPanel({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-4 space-y-6">
+          <div className="p-2 space-y-4">
             {/* Channel Overview */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ export function ContextPanel({
                 
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Members:</span>
-                  <span>{channel.participants.length}</span>
+                  <span>{channel.channel_members.length}</span>
                 </div>
                 
                 {!channel.is_private && (
@@ -243,11 +243,11 @@ export function ContextPanel({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-muted-foreground" />
-                <h4 className="font-medium">Members ({channel.participants.length})</h4>
+                <h4 className="font-medium">Members ({channel.channel_members.length})</h4>
               </div>
               
               <div className="space-y-2">
-                {channel.participants.map((participant) => (
+                {channel.channel_members.map((participant) => (
                   <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                     <div className="relative">
                       <Avatar className="h-8 w-8">
@@ -264,9 +264,9 @@ export function ContextPanel({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{participant.name}</p>
                       <div className="flex items-center gap-2">
-                        {participant.role && (
+                        {participant.channelRole && (
                           <Badge variant="outline" className="text-xs">
-                            {participant.role}
+                            {participant.channelRole}
                           </Badge>
                         )}
                         <Badge variant="secondary" className="text-xs">

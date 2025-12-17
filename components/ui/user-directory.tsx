@@ -63,7 +63,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
       // Create DM channel
       const channel = await createChannel({
         type: 'dm',
-        participants: [(session?.user as any)?.id, user._id as string],
+        channel_members: [(session?.user as any)?.id, user._id as string],
         is_private: true
       })
 
