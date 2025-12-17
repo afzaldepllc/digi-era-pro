@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, memo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,28 +22,32 @@ interface UserDirectoryProps {
   className?: string
 }
 
-export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
+export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const { createChannel, loading: channelLoading, selectChannel, mockUsers, mockCurrentUser } = useCommunications()
 
   // Filter active users (exclude current user and inactive users, and clients)
-  const activeUsers = mockUsers.filter(user =>
-    user._id !== mockCurrentUser?._id
-    //  &&
-    // user.isClient === false
-  );
+  const activeUsers = useMemo(() => {
+    return mockUsers.filter(user =>
+      user._id !== mockCurrentUser?._id
+      //  &&
+      // user.isClient === false
+    )
+  }, [mockUsers, mockCurrentUser?._id]);
 
   // Filter users based on search
-  const filteredUsers = activeUsers.filter(user => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      user.name?.toLowerCase().includes(query) ||
-      user.email?.toLowerCase().includes(query) ||
-      (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
-    )
-  })
+  const filteredUsers = useMemo(() => {
+    return activeUsers.filter(user => {
+      if (!searchQuery) return true
+      const query = searchQuery.toLowerCase()
+      return (
+        user.name?.toLowerCase().includes(query) ||
+        user.email?.toLowerCase().includes(query) ||
+        (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
+      )
+    })
+  }, [activeUsers, searchQuery])
 
   const handleStartDM = async (user: User) => {
     if (!mockCurrentUser || !mockCurrentUser._id) {
@@ -189,4 +193,4 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       </div>
     </div>
   )
-}
+})

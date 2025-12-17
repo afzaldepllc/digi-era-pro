@@ -42,6 +42,7 @@ import type {
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager } from '@/lib/realtime-manager'
+import { enrichChannelWithUserData } from '@/lib/db-utils'
 
 export function useCommunications() {
   const dispatch = useAppDispatch()
@@ -49,6 +50,7 @@ export function useCommunications() {
   const { data: session, status } = useSession()
   const realtimeManager = getRealtimeManager()
   const hasInitialized = useRef(false)
+  const hasUsersInitialized = useRef(false)
   
   // State for real users data
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -153,7 +155,8 @@ export function useCommunications() {
   // Fetch all users on mount for user directory
   useEffect(() => {
     const fetchAllUsers = async () => {
-      if (sessionUser?.id && allUsers.length === 0 && !usersLoading) {
+      if (sessionUser?.id && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
+        hasUsersInitialized.current = true
         try {
           setUsersLoading(true)
           const response = await apiRequest('/api/users')
@@ -208,8 +211,9 @@ export function useCommunications() {
       const url = `/api/communication/channels${queryString ? `?${queryString}` : ''}`
       
       const response = await apiRequest(url)
-      dispatch(setChannels(response.channels))
-      return response.channels
+      const enrichedChannels = response.channels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
+      dispatch(setChannels(enrichedChannels))
+      return enrichedChannels
     } catch (error) {
       dispatch(setError('Failed to fetch channels'))
       toast({

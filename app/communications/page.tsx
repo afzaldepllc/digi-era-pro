@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ChatWindow } from "@/components/ui/chat-window"
@@ -45,6 +45,22 @@ export default function CommunicationsPage() {
   // Department integration for filtering
   const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([])
   const { allDepartments } = useDepartments()
+
+  // Memoize available departments to prevent unnecessary re-renders
+  const memoizedAvailableDepartments = useMemo(() => {
+    if (allDepartments && allDepartments.length > 0) {
+      return allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      }))
+    }
+    return []
+  }, [allDepartments])
+
+  // Update available departments when memoized value changes
+  useEffect(() => {
+    setAvailableDepartments(memoizedAvailableDepartments)
+  }, [memoizedAvailableDepartments])
 
   const {
     channels,
@@ -120,34 +136,21 @@ export default function CommunicationsPage() {
     }
   }, []) // Remove allDepartments from dependencies to prevent infinite re-runs
 
-  // Fetch departments for filters on mount
+  // Update available departments when memoized value changes
   useEffect(() => {
-    if (availableDepartments.length === 0) {
-      fetchAvailableDepartments()
-    }
-  }, [fetchAvailableDepartments])
+    setAvailableDepartments(memoizedAvailableDepartments)
+  }, [memoizedAvailableDepartments])
 
-  // Update available departments when allDepartments changes
-  useEffect(() => {
-    if (allDepartments && allDepartments.length > 0) {
-      const departmentOptions = allDepartments.map((dept: any) => ({
-        value: dept._id,
-        label: dept.name,
-      })) || []
-      setAvailableDepartments(departmentOptions)
-    }
-  }, [allDepartments])
-
-  const handleChannelSelect = (channelId: string) => {
+  const handleChannelSelect = useCallback((channelId: string) => {
     selectChannel(channelId)
     setIsMobileMenuOpen(false) // Close mobile menu after selection
-  }
+  }, [selectChannel])
 
-  const handleCreateChannel = () => {
+  const handleCreateChannel = useCallback(() => {
     setIsCreateChannelOpen(true)
     // TODO: Implement create channel functionality
     console.log('Create new channel')
-  }
+  }, [])
 
   const handleRefresh = () => {
     fetchChannels()

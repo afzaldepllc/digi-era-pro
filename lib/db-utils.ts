@@ -262,16 +262,16 @@ export const dbUtils = {
 }
 
 // Helper function to enrich channels with MongoDB user data
-export async function enrichChannelWithUserData(channel: any, userModel: any) {
+export function enrichChannelWithUserData(channel: any, users: any[]) {
   try {
     // Get all unique member IDs
     const memberIds = channel.channel_members?.map((m: any) => m.mongo_member_id) || []
     
-    // Fetch user details from MongoDB
-    const users = await userModel.find({ _id: { $in: memberIds } }).lean()
+    // Filter users
+    const channelUsers = users.filter(user => memberIds.includes(user._id.toString()))
     
     // Map users to participants format
-    const participants = users.map((user: any) => ({
+    const participants = channelUsers.map((user: any) => ({
       mongo_member_id: user._id.toString(),
       name: user.name || user.email,
       email: user.email,

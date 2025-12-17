@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, memo } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -27,7 +27,7 @@ interface CommunicationSidebarProps {
   className?: string
 }
 
-export function CommunicationSidebar({
+export const CommunicationSidebar = memo(function CommunicationSidebar({
   channels,
   activeChannelId,
   currentUserId,
@@ -38,6 +38,11 @@ export function CommunicationSidebar({
 }: CommunicationSidebarProps) {
   const [showUsers, setShowUsers] = useState(true)
   const [showChannels, setShowChannels] = useState(true)
+
+  const handleStartDM = useCallback(async (userId: string) => {
+    // This will be handled by the parent component
+    // The UserDirectory component will handle the DM creation
+  }, [])
 
   return (
     <div className={cn("flex flex-col h-full bg-card border-r", className)}>
@@ -123,10 +128,7 @@ export function CommunicationSidebar({
 
               <div className={cn("mt-2", !showUsers && "hidden")}>
                 <UserDirectory
-                  onStartDM={async (userId: string) => {
-                    // This will be handled by the parent component
-                    // The UserDirectory component will handle the DM creation
-                  }}
+                  onStartDM={handleStartDM}
                   className="border-0 shadow-none max-h-96"
                 />
               </div>
@@ -136,4 +138,4 @@ export function CommunicationSidebar({
       </ScrollArea>
     </div>
   )
-}
+})

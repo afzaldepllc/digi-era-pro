@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -44,7 +44,7 @@ interface ChannelListProps {
   className?: string
 }
 
-export function ChannelList({
+export const ChannelList = memo(function ChannelList({
   channels,
   activeChannelId,
   onChannelSelect,
@@ -379,4 +379,4 @@ export function ChannelList({
       </div>
     </TooltipProvider>
   )
-}
+})

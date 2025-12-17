@@ -51,12 +51,7 @@ export async function GET(
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
     }
 
-    // Enrich channel with user data from MongoDB
-    const { default: User } = await import('@/models/User')
-    const { enrichChannelWithUserData } = await import('@/lib/db-utils')
-    const enrichedChannel = await enrichChannelWithUserData(channel, User)
-
-    return NextResponse.json({ channel: enrichedChannel })
+    return NextResponse.json({ channel })
   } catch (error) {
     console.error('Error fetching channel:', error)
     return NextResponse.json(

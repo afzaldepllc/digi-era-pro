@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user is member of the channel
     if (channel_id) {
-      const membership = await prisma.channelMember.findFirst({
+      const membership = await prisma.channel_members.findFirst({
         where: {
           channel_id,
           mongo_member_id: session.user.id,
@@ -64,10 +64,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user can access this message
-    const message = await prisma.message.findUnique({
+    const message = await prisma.messages.findUnique({
       where: { id: messageId },
       include: {
-        channel: {
+        channels: {
           include: {
             channel_members: {
               where: { mongo_member_id: session.user.id },
@@ -77,14 +77,14 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    if (!message || message.channel.channel_members.length === 0) {
+    if (!message || message.channels.channel_members.length === 0) {
       return NextResponse.json(
         { error: 'Access denied' },
         { status: 403 }
       )
     }
 
-    const receipts = await prisma.readReceipt.findMany({
+    const receipts = await prisma.read_receipts.findMany({
       where: { message_id: messageId },
       include: {
         // Note: We can't directly join with MongoDB users here
