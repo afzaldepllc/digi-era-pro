@@ -58,18 +58,9 @@ export async function PUT(
       },
     })
 
-    // Broadcast update via Supabase realtime
-    try {
-      await supabase
-        .channel(`channel_${message.channel_id}`)
-        .send({
-          type: 'broadcast',
-          event: 'message_updated',
-          payload: { message: updatedMessage },
-        })
-    } catch (realtimeError) {
-      console.warn('Realtime broadcast failed:', realtimeError)
-    }
+    // Note: Supabase Realtime with Postgres Changes will automatically
+    // notify all subscribers about the message update
+    // No need for manual broadcast for database operations
 
     return NextResponse.json({ message: updatedMessage })
   } catch (error) {
@@ -116,18 +107,9 @@ export async function DELETE(
       where: { id: messageId },
     })
 
-    // Broadcast deletion via Supabase realtime
-    try {
-      await supabase
-        .channel(`channel_${message.channel_id}`)
-        .send({
-          type: 'broadcast',
-          event: 'message_deleted',
-          payload: { messageId, channelId: message.channel_id },
-        })
-    } catch (realtimeError) {
-      console.warn('Realtime broadcast failed:', realtimeError)
-    }
+    // Note: Supabase Realtime with Postgres Changes will automatically
+    // notify all subscribers about the message deletion
+    // No need for manual broadcast for database operations
 
     return NextResponse.json({ success: true })
   } catch (error) {

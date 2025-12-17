@@ -65,7 +65,7 @@ export function MessageList({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
-  console.log("visibleMessages62", visibleMessages);
+  
   // Intersection Observer for read receipts
   useEffect(() => {
     if (observerRef.current) {
@@ -91,7 +91,7 @@ export function MessageList({
       },
       { threshold: 0.5 }
     )
-    console.log("visibleMessages88", visibleMessages);
+    
     // Observe all message elements
     const messageElements = document.querySelectorAll('[data-message-id]')
     messageElements.forEach(el => observerRef.current?.observe(el))
@@ -111,7 +111,7 @@ export function MessageList({
       return format(messageDate, 'MMM d, HH:mm')
     }
   }
-  console.log('Rendering MessageList with messages118:', messages);
+  
   // file_name: string
   // file_url?: string
   // s3_key?: string

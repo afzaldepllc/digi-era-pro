@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
+import { useSession } from 'next-auth/react'
 import type { User } from '@/types'
+import { useSupabaseAuth } from './use-supabase-auth'
 import {
   setActiveChannel,
   clearActiveChannel,
@@ -45,7 +47,17 @@ import { getRealtimeManager } from '@/lib/realtime-manager'
 export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
+  const { data: session, status } = useSession()
+  
+  // Sync Next-Auth with Supabase auth for Realtime
+  useSupabaseAuth()
+  
   const realtimeManager = getRealtimeManager()
+  const hasInitialized = useRef(false)
+  
+  // State for real users data
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
 
   const {
     channels,
@@ -59,6 +71,7 @@ export function useCommunications() {
     loading,
     actionLoading,
     messagesLoading,
+    channelsInitialized,
     error,
     filters,
     sort,
@@ -70,11 +83,14 @@ export function useCommunications() {
 
   // Initialize realtime manager with event handlers
   useEffect(() => {
+    console.log('🔧 Updating realtime handlers')
     realtimeManager.updateHandlers({
       onNewMessage: (message) => {
+        console.log('📩 onNewMessage handler called with:', message)
         dispatch(addMessage({ channelId: message.channel_id, message }))
       },
       onMessageUpdate: (message) => {
+        console.log('📝 onMessageUpdate handler called')
         dispatch(updateMessage({
           channelId: message.channel_id,
           messageId: message.id,
@@ -83,15 +99,15 @@ export function useCommunications() {
       },
       onMessageDelete: (messageId) => {
         // Handle message deletion
-        console.log('Message deleted:', messageId)
+        console.log('🗑️ Message deleted:', messageId)
       },
       onUserJoined: (member) => {
         // Handle user joined
-        console.log('User joined:', member)
+        console.log('👋 User joined:', member)
       },
       onUserLeft: (memberId) => {
         // Handle user left
-        console.log('User left:', memberId)
+        console.log('👋 User left:', memberId)
       },
       onUserOnline: (userId) => {
         // Update online users list
@@ -116,29 +132,68 @@ export function useCommunications() {
           channelId: activeChannelId || '',
           userId,
           userName: 'Unknown User', // Will be resolved later
-          timestamp: new Date()
+          timestamp: new Date().toISOString()
         }))
       },
       onTypingStop: (userId) => {
         dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
       }
     })
-  }, [dispatch, realtimeManager, activeChannelId])
+    console.log('✅ Realtime handlers updated')
+  }, [dispatch, realtimeManager, activeChannelId, onlineUsers])
 
-  // Fetch channels on mount
+  // Type guard for session user with extended properties
+  interface ExtendedSessionUser {
+    id?: string
+    name?: string | null
+    email?: string | null
+    role?: string
+    image?: string | null
+    avatar?: string
+    permissions?: any[]
+  }
+  
+  const sessionUser = session?.user as ExtendedSessionUser | undefined
+
+  // Fetch all users on mount for user directory
   useEffect(() => {
-    fetchChannels()
-  }, [])
+    const fetchAllUsers = async () => {
+      if (sessionUser?.id && allUsers.length === 0 && !usersLoading) {
+        try {
+          setUsersLoading(true)
+          const response = await apiRequest('/api/users')
+          setAllUsers(response.users || [])
+        } catch (error) {
+          console.error('Failed to fetch users:', error)
+        } finally {
+          setUsersLoading(false)
+        }
+      }
+    }
+    
+    fetchAllUsers()
+  }, [sessionUser?.id])
+
+  // Fetch channels on mount - but only if not already initialized globally
+  useEffect(() => {
+    if (!channelsInitialized && !hasInitialized.current && sessionUser?.id) {
+      hasInitialized.current = true
+      fetchChannels()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelsInitialized, sessionUser?.id]) // Re-run if channelsInitialized changes
 
   // Subscribe to active channel
   useEffect(() => {
     if (activeChannelId) {
+      console.log('Subscribing to channel:', activeChannelId)
       realtimeManager.subscribeToChannel(activeChannelId)
       fetchMessages({ channel_id: activeChannelId })
     }
 
     return () => {
       if (activeChannelId) {
+        console.log('Unsubscribing from channel:', activeChannelId)
         realtimeManager.unsubscribeFromChannel(activeChannelId)
       }
     }
@@ -171,7 +226,8 @@ export function useCommunications() {
     } finally {
       dispatch(setLoading(false))
     }
-  }, [dispatch, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]) // Removed toast from dependencies to prevent infinite loop
 
   const selectChannel = useCallback((channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
@@ -206,7 +262,8 @@ export function useCommunications() {
     } finally {
       dispatch(setMessagesLoading(false))
     }
-  }, [dispatch, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]) // Removed toast to prevent infinite loop
 
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
     try {
@@ -216,7 +273,15 @@ export function useCommunications() {
         body: JSON.stringify(messageData)
       })
 
-      // The message will be added via realtime subscription
+      // Immediately add the message to Redux state (optimistic update)
+      // This ensures the sender sees their message instantly
+      if (response.message) {
+        dispatch(addMessage({ 
+          channelId: messageData.channel_id, 
+          message: response.message 
+        }))
+      }
+
       toast({
         title: "Message sent",
         description: "Your message has been sent successfully",
@@ -234,7 +299,8 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]) // Removed toast to prevent infinite loop
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -264,7 +330,8 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, toast, fetchChannels])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, fetchChannels]) // Removed toast to prevent infinite loop
 
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
@@ -358,9 +425,29 @@ export function useCommunications() {
     }
   }, [fetchMessages, activeChannelId])
 
-  // Mock data for backward compatibility (remove when fully migrated)
-  const mockUsers = [] as User[]
-  const mockCurrentUser = null as User | null
+  // Get current user from session
+  const currentUserFromSession = useMemo(() => {
+    if (!sessionUser) return null
+    
+    return {
+      _id: sessionUser.id || '',
+      name: sessionUser.name || '',
+      email: sessionUser.email || '',
+      role: sessionUser.role || '',
+      avatar: sessionUser.image || sessionUser.avatar || undefined,
+      status: 'active' as const,
+      permissions: sessionUser.permissions || [],
+    } as User
+  }, [sessionUser])
+
+  // Filter active users (exclude current user)
+  const activeUsers = useMemo(() => {
+    return allUsers.filter(user => 
+      user._id !== currentUserFromSession?._id && 
+      user.status === 'active'
+    )
+  }, [allUsers, currentUserFromSession?._id])
+
   const hasChannels = channels.length > 0
 
   return {
@@ -384,9 +471,13 @@ export function useCommunications() {
     unreadCount,
     notifications,
 
-    // Mock data (for backward compatibility)
-    mockUsers,
-    mockCurrentUser,
+    // Real user data
+    mockUsers: activeUsers, // For backward compatibility with existing components
+    mockCurrentUser: currentUserFromSession, // For backward compatibility with existing components
+    allUsers,
+    currentUserFromSession,
+    usersLoading,
+    sessionStatus: status,
     hasChannels,
 
     // Channel operations

@@ -97,18 +97,9 @@ export async function POST(request: NextRequest) {
       data: { last_message_at: new Date() },
     })
 
-    // Broadcast via Supabase realtime
-    try {
-      await supabase
-        .channel(`channel_${channel_id}`)
-        .send({
-          type: 'broadcast',
-          event: 'new_message',
-          payload: { message },
-        })
-    } catch (realtimeError) {
-      console.warn('Realtime broadcast failed:', realtimeError)
-    }
+    // Note: Supabase Realtime with Postgres Changes will automatically
+    // notify all subscribers about the new message insert
+    // No need for manual broadcast for database operations
 
     // Fetch complete message with relations
     const completeMessage = await prisma.message.findUnique({

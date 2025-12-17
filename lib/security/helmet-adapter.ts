@@ -21,11 +21,12 @@ export function applySecurityHeaders(response: NextResponse): NextResponse {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // Allow Google Fonts
     "img-src 'self' data: https:",
     "font-src 'self' data: https://fonts.gstatic.com", // Allow Google Fonts
-    "connect-src 'self'",
+    "connect-src 'self' https://mifxampcsrojspuhtlpy.supabase.co wss://mifxampcsrojspuhtlpy.supabase.co https://kkdcderwckpktfxersdk.supabase.co wss://kkdcderwckpktfxersdk.supabase.co", // Allow Supabase connections
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'"
+    "form-action 'self'",
+    "worker-src 'self' blob:" // Allow web workers for real-time features
   ].join('; ')
 
   response.headers.set('Content-Security-Policy', csp)
