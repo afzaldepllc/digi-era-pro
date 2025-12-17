@@ -2371,3 +2371,56 @@ This comprehensive plan ensures a smooth migration from mock data to full Supaba
 │                  │ (Supabase)│                │
 │                  └───────────┘                │
 └─────────────────────────────────────────────────┘
+
+
+
+now many things are missing according to the planning in the supabase realtime chat system like 
+chanel creation, department wise channel creation, project wise channel creation , chat with client(user with isClient true) and some other things 
+mention in this doc file 
+
+supabase_implementation_plan.md
+
+so i want to implement it coprehensive way and make sure every things is in the optimal way according to best practices and permission should be be handled in api not the supabase using the 
+
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'delete')
+
+
+so i want to implement each and every things step wise including the reply, mention, delete , edit and every things along with project based channel when created than autoamtically add the all collaborator in that chennel using this kind of logic 
+
+  Team Members
+                          {project.departmentTasks && Array.isArray(project.departmentTasks) && (
+                            <div className="flex align-center justify-between gap-2 flex-1">
+                              <span className="ml-1">
+                                ({
+                                  project.departmentTasks.reduce((assignees: Set<string>, dept) => {
+                                    dept.tasks.forEach(task => {
+                                      if (task.assigneeId) {
+                                        assignees.add(task.assigneeId);
+                                      }
+                                    });
+                                    return assignees;
+                                  }, new Set<string>()).size
+                                })
+                              </span>
+
+                              and when department wise than all the users in that channel and department category wise like users of all the department having the same depart  category
+
+                                category: {
+                                  type: String,
+                                  required: [true, "Department category is required"],
+                                  trim: true,
+                                  maxlength: [100, "Category cannot exceed 100 characters"],
+                                  enum: ['sales', 'support', 'it', 'management'],
+                                },
+and we can can also create the channel for muti-depart-category wise mean we can select more than one  the category for department like it and support and than all the users of these category should be involve in that channel 
+and also make sufre we can also add the new user fr these channel which was not present channel creation time 
+make sure handle every things step wise and there is no any any error so fisrt create the doc md file for plaaning to implement all these missing functionality and than continue one by one while every things should be working well according to supabase and plaaing in this file 
+
+supabase_implementation_plan.md
+
+and this main flow of every crud 
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
+
+you can reuse component also or create new one but every things should be to the point and optimized 
+
+along with we can 
