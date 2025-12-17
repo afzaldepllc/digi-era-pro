@@ -20,9 +20,10 @@ function createErrorResponse(message: string, status: number, details?: any) {
 // PUT /api/communication/messages/[messageId] - Update message
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params: paramsPromise }: { params: Promise<{ messageId: string }> }
 ) {
   try {
+    const params = await paramsPromise
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'update')
 
@@ -60,16 +61,17 @@ export async function PUT(
     })
   } catch (error: any) {
     console.error('Error updating message:', error)
-    return createAPIErrorResponse(error, 'Failed to update message', getClientInfo(request))
+    return createAPIErrorResponse('Failed to update message', 500, undefined, getClientInfo(request))
   }
 }
 
 // DELETE /api/communication/messages/[messageId] - Delete message
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params: paramsPromise }: { params: Promise<{ messageId: string }> }
 ) {
   try {
+    const params = await paramsPromise
     // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'delete')
 
@@ -102,6 +104,6 @@ export async function DELETE(
     })
   } catch (error: any) {
     console.error('Error deleting message:', error)
-    return createAPIErrorResponse(error, 'Failed to delete message', getClientInfo(request))
+    return createAPIErrorResponse('Failed to delete message', 500, undefined, getClientInfo(request))
   }
 }

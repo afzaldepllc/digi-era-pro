@@ -42,7 +42,7 @@ import type {
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager } from '@/lib/realtime-manager'
-import { enrichChannelWithUserData } from '@/lib/db-utils'
+import { enrichChannelWithUserData } from '@/lib/communication/utils'
 
 export function useCommunications() {
   const dispatch = useAppDispatch()

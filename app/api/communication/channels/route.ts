@@ -5,9 +5,10 @@ import { SecurityUtils } from '@/lib/security/validation'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
-import { enrichChannelWithUserData } from '@/lib/db-utils'
+import { enrichChannelWithUserData } from '@/lib/communication/utils'
 import { default as User } from '@/models/User'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
+import { executeGenericDbQuery } from "@/lib/mongodb"
 
 
 // Helper to create consistent error responses
@@ -78,9 +79,14 @@ export async function GET(request: NextRequest) {
       orderBy: { updated_at: 'desc' },
     })
 
+    // Fetch all users for enrichment
+    const allUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
+    })
+
     // Enrich channels with user data from MongoDB
     const enrichedChannels = await Promise.all(
-      channels.map((channel: any) => enrichChannelWithUserData(channel, User))
+      channels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
     )
 
     return NextResponse.json({
@@ -95,7 +101,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error fetching channels:', error)
-    return createAPIErrorResponse(error, 'Failed to fetch channels', getClientInfo(request))
+    return createAPIErrorResponse('Failed to fetch channels', 500, undefined, getClientInfo(request))
   }
 }
 
@@ -187,8 +193,13 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Fetch all users for enrichment
+    const allUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
+    })
+
     // Enrich channel with user data
-    const enrichedChannel = await enrichChannelWithUserData(completeChannel, User)
+    const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
 
     return NextResponse.json({
       success: true,
@@ -197,6 +208,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error creating channel:', error)
-    return createAPIErrorResponse(error, 'Failed to create channel', getClientInfo(request))
+    return createAPIErrorResponse('Failed to create channel', 500, undefined, getClientInfo(request))
   }
 }

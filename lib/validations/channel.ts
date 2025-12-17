@@ -10,6 +10,9 @@ export const CHANNEL_CONSTANTS = {
     VALUES: ['dm', 'group', 'project', 'department', 'client-support'] as const,
     DEFAULT: 'group' as const,
   },
+  DEPARTMENT_CATEGORY: {
+    VALUES: ['sales', 'support', 'it', 'management'] as const,
+  },
   PAGINATION: {
     DEFAULT_PAGE: 1,
     DEFAULT_LIMIT: 10,
@@ -36,13 +39,13 @@ const createStringValidator = (config: { min?: number; max?: number; required?: 
   }
 
   // Trim all strings
-  const baseValidator = baseValidator.transform((val) => val.trim())
+  const trimmedValidator = validator.transform((val) => val.trim())
 
   if (config.required === false) {
-    return baseValidator.optional()
+    return trimmedValidator.optional()
   }
 
-  return baseValidator
+  return trimmedValidator
 }
 
 // Base channel schema
@@ -58,14 +61,14 @@ export const baseChannelSchema = z.object({
   mongo_department_id: z.string().optional(),
   mongo_project_id: z.string().optional(),
   is_private: z.boolean().default(false),
-  categories: z.array(z.string()).default([]),
+  categories: z.array(z.enum(CHANNEL_CONSTANTS.DEPARTMENT_CATEGORY.VALUES)).default([]),
   client_id: z.string().optional(),
 })
 
 // Create channel schema
 export const createChannelSchema = baseChannelSchema.extend({
   participants: z.array(z.string()).optional(),
-  category: z.string().optional(),
+  category: z.enum(CHANNEL_CONSTANTS.DEPARTMENT_CATEGORY.VALUES).optional(),
 })
 
 // Update channel schema
@@ -92,6 +95,7 @@ export const channelIdSchema = z.object({
 
 // Message schemas
 export const baseMessageSchema = z.object({
+  channel_id: z.string().uuid('Invalid channel ID'),
   content: z.string().min(1, 'Message content is required').max(5000, 'Message too long'),
   content_type: z.enum(['text', 'image', 'file', 'system']).default('text'),
   thread_id: z.string().uuid().optional(),
@@ -108,8 +112,8 @@ export const updateMessageSchema = z.object({
 // Message query schema
 export const messageQuerySchema = z.object({
   channel_id: z.string().uuid('Invalid channel ID'),
-  limit: z.number().min(1).max(100).default(50),
-  offset: z.number().min(0).default(0),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
 })
 
 // Message ID parameter schema

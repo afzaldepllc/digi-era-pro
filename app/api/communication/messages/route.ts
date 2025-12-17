@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error fetching messages:', error)
-    return createAPIErrorResponse(error, 'Failed to fetch messages', getClientInfo(request))
+    return createAPIErrorResponse('Failed to fetch messages', 500, undefined, getClientInfo(request))
   }
 }
 
@@ -139,6 +139,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error sending message:', error)
-    return createAPIErrorResponse(error, 'Failed to send message', getClientInfo(request))
+    return createAPIErrorResponse('Failed to send message', 500, undefined, getClientInfo(request))
   }
 }

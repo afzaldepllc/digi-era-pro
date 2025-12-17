@@ -43,13 +43,13 @@ const createStringValidator = (config: { min?: number; max?: number; required?: 
   }
 
   // Trim all strings
-  const baseValidator = validator.transform((val) => val.trim())
+  const trimmedValidator = validator.transform((val) => val.trim())
 
   if (config.required === false) {
-    return baseValidator.optional()
+    return trimmedValidator.optional()
   }
 
-  return baseValidator
+  return trimmedValidator
 }
 
 // MongoDB ObjectId validation

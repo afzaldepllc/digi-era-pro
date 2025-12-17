@@ -6,9 +6,10 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 // GET /api/communication/channels/[channelId] - Get channel details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { channelId: string } }
+  { params: paramsPromise }: { params: Promise<{ channelId: string }> }
 ) {
   try {
+    const params = await paramsPromise
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
 
     if (!session?.user?.id) {
@@ -64,9 +65,10 @@ export async function GET(
 // PUT /api/communication/channels/[channelId] - Update channel
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { channelId: string } }
+  { params: paramsPromise }: { params: Promise<{ channelId: string }> }
 ) {
   try {
+    const params = await paramsPromise
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'update')
 
     if (!session?.user?.id) {
@@ -108,8 +110,14 @@ export async function PUT(
 
     // Enrich channel with user data from MongoDB
     const { default: User } = await import('@/models/User')
-    const { enrichChannelWithUserData } = await import('@/lib/db-utils')
-    const enrichedChannel = await enrichChannelWithUserData(updatedChannel, User)
+    const { executeGenericDbQuery } = await import('@/lib/mongodb')
+    const { enrichChannelWithUserData } = await import('@/lib/communication/utils')
+    
+    const allUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
+    })
+    
+    const enrichedChannel = await enrichChannelWithUserData(updatedChannel, allUsers)
 
     return NextResponse.json({ channel: enrichedChannel })
   } catch (error) {
@@ -124,9 +132,10 @@ export async function PUT(
 // DELETE /api/communication/channels/[channelId] - Delete channel
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { channelId: string } }
+  { params: paramsPromise }: { params: Promise<{ channelId: string }> }
 ) {
   try {
+    const params = await paramsPromise
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'delete')
 
     if (!session?.user?.id) {
