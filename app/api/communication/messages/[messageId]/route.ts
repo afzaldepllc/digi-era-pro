@@ -28,7 +28,7 @@ export async function PUT(
     }
 
     // Check if user owns the message
-    const message = await prisma.message.findUnique({
+    const message = await prisma.messages.findUnique({
       where: { id: messageId },
     })
 
@@ -75,7 +75,7 @@ export async function DELETE(
     const messageId = params.messageId
 
     // Check if user owns the message
-    const message = await prisma.message.findUnique({
+    const message = await prisma.messages.findUnique({
       where: { id: messageId },
     })
 

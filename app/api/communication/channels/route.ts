@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         if (departmentId) where.mongo_department_id = departmentId
         if (projectId) where.mongo_project_id = projectId
 
-        const channels = await prisma.channel.findMany({
+        const channels = await prisma.channels.findMany({
             where,
             include: {
                 channel_members: true,
@@ -135,9 +135,10 @@ export async function POST(request: NextRequest) {
             client_id
         })
 
-        // Create the channel with categories field
-        const channel = await prisma.channel.create({
+        // Create the channel first
+        const channel = await prisma.channels.create({
             data: {
+                id: crypto.randomUUID(),
                 type,
                 name: channelName,
                 mongo_department_id,
@@ -146,14 +147,24 @@ export async function POST(request: NextRequest) {
                 is_private: is_private || false,
                 member_count: memberIds.length,
                 categories: categories || [], // Store categories for multi-category channels
-                channel_members: {
-                    create: memberIds.map((memberId) => ({
-                        mongo_member_id: memberId,
-                        role: memberId === session.user.id ? 'owner' : 'member',
-                        is_online: false,
-                    })),
-                },
+                updated_at: new Date(),
             },
+        })
+
+        // Add members separately
+        await prisma.channel_members.createMany({
+            data: memberIds.map((memberId) => ({
+                id: crypto.randomUUID(),
+                channel_id: channel.id,
+                mongo_member_id: memberId,
+                role: memberId === session.user.id ? 'owner' : 'member',
+                is_online: false,
+            })),
+        })
+
+        // Fetch the channel with members
+        const channelWithMembers = await prisma.channels.findUnique({
+            where: { id: channel.id },
             include: {
                 channel_members: true,
                 messages: {
@@ -166,7 +177,7 @@ export async function POST(request: NextRequest) {
         // Enrich with user data
         const { enrichChannelWithUserData } = await import('@/lib/db-utils')
         const { default: User } = await import('@/models/User')
-        const enrichedChannel = await enrichChannelWithUserData(channel, User)
+        const enrichedChannel = await enrichChannelWithUserData(channelWithMembers, User)
 
         return NextResponse.json({ channel: enrichedChannel }, { status: 201 })
     } catch (error) {

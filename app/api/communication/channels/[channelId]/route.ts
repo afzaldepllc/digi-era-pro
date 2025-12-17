@@ -18,7 +18,7 @@ export async function GET(
     const channelId = params.channelId
 
     // Check if user is member of the channel
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -33,7 +33,7 @@ export async function GET(
     }
 
     // Fetch channel with details
-    const channel = await prisma.channel.findUnique({
+    const channel = await prisma.channels.findUnique({
       where: { id: channelId },
       include: {
         channel_members: true,
@@ -83,7 +83,7 @@ export async function PUT(
     const { name, is_private } = body
 
     // Check if user is admin of the channel
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -99,7 +99,7 @@ export async function PUT(
     }
 
     // Update channel
-    const updatedChannel = await prisma.channel.update({
+    const updatedChannel = await prisma.channels.update({
       where: { id: channelId },
       data: {
         name,
@@ -141,7 +141,7 @@ export async function DELETE(
     const channelId = params.channelId
 
     // Check if user is creator or admin
-    const channel = await prisma.channel.findUnique({
+    const channel = await prisma.channels.findUnique({
       where: { id: channelId },
     })
 
@@ -150,7 +150,7 @@ export async function DELETE(
     }
 
     const isCreator = channel.mongo_creator_id === session.user.id
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -166,7 +166,7 @@ export async function DELETE(
     }
 
     // Delete channel (cascade will delete related data)
-    await prisma.channel.delete({
+    await prisma.channels.delete({
       where: { id: channelId },
     })
 

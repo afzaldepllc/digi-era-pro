@@ -22,12 +22,12 @@ async function main() {
   try {
     // Clean existing data (optional - comment out if you want to preserve existing data)
     console.log('🧹 Cleaning existing data...')
-    await prisma.attachment.deleteMany({})
-    await prisma.reaction.deleteMany({})
-    await prisma.readReceipt.deleteMany({})
-    await prisma.message.deleteMany({})
-    await prisma.channelMember.deleteMany({})
-    await prisma.channel.deleteMany({})
+    await prisma.attachments.deleteMany({})
+    await prisma.reactions.deleteMany({})
+    await prisma.read_receipts.deleteMany({})
+    await prisma.messages.deleteMany({})
+    await prisma.channel_members.deleteMany({})
+    await prisma.channels.deleteMany({})
     console.log('✅ Cleaned existing data')
 
     // Example MongoDB user IDs (replace with actual user IDs from your MongoDB)
@@ -40,32 +40,38 @@ async function main() {
 
     // Create a general company-wide channel
     console.log('📢 Creating general channel...')
-    const generalChannel = await prisma.channel.create({
+    const generalChannel = await prisma.channels.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'group',
         name: 'General',
         mongo_creator_id: mockUserIds.admin,
         is_private: false,
         member_count: 3,
+        created_at: new Date(),
+        updated_at: new Date(),
       },
     })
 
     // Add members to general channel
-    await prisma.channelMember.createMany({
+    await prisma.channel_members.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           channel_id: generalChannel.id,
           mongo_member_id: mockUserIds.admin,
           role: 'admin',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: generalChannel.id,
           mongo_member_id: mockUserIds.user1,
           role: 'member',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: generalChannel.id,
           mongo_member_id: mockUserIds.user2,
           role: 'member',
@@ -77,26 +83,31 @@ async function main() {
 
     // Create a department channel
     console.log('🏢 Creating department channel...')
-    const deptChannel = await prisma.channel.create({
+    const deptChannel = await prisma.channels.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'department',
         name: 'Engineering Team',
         mongo_creator_id: mockUserIds.admin,
         mongo_department_id: '507f1f77bcf86cd799439020',
         is_private: true,
         member_count: 2,
+        created_at: new Date(),
+        updated_at: new Date(),
       },
     })
 
-    await prisma.channelMember.createMany({
+    await prisma.channel_members.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           channel_id: deptChannel.id,
           mongo_member_id: mockUserIds.admin,
           role: 'admin',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: deptChannel.id,
           mongo_member_id: mockUserIds.user1,
           role: 'member',
@@ -108,67 +119,79 @@ async function main() {
 
     // Create a DM channel
     console.log('💬 Creating DM channel...')
-    const dmChannel = await prisma.channel.create({
+    const dmChannel = await prisma.channels.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'dm',
         mongo_creator_id: mockUserIds.user1,
         is_private: true,
         member_count: 2,
+        created_at: new Date(),
+        updated_at: new Date(),
       },
     })
 
-    await prisma.channelMember.createMany({
+    await prisma.channel_members.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           channel_id: dmChannel.id,
           mongo_member_id: mockUserIds.user1,
           role: 'member',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: dmChannel.id,
           mongo_member_id: mockUserIds.user2,
           role: 'member',
           is_online: false,
-        },
+         },
       ],
     })
     console.log('✅ Created DM channel with members')
 
     // Create a project channel
     console.log('📁 Creating project channel...')
-    const projectChannel = await prisma.channel.create({
+    const projectChannel = await prisma.channels.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'project',
         name: 'Website Redesign',
         mongo_creator_id: mockUserIds.admin,
         mongo_project_id: '507f1f77bcf86cd799439030',
         is_private: false,
         member_count: 4,
+        created_at: new Date(),
+        updated_at: new Date(),
       },
     })
 
-    await prisma.channelMember.createMany({
+    await prisma.channel_members.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           channel_id: projectChannel.id,
           mongo_member_id: mockUserIds.admin,
           role: 'admin',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: projectChannel.id,
           mongo_member_id: mockUserIds.user1,
           role: 'member',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: projectChannel.id,
           mongo_member_id: mockUserIds.user2,
           role: 'member',
           is_online: false,
         },
         {
+          id: crypto.randomUUID(),
           channel_id: projectChannel.id,
           mongo_member_id: mockUserIds.user3,
           role: 'member',
@@ -180,8 +203,9 @@ async function main() {
 
     // Create sample messages in general channel
     console.log('📝 Creating sample messages...')
-    const message1 = await prisma.message.create({
+    const message1 = await prisma.messages.create({
       data: {
+        id: crypto.randomUUID(),
         channel_id: generalChannel.id,
         mongo_sender_id: mockUserIds.admin,
         content: 'Welcome to the team communication platform!',
@@ -189,8 +213,9 @@ async function main() {
       },
     })
 
-    const message2 = await prisma.message.create({
+    const message2 = await prisma.messages.create({
       data: {
+        id: crypto.randomUUID(),
         channel_id: generalChannel.id,
         mongo_sender_id: mockUserIds.user1,
         content: 'Thanks! Excited to be here.',
@@ -199,7 +224,7 @@ async function main() {
     })
 
     // Update channel's last_message_at
-    await prisma.channel.update({
+    await prisma.channels.update({
       where: { id: generalChannel.id },
       data: { last_message_at: new Date() },
     })
@@ -207,13 +232,15 @@ async function main() {
 
     // Create read receipts
     console.log('👀 Creating read receipts...')
-    await prisma.readReceipt.createMany({
+    await prisma.read_receipts.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           message_id: message1.id,
           mongo_user_id: mockUserIds.user1,
         },
         {
+          id: crypto.randomUUID(),
           message_id: message1.id,
           mongo_user_id: mockUserIds.user2,
         },
@@ -223,19 +250,23 @@ async function main() {
 
     // Create reactions
     console.log('👍 Creating reactions...')
-    await prisma.reaction.createMany({
+    await prisma.reactions.createMany({
       data: [
         {
+          id: crypto.randomUUID(),
           message_id: message1.id,
           channel_id: generalChannel.id,
           mongo_user_id: mockUserIds.user1,
           emoji: '👍',
+          created_at: new Date(),
         },
         {
+          id: crypto.randomUUID(),
           message_id: message1.id,
           channel_id: generalChannel.id,
           mongo_user_id: mockUserIds.user2,
           emoji: '🎉',
+          created_at: new Date(),
         },
       ],
     })

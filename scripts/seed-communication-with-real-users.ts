@@ -43,43 +43,47 @@ async function main() {
 
     // Clean existing data
     console.log('🧹 Cleaning existing communication data...')
-    await prisma.attachment.deleteMany({})
-    await prisma.reaction.deleteMany({})
-    await prisma.readReceipt.deleteMany({})
-    await prisma.message.deleteMany({})
-    await prisma.channelMember.deleteMany({})
-    await prisma.channel.deleteMany({})
+    await prisma.attachments.deleteMany({})
+    await prisma.reactions.deleteMany({})
+    await prisma.read_receipts.deleteMany({})
+    await prisma.messages.deleteMany({})
+    await prisma.channel_members.deleteMany({})
+    await prisma.channels.deleteMany({})
     console.log('✅ Cleaned existing data')
 
     // Create a general company-wide channel with real users
     console.log('📢 Creating general channel...')
-    const generalChannel = await prisma.channel.create({
+    const generalChannel = await prisma.channels.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'group',
         name: 'General',
         mongo_creator_id: userIds[0],
         is_private: false,
         member_count: Math.min(5, users.length),
+        updated_at: new Date(),
       },
     })
 
     // Add first 5 users to general channel
     const generalChannelMembers = users.slice(0, 5).map((user, idx) => ({
+      id: crypto.randomUUID(),
       channel_id: generalChannel.id,
       mongo_member_id: user._id.toString(),
       role: idx === 0 ? 'admin' : 'member',
       is_online: false,
     }))
 
-    await prisma.channelMember.createMany({
+    await prisma.channel_members.createMany({
       data: generalChannelMembers,
     })
     console.log(`✅ Created general channel with ${generalChannelMembers.length} members`)
 
     // Create a sample message in general channel
     if (users.length > 0) {
-      const welcomeMessage = await prisma.message.create({
+      const welcomeMessage = await prisma.messages.create({
         data: {
+          id: crypto.randomUUID(),
           channel_id: generalChannel.id,
           mongo_sender_id: userIds[0],
           content: 'Welcome to the General channel! 👋',
@@ -89,7 +93,7 @@ async function main() {
       console.log('✅ Created welcome message')
 
       // Update channel's last_message_at
-      await prisma.channel.update({
+      await prisma.channels.update({
         where: { id: generalChannel.id },
         data: { last_message_at: welcomeMessage.created_at },
       })
@@ -101,24 +105,28 @@ async function main() {
       let dmCount = 0
       
       for (let i = 0; i < Math.min(3, users.length - 1); i++) {
-        const dmChannel = await prisma.channel.create({
+        const dmChannel = await prisma.channels.create({
           data: {
+            id: crypto.randomUUID(),
             type: 'dm',
             mongo_creator_id: userIds[i],
             is_private: true,
             member_count: 2,
+            updated_at: new Date(),
           },
         })
 
-        await prisma.channelMember.createMany({
+        await prisma.channel_members.createMany({
           data: [
             {
+              id: crypto.randomUUID(),
               channel_id: dmChannel.id,
               mongo_member_id: userIds[i],
               role: 'member',
               is_online: false,
             },
             {
+              id: crypto.randomUUID(),
               channel_id: dmChannel.id,
               mongo_member_id: userIds[i + 1],
               role: 'member',
@@ -134,9 +142,9 @@ async function main() {
     console.log('\n✨ Communication seeding completed successfully!')
     console.log(`📊 Summary:`)
     console.log(`   - Users: ${users.length}`)
-    console.log(`   - Channels: ${await prisma.channel.count()}`)
-    console.log(`   - Channel Members: ${await prisma.channelMember.count()}`)
-    console.log(`   - Messages: ${await prisma.message.count()}`)
+    console.log(`   - Channels: ${await prisma.channels.count()}`)
+    console.log(`   - Channel Members: ${await prisma.channel_members.count()}`)
+    console.log(`   - Messages: ${await prisma.messages.count()}`)
 
   } catch (error) {
     console.error('❌ Error during seeding:', error)

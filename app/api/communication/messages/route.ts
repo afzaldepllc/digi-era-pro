@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is member of the channel
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is member of the channel
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id,
         mongo_member_id: session.user.id,
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Update channel's last_message_at
-    await prisma.channel.update({
+    await prisma.channels.update({
       where: { id: channel_id },
       data: { last_message_at: new Date() },
     })
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     // No need for manual broadcast for database operations
 
     // Fetch complete message with relations
-    const completeMessage = await prisma.message.findUnique({
+    const completeMessage = await prisma.messages.findUnique({
       where: { id: message.id },
       include: {
         read_receipts: true,

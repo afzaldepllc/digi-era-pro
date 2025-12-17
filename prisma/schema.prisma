@@ -7,7 +7,7 @@ datasource db {
 }
 
 model attachments {
-  id                String   @id @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
   message_id        String   @db.Uuid
   channel_id        String   @db.Uuid
   mongo_uploader_id String
@@ -23,7 +23,7 @@ model attachments {
 }
 
 model channel_members {
-  id                    String    @id @db.Uuid
+  id                    String    @id @default(uuid()) @db.Uuid
   channel_id            String    @db.Uuid
   mongo_member_id       String
   role                  String    @default("member")
@@ -37,7 +37,7 @@ model channel_members {
 }
 
 model channels {
-  id                  String            @id @db.Uuid
+  id                  String            @id @default(uuid()) @db.Uuid
   type                String
   name                String?
   avatar_url          String?
@@ -48,7 +48,7 @@ model channels {
   member_count        Int               @default(0)
   last_message_at     DateTime?         @db.Timestamptz(6)
   created_at          DateTime          @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime          @db.Timestamptz(6)
+  updated_at          DateTime          @default(now()) @db.Timestamptz(6)
   categories          String[]          @default([])
   attachments         attachments[]
   channel_members     channel_members[]
@@ -59,7 +59,7 @@ model channels {
 }
 
 model messages {
-  id                       String          @id @db.Uuid
+  id                       String          @id @default(uuid()) @db.Uuid
   channel_id               String          @db.Uuid
   mongo_sender_id          String
   content                  String
@@ -82,7 +82,7 @@ model messages {
 }
 
 model reactions {
-  id            String   @id @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
   message_id    String   @db.Uuid
   channel_id    String   @db.Uuid
   mongo_user_id String
@@ -95,7 +95,7 @@ model reactions {
 }
 
 model read_receipts {
-  id            String   @id @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
   message_id    String   @db.Uuid
   mongo_user_id String
   read_at       DateTime @default(now()) @db.Timestamptz(6)
