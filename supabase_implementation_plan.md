@@ -241,7 +241,7 @@ PROJECT_NAME=new-real-time
 DB_PASSWORD=O4YlTl5JWkCVZvik
 DB_USER=supabase_admin
 DATABASE_URL="postgresql://supabase_admin:O4YlTl5JWkCVZvik@db.kkdcderwckpktfxersdk.supabase.co:5432/postgres?pgbouncer=true&connection_limit=1"
-DIRECT_DATABASE_URL="postgresql://supabase_admin:O4YlTl5JWkCVZvik@db.kkdcderwckpktfxersdk.supabase.co:5432/postgres"
+="postgresql://supabase_admin:O4YlTl5JWkCVZvik@db.kkdcderwckpktfxersdk.supabase.co:5432/postgres"
 ```
 
 ### Supabase Client Setup

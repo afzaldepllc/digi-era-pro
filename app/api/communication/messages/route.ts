@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
-import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-config'
 import { supabase } from '@/lib/supabase'
+import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
 // GET /api/communication/messages?channel_id=... - Get messages for a channel
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+       const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+   
 
     const { searchParams } = new URL(request.url)
     const channelId = searchParams.get('channel_id')
@@ -55,10 +53,8 @@ export async function GET(request: NextRequest) {
 // POST /api/communication/messages - Send a new message
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+        const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+
 
     const body = await request.json()
     const { channel_id, content, content_type, thread_id, mongo_mentioned_user_ids } = body

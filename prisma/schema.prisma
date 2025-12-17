@@ -19,9 +19,9 @@ model Channel {
   mongo_creator_id      String   // MongoDB user ID of creator
   is_private            Boolean  @default(false) // Privacy setting
   member_count          Int      @default(0) // Number of members
-  last_message_at       DateTime? // Last message timestamp
-  created_at            DateTime @default(now()) @db.Timestamp(6)
-  updated_at            DateTime @updatedAt @db.Timestamp(6)
+  last_message_at       DateTime? @db.Timestamptz // Last message timestamp
+  created_at            DateTime @default(now()) @db.Timestamptz
+  updated_at            DateTime @updatedAt @db.Timestamptz
 
   // Relations
   messages              Message[]
@@ -42,8 +42,8 @@ model Message {
   reply_count             Int      @default(0) // Number of replies
   mongo_mentioned_user_ids String[] // Array of mentioned user IDs
   is_edited               Boolean  @default(false) // Edit status
-  edited_at               DateTime? @db.Timestamp(6) // Edit timestamp
-  created_at              DateTime @default(now()) @db.Timestamp(6)
+  edited_at               DateTime? @db.Timestamptz // Edit timestamp
+  created_at              DateTime @default(now()) @db.Timestamptz
 
   // Relations
   channel                 Channel     @relation(fields: [channel_id], references: [id], onDelete: Cascade)
@@ -59,8 +59,8 @@ model ChannelMember {
   channel_id      String   @db.Uuid
   mongo_member_id String   // MongoDB user ID
   role            String   @default("member") // 'admin' | 'member' | 'guest'
-  joined_at       DateTime @default(now()) @db.Timestamp(6)
-  last_seen_at    DateTime? @db.Timestamp(6) // Last activity timestamp
+  joined_at       DateTime @default(now()) @db.Timestamptz
+  last_seen_at    DateTime? @db.Timestamptz // Last activity timestamp
   is_online       Boolean  @default(false) // Online status
   notifications_enabled Boolean @default(true) // Notification preferences
 
@@ -75,7 +75,7 @@ model ReadReceipt {
   id              String   @id @default(uuid()) @db.Uuid
   message_id      String   @db.Uuid
   mongo_user_id   String   // MongoDB user ID
-  read_at         DateTime @default(now()) @db.Timestamp(6)
+  read_at         DateTime @default(now()) @db.Timestamptz
 
   // Relations
   message         Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
@@ -90,7 +90,7 @@ model Reaction {
   channel_id      String   @db.Uuid
   mongo_user_id   String   // MongoDB user ID
   emoji           String   // Reaction emoji
-  created_at      DateTime @default(now()) @db.Timestamp(6)
+  created_at      DateTime @default(now()) @db.Timestamptz
 
   // Relations
   message         Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
@@ -111,7 +111,7 @@ model Attachment {
   s3_bucket           String?  // S3 bucket name
   file_size           Int?     // File size in bytes
   file_type           String?  // MIME type
-  created_at          DateTime @default(now()) @db.Timestamp(6)
+  created_at          DateTime @default(now()) @db.Timestamptz
 
   // Relations
   message             Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)

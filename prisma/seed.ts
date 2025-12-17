@@ -1,6 +1,21 @@
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { Pool } from 'pg'
+import { config } from "dotenv";
 
-const prisma = new PrismaClient()
+// Load environment variables
+config({ path: ".env.local" });
+
+// Create a connection pool
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+})
+
+// Create Prisma adapter
+const adapter = new PrismaPg(pool)
+
+// Create Prisma client with adapter
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   // Create a general channel
@@ -36,4 +51,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect()
+    await pool.end()
   })
