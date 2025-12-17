@@ -55,10 +55,15 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     removeTyping,
     toggleContextPanel,
     setError,
-    mockCurrentUser
+    mockCurrentUser,
+    sessionStatus,
+    usersLoading
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  
+  // Show loading state while session is being fetched
+  const isInitializing = sessionStatus === 'loading' || usersLoading
 
   // Handle typing indicators
   const handleTyping = () => {
@@ -106,6 +111,44 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   const handleDelete = (messageId: string) => {
     // TODO: Implement delete functionality
     console.log('Delete message:', messageId)
+  }
+
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-muted/10">
+        <div className="text-center space-y-4">
+          <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto animate-pulse">
+            <Search className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="font-medium text-lg">Loading...</h3>
+            <p className="text-muted-foreground mt-1">
+              Setting up your communication system
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state if not authenticated
+  if (sessionStatus === 'unauthenticated' || !mockCurrentUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-muted/10">
+        <div className="text-center space-y-4">
+          <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
+            <Search className="h-8 w-8 text-destructive" />
+          </div>
+          <div>
+            <h3 className="font-medium text-lg">Authentication Required</h3>
+            <p className="text-muted-foreground mt-1">
+              Please log in to access the communication system
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (!selectedChannel) {
@@ -312,7 +355,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
         </div>
 
         {/* Main content area */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-100">
           {/* Messages area */}
           <div className="flex-1 flex flex-col min-w-0">
             {/* Error display */}
@@ -351,14 +394,12 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               <div className="flex-1 min-h-0 h-full">
                 {(() => {
                   const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
-                  console.log('ChatWindow - channelId:355', channelId)
-                  console.log('ChatWindow - messages object:356', messages)
-                  console.log('ChatWindow - channelMessages:357', channelMessages)
-                  console.log('ChatWindow - channelMessages length:358', channelMessages.length)
+                  const channelTypingUsers = (typingUsers as unknown as Record<string, ITypingIndicator[]>)[channelId] || []
+                  
                   return (
                     <MessageList
                       messages={channelMessages}
-                      typingUsers={typingUsers}
+                      typingUsers={channelTypingUsers}
                       currentUserId={mockCurrentUser._id}
                       onMessageRead={handleMessageRead}
                       onReply={handleReply}

@@ -1,121 +1,105 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
-model Channel {
-  id                    String   @id @default(uuid()) @db.Uuid
-  type                  String   // 'dm' | 'group' | 'department' | 'project' | 'client-support'
-  name                  String?  // Channel name (optional for DMs)
-  avatar_url            String?  // Channel avatar URL
-  mongo_department_id   String?  // MongoDB department reference
-  mongo_project_id      String?  // MongoDB project reference
-  mongo_creator_id      String   // MongoDB user ID of creator
-  is_private            Boolean  @default(false) // Privacy setting
-  member_count          Int      @default(0) // Number of members
-  last_message_at       DateTime? // Last message timestamp
-  created_at            DateTime @default(now()) @db.Timestamp(6)
-  updated_at            DateTime @updatedAt @db.Timestamp(6)
-
-  // Relations
-  messages              Message[]
-  channel_members       ChannelMember[]
-  reactions             Reaction[]
-  attachments           Attachment[]
-
-  @@map("channels")
+model attachments {
+  id                String   @id @db.Uuid
+  message_id        String   @db.Uuid
+  channel_id        String   @db.Uuid
+  mongo_uploader_id String
+  file_name         String
+  file_url          String?
+  s3_key            String?
+  s3_bucket         String?
+  file_size         Int?
+  file_type         String?
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  channels          channels @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  messages          messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
 }
 
-model Message {
-  id                      String   @id @default(uuid()) @db.Uuid
-  channel_id              String   @db.Uuid
-  mongo_sender_id         String   // MongoDB user ID of sender
-  content                 String   // Message content
-  content_type            String   @default("text") // 'text' | 'file' | 'system'
-  thread_id               String?  @db.Uuid // For threading (optional)
-  reply_count             Int      @default(0) // Number of replies
-  mongo_mentioned_user_ids String[] // Array of mentioned user IDs
-  is_edited               Boolean  @default(false) // Edit status
-  edited_at               DateTime? @db.Timestamp(6) // Edit timestamp
-  created_at              DateTime @default(now()) @db.Timestamp(6)
-
-  // Relations
-  channel                 Channel     @relation(fields: [channel_id], references: [id], onDelete: Cascade)
-  read_receipts           ReadReceipt[]
-  reactions               Reaction[]
-  attachments             Attachment[]
-
-  @@map("messages")
-}
-
-model ChannelMember {
-  id              String   @id @default(uuid()) @db.Uuid
-  channel_id      String   @db.Uuid
-  mongo_member_id String   // MongoDB user ID
-  role            String   @default("member") // 'admin' | 'member' | 'guest'
-  joined_at       DateTime @default(now()) @db.Timestamp(6)
-  last_seen_at    DateTime? @db.Timestamp(6) // Last activity timestamp
-  is_online       Boolean  @default(false) // Online status
-  notifications_enabled Boolean @default(true) // Notification preferences
-
-  // Relations
-  channel         Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+model channel_members {
+  id                    String    @id @db.Uuid
+  channel_id            String    @db.Uuid
+  mongo_member_id       String
+  role                  String    @default("member")
+  joined_at             DateTime  @default(now()) @db.Timestamptz(6)
+  last_seen_at          DateTime? @db.Timestamptz(6)
+  is_online             Boolean   @default(false)
+  notifications_enabled Boolean   @default(true)
+  channels              channels  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
 
   @@unique([channel_id, mongo_member_id])
-  @@map("channel_members")
 }
 
-model ReadReceipt {
-  id              String   @id @default(uuid()) @db.Uuid
-  message_id      String   @db.Uuid
-  mongo_user_id   String   // MongoDB user ID
-  read_at         DateTime @default(now()) @db.Timestamp(6)
+model channels {
+  id                  String            @id @db.Uuid
+  type                String
+  name                String?
+  avatar_url          String?
+  mongo_department_id String?
+  mongo_project_id    String?
+  mongo_creator_id    String
+  is_private          Boolean           @default(false)
+  member_count        Int               @default(0)
+  last_message_at     DateTime?         @db.Timestamptz(6)
+  created_at          DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime          @db.Timestamptz(6)
+  categories          String[]          @default([])
+  attachments         attachments[]
+  channel_members     channel_members[]
+  messages            messages[]
+  reactions           reactions[]
 
-  // Relations
-  message         Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
-
-  @@unique([message_id, mongo_user_id])
-  @@map("read_receipts")
+  @@index([categories], type: Gin)
 }
 
-model Reaction {
-  id              String   @id @default(uuid()) @db.Uuid
-  message_id      String   @db.Uuid
-  channel_id      String   @db.Uuid
-  mongo_user_id   String   // MongoDB user ID
-  emoji           String   // Reaction emoji
-  created_at      DateTime @default(now()) @db.Timestamp(6)
+model messages {
+  id                       String          @id @db.Uuid
+  channel_id               String          @db.Uuid
+  mongo_sender_id          String
+  content                  String
+  content_type             String          @default("text")
+  thread_id                String?         @db.Uuid
+  reply_count              Int             @default(0)
+  mongo_mentioned_user_ids String[]
+  is_edited                Boolean         @default(false)
+  edited_at                DateTime?       @db.Timestamptz(6)
+  created_at               DateTime        @default(now()) @db.Timestamptz(6)
+  parent_message_id        String?         @db.Uuid
+  attachments              attachments[]
+  channels                 channels        @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  messages                 messages?       @relation("messagesTomessages", fields: [parent_message_id], references: [id])
+  other_messages           messages[]      @relation("messagesTomessages")
+  reactions                reactions[]
+  read_receipts            read_receipts[]
 
-  // Relations
-  message         Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
-  channel         Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  @@index([parent_message_id])
+}
+
+model reactions {
+  id            String   @id @db.Uuid
+  message_id    String   @db.Uuid
+  channel_id    String   @db.Uuid
+  mongo_user_id String
+  emoji         String
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  channels      channels @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  messages      messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
 
   @@unique([message_id, mongo_user_id, emoji])
-  @@map("reactions")
 }
 
-model Attachment {
-  id                  String   @id @default(uuid()) @db.Uuid
-  message_id          String   @db.Uuid
-  channel_id          String   @db.Uuid
-  mongo_uploader_id   String   // MongoDB user ID
-  file_name           String   // Original file name
-  file_url            String?  // File URL (if stored externally)
-  s3_key              String?  // S3 key for file storage
-  s3_bucket           String?  // S3 bucket name
-  file_size           Int?     // File size in bytes
-  file_type           String?  // MIME type
-  created_at          DateTime @default(now()) @db.Timestamp(6)
+model read_receipts {
+  id            String   @id @db.Uuid
+  message_id    String   @db.Uuid
+  mongo_user_id String
+  read_at       DateTime @default(now()) @db.Timestamptz(6)
+  messages      messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
 
-  // Relations
-  message             Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
-  channel             Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
-
-  @@map("attachments")
+  @@unique([message_id, mongo_user_id])
 }

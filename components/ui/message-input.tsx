@@ -97,10 +97,9 @@ export function MessageInput({
 
     try {
       const messageData: CreateMessageData = {
-        channelId,
-        message: message.trim(),
-        communicationType: 'chat',
-        priority: 'medium',
+        channel_id: channelId,
+        content: message.trim(),
+        content_type: attachments.length > 0 ? 'file' : 'text',
         attachments: attachments.length > 0 ? attachments.map(f => f.name) : undefined // Will be file URLs in real implementation
       }
 

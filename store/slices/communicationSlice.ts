@@ -30,6 +30,7 @@ interface CommunicationState {
   loading: boolean
   actionLoading: boolean
   messagesLoading: boolean
+  channelsInitialized: boolean // Prevents multiple components from fetching channels
   
   // Error handling
   error: string | null
@@ -69,6 +70,7 @@ const initialState: CommunicationState = {
   loading: false,
   actionLoading: false,
   messagesLoading: false,
+  channelsInitialized: false,
   error: null,
   filters: {},
   sort: { field: 'created_at', direction: 'asc' },
@@ -105,6 +107,13 @@ const communicationSlice = createSlice({
       
       if (!state.messages[channelId]) {
         state.messages[channelId] = []
+      }
+      
+      // Check for duplicate - don't add if message already exists
+      const messageExists = state.messages[channelId].some(m => m.id === message.id)
+      if (messageExists) {
+        console.log('Message already exists, skipping duplicate:', message.id)
+        return
       }
       
       state.messages[channelId].push(message)
@@ -228,7 +237,17 @@ const communicationSlice = createSlice({
     
     // Data setters for TanStack Query integration
     setChannels: (state, action: PayloadAction<IChannel[]>) => {
+      // Only update if channels actually changed (prevent infinite loops)
+      const newChannelIds = action.payload.map(c => c.id).sort().join(',')
+      const currentChannelIds = state.channels.map(c => c.id).sort().join(',')
+      
+      if (newChannelIds === currentChannelIds) {
+        // Channels are the same, skip update
+        return
+      }
+      
       state.channels = action.payload
+      state.channelsInitialized = true // Mark as initialized to prevent duplicate fetches
       // Initialize unreadCount for channels if not present
       state.channels.forEach(channel => {
         if (channel.unreadCount === undefined || channel.unreadCount === null) {

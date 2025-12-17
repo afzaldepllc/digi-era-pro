@@ -48,7 +48,13 @@ export class RealtimeManager {
           filter: `channel_id=eq.${channelId}`,
         },
         (payload) => {
-          this.eventHandlers.onNewMessage?.(payload.new)
+          console.log('🔔 Realtime: New message detected', payload)
+          if (this.eventHandlers.onNewMessage) {
+            console.log('✅ Calling onNewMessage handler')
+            this.eventHandlers.onNewMessage(payload.new)
+          } else {
+            console.log('❌ No onNewMessage handler registered')
+          }
         }
       )
       .on(
@@ -60,7 +66,10 @@ export class RealtimeManager {
           filter: `channel_id=eq.${channelId}`,
         },
         (payload) => {
-          this.eventHandlers.onMessageUpdate?.(payload.new)
+          console.log('🔔 Realtime: Message updated', payload)
+          if (this.eventHandlers.onMessageUpdate) {
+            this.eventHandlers.onMessageUpdate(payload.new)
+          }
         }
       )
       .on(
@@ -72,7 +81,10 @@ export class RealtimeManager {
           filter: `channel_id=eq.${channelId}`,
         },
         (payload) => {
-          this.eventHandlers.onMessageDelete?.(payload.old.id)
+          console.log('🔔 Realtime: Message deleted', payload)
+          if (this.eventHandlers.onMessageDelete) {
+            this.eventHandlers.onMessageDelete(payload.old.id)
+          }
         }
       )
       // Subscribe to channel members changes
@@ -150,9 +162,18 @@ export class RealtimeManager {
       })
 
     // Subscribe to the channel
-    channel.subscribe(async (status) => {
+    channel.subscribe(async (status, err) => {
+      console.log(`🔌 Channel subscription status for ${channelId}:`, status)
+      if (err) {
+        console.error('❌ Subscription error:', err)
+      }
       if (status === 'SUBSCRIBED') {
-        console.log(`Subscribed to channel ${channelId}`)
+        console.log(`✅ Successfully subscribed to channel ${channelId}`)
+        console.log('📡 Active handlers:', Object.keys(this.eventHandlers))
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error(`❌ Channel error for ${channelId}`)
+      } else if (status === 'TIMED_OUT') {
+        console.error(`⏱️ Channel subscription timed out for ${channelId}`)
       }
     })
 

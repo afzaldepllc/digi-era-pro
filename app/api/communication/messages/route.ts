@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
-import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-config'
 import { supabase } from '@/lib/supabase'
+import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
 // GET /api/communication/messages?channel_id=... - Get messages for a channel
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+       const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+   
 
     const { searchParams } = new URL(request.url)
     const channelId = searchParams.get('channel_id')
@@ -55,13 +53,11 @@ export async function GET(request: NextRequest) {
 // POST /api/communication/messages - Send a new message
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+        const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+
 
     const body = await request.json()
-    const { channel_id, content, content_type, thread_id, mongo_mentioned_user_ids } = body
+    const { channel_id, content, content_type, thread_id, parent_message_id, mongo_mentioned_user_ids } = body
 
     if (!channel_id || !content) {
       return NextResponse.json(
@@ -85,13 +81,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the message
+    // Create the message (with optional reply support)
     const message = await messageOperations.create({
       channel_id,
       mongo_sender_id: session.user.id,
       content,
       content_type: content_type || 'text',
       thread_id,
+      parent_message_id, // For replies
       mongo_mentioned_user_ids: mongo_mentioned_user_ids || [],
     })
 
@@ -101,18 +98,9 @@ export async function POST(request: NextRequest) {
       data: { last_message_at: new Date() },
     })
 
-    // Broadcast via Supabase realtime
-    try {
-      await supabase
-        .channel(`channel_${channel_id}`)
-        .send({
-          type: 'broadcast',
-          event: 'new_message',
-          payload: { message },
-        })
-    } catch (realtimeError) {
-      console.warn('Realtime broadcast failed:', realtimeError)
-    }
+    // Note: Supabase Realtime with Postgres Changes will automatically
+    // notify all subscribers about the new message insert
+    // No need for manual broadcast for database operations
 
     // Fetch complete message with relations
     const completeMessage = await prisma.message.findUnique({
