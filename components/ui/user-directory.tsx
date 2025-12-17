@@ -15,6 +15,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
+import { useUsers } from "@/hooks/use-users"
+import { useSession } from "next-auth/react"
 import { User } from "@/types"
 
 interface UserDirectoryProps {
@@ -25,16 +27,18 @@ interface UserDirectoryProps {
 export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { createChannel, loading: channelLoading, selectChannel, mockUsers, mockCurrentUser } = useCommunications()
+  const { createChannel, loading: channelLoading, selectChannel } = useCommunications()
+  const { users, loading: usersLoading } = useUsers()
+  const { data: session } = useSession()
 
   // Filter active users (exclude current user and inactive users, and clients)
   const activeUsers = useMemo(() => {
-    return mockUsers.filter(user =>
-      user._id !== mockCurrentUser?._id
+    return users.filter(user =>
+      user._id !== (session?.user as any)?.id
       //  &&
       // user.isClient === false
     )
-  }, [mockUsers, mockCurrentUser?._id]);
+  }, [users, (session?.user as any)?.id]);
 
   // Filter users based on search
   const filteredUsers = useMemo(() => {
@@ -50,7 +54,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
   }, [activeUsers, searchQuery])
 
   const handleStartDM = async (user: User) => {
-    if (!mockCurrentUser || !mockCurrentUser._id) {
+    if (!(session?.user as any)?.id) {
       console.error('No current user found or user id missing')
       return
     }
@@ -59,7 +63,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
       // Create DM channel
       const channel = await createChannel({
         type: 'dm',
-        participants: [mockCurrentUser._id, user._id as string],
+        participants: [(session?.user as any)?.id, user._id as string],
         is_private: true
       })
 

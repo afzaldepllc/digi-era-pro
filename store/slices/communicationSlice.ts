@@ -279,6 +279,10 @@ const communicationSlice = createSlice({
     // Reset state
     resetState: (state) => {
       Object.assign(state, initialState)
+    },
+
+    setChannelsInitialized: (state, action: PayloadAction<boolean>) => {
+      state.channelsInitialized = action.payload
     }
   }
 })
@@ -307,6 +311,7 @@ export const {
   setError,
   addNotification,
   clearNotifications,
+  setChannelsInitialized,
   resetState
 } = communicationSlice.actions
 

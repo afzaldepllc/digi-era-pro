@@ -26,6 +26,7 @@ import {
   setError,
   addNotification,
   clearNotifications,
+  setChannelsInitialized,
   resetState
 } from '@/store/slices/communicationSlice'
 import type {
@@ -137,7 +138,7 @@ export function useCommunications() {
       }
     })
     console.log('✅ Realtime handlers updated')
-  }, [dispatch, realtimeManager, activeChannelId, onlineUsers])
+  }, [dispatch, realtimeManager, activeChannelId])
 
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
@@ -174,12 +175,12 @@ export function useCommunications() {
 
   // Fetch channels on mount - but only if not already initialized globally
   useEffect(() => {
-    if (!channelsInitialized && !hasInitialized.current && sessionUser?.id) {
+    if (!hasInitialized.current && sessionUser?.id) {
       hasInitialized.current = true
       fetchChannels()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelsInitialized, sessionUser?.id]) // Re-run if channelsInitialized changes
+  }, [sessionUser?.id]) // Re-run if channelsInitialized changes
 
   // Subscribe to active channel
   useEffect(() => {
@@ -216,6 +217,7 @@ export function useCommunications() {
       return enrichedChannels
     } catch (error) {
       dispatch(setError('Failed to fetch channels'))
+      dispatch(setChannelsInitialized(true)) // Prevent infinite retries
       toast({
         title: "Error",
         description: "Failed to load channels",

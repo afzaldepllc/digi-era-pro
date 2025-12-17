@@ -24,7 +24,7 @@ function createErrorResponse(message: string, status: number, details?: any) {
 export async function GET(request: NextRequest) {
   try {
     // Apply middleware (rate limiting + authentication + permissions)
-    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
 
     if (!session?.user?.id) {
       return createErrorResponse('Unauthorized', 401)

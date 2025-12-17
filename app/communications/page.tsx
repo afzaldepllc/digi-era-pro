@@ -43,11 +43,10 @@ export default function CommunicationsPage() {
   const lastChannelParam = useRef<string | null>(null)
  
   // Department integration for filtering
-  const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([])
   const { allDepartments } = useDepartments()
 
   // Memoize available departments to prevent unnecessary re-renders
-  const memoizedAvailableDepartments = useMemo(() => {
+  const availableDepartments = useMemo(() => {
     if (allDepartments && allDepartments.length > 0) {
       return allDepartments.map((dept: any) => ({
         value: dept._id,
@@ -56,11 +55,6 @@ export default function CommunicationsPage() {
     }
     return []
   }, [allDepartments])
-
-  // Update available departments when memoized value changes
-  useEffect(() => {
-    setAvailableDepartments(memoizedAvailableDepartments)
-  }, [memoizedAvailableDepartments])
 
   const {
     channels,
@@ -120,26 +114,8 @@ export default function CommunicationsPage() {
 
   // Fetch available departments for filter
   const fetchAvailableDepartments = useCallback(async () => {
-    try {
-      // Use allDepartments from the hook instead of fetching
-      const currentAllDepartments = allDepartments
-      if (currentAllDepartments && currentAllDepartments.length > 0) {
-        const departmentOptions = currentAllDepartments.map((dept: any) => ({
-          value: dept._id,
-          label: dept.name,
-        })) || []
-        setAvailableDepartments(departmentOptions)
-      }
-    } catch (error) {
-      console.error('Failed to fetch departments for filter:', error)
-      handleAPIError(error, "Failed to load departments for filtering")
-    }
-  }, []) // Remove allDepartments from dependencies to prevent infinite re-runs
-
-  // Update available departments when memoized value changes
-  useEffect(() => {
-    setAvailableDepartments(memoizedAvailableDepartments)
-  }, [memoizedAvailableDepartments])
+    // No longer needed since we use the memoized value directly
+  }, [])
 
   const handleChannelSelect = useCallback((channelId: string) => {
     selectChannel(channelId)

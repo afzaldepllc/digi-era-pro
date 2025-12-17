@@ -367,7 +367,7 @@ export const ChannelList = memo(function ChannelList({
                 
                 {/* Read channels */}
                 {filteredChannels
-                  .filter(channel => channel.unreadCount === 0)
+                  .filter(channel => (channel.unreadCount || 0) === 0)
                   .map((channel) => (
                     <ChannelItem key={channel.id} channel={channel} />
                   ))

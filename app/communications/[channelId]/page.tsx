@@ -34,13 +34,6 @@ export default function ChannelPage() {
     }
   }, [channelId, selectChannel])
 
-  useEffect(() => {
-    // Fetch channels if not already loaded
-    if (!loading && channels.length === 0) {
-      fetchChannels()
-    }
-  }, [loading, channels.length, fetchChannels])
-
   if (loading && !selectedChannel) {
     return (
       <div className="h-[calc(100vh-64px)] flex flex-col">

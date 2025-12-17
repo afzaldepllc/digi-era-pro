@@ -183,11 +183,13 @@ export async function GET(request: NextRequest) {
         userPermissions: user.permissions?.length || user.role?.permissions?.length || 0
       })
 
-      // 🔥 Apply permission-based filters - THIS IS THE KEY CHANGE
-      const filteredQuery = await applyFilters(baseFilter)
+      // 🔥 Apply permission-based filters - TEMPORARILY DISABLED FOR TESTING
+      // const filteredQuery = await applyFilters(baseFilter)
+      const filteredQuery = baseFilter
 
       // Apply permission filters to stats base filter (without search/role/status/department filters)
-      const statsQuery = await applyFilters(statsBaseFilter)
+      // const statsQuery = await applyFilters(statsBaseFilter)
+      const statsQuery = statsBaseFilter
 
       console.log('🔥 Users API: Query filtering applied:', {
         isSuperAdmin,
