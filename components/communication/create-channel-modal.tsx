@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { useDepartments } from "@/hooks/use-departments";
 import { useProjects } from "@/hooks/use-projects";
 import { useUsers } from "@/hooks/use-users";
+import { useClients } from '@/hooks/use-clients'
 
 type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support'
 type DepartmentCategory = 'sales' | 'support' | 'it' | 'management'
@@ -45,12 +46,14 @@ export function CreateChannelModal({
   const { allDepartments } = useDepartments();
   const { projects } = useProjects();
   const { users } = useUsers();
+  const { clients } = useClients();
 
   const categories: DepartmentCategory[] = ['sales', 'support', 'it', 'management']
 
-  const clientUsers = users.filter(u => u.isClient === true)
+  const clientUsers = clients
   const regularUsers = users.filter(u => u.isClient !== true)
-
+  console.log("regularUsers53",regularUsers);
+  console.log("clientUsers54",clientUsers);
   const handleCategoryToggle = (category: DepartmentCategory) => {
     setSelectedCategories(prev =>
       prev.includes(category)

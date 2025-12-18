@@ -13,8 +13,13 @@ export interface ICommunication {
   is_edited: boolean // Edit status
   edited_at?: string // Edit timestamp
   created_at: string // Creation timestamp
+  parent_message_id?: string // For replies
   attachments?: IAttachment[]
   read_receipts?: IReadReceipt[]
+  sender?: IParticipant // Enriched sender data
+  // UI helper fields (not in schema)
+  isOptimistic?: boolean // For optimistic updates
+  isFailed?: boolean // For failed message sends
 }
 
 // Channels table interface
@@ -106,6 +111,8 @@ export interface CreateMessageData {
   content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
   thread_id?: string // Changed from 'parentMessageId'
+  parent_message_id?: string // For replies
+  mongo_mentioned_user_ids?: string[] // Mentioned users
 }
 
 export interface CreateChannelData {

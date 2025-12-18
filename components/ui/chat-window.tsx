@@ -58,10 +58,18 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     setError,
     mockCurrentUser,
     sessionStatus,
-    usersLoading
+    usersLoading,
+    selectChannel
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  
+  // Auto-select channel if channelId is provided and no channel is selected
+  useEffect(() => {
+    if (channelId && !selectedChannel) {
+      selectChannel(channelId)
+    }
+  }, [channelId, selectedChannel, selectChannel])
   
   // Show loading state while session is being fetched
   const isInitializing = sessionStatus === 'loading' || usersLoading

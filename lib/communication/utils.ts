@@ -31,3 +31,46 @@ export function enrichChannelWithUserData(channel: any, users: any[]) {
     }
   }
 }
+
+// Helper function to enrich messages with MongoDB user data
+export function enrichMessageWithUserData(message: any, users: any[]) {
+  if (!message || typeof message !== 'object' || !message.mongo_sender_id) {
+    console.error('Invalid message for enrichment:', message)
+    return null
+  }
+  
+  try {
+    // Create a map of users by _id for quick lookup
+    const userMap = new Map(users.map(user => [user._id.toString(), user]))
+
+    // Find the sender user
+    const sender = userMap.get(message.mongo_sender_id)
+
+    // Enrich message with sender data
+    const enrichedMessage = {
+      ...message,
+      sender: sender ? {
+        mongo_member_id: sender._id,
+        name: sender.name || sender.email || 'Unknown User',
+        email: sender.email || '',
+        avatar: sender.avatar || '',
+        role: typeof sender.role === 'string' ? sender.role : sender.role?.name || 'User',
+        userType: sender.isClient ? 'Client' : 'User',
+        isOnline: false // TODO: Add real-time status if needed
+      } : {
+        mongo_member_id: message.mongo_sender_id,
+        name: 'Unknown User',
+        email: '',
+        avatar: '',
+        role: 'User',
+        userType: 'User',
+        isOnline: false
+      }
+    }
+
+    return enrichedMessage
+  } catch (error) {
+    console.error('Error enriching message with user data:', error)
+    return null
+  }
+}

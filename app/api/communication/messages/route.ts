@@ -6,6 +6,10 @@ import { SecurityUtils } from '@/lib/security/validation'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
+import { createClient } from '@supabase/supabase-js'
+import { enrichMessageWithUserData } from '@/lib/communication/utils'
+import { executeGenericDbQuery } from '@/lib/mongodb'
+import { default as User } from '@/models/User'
 
 
 // Helper to create consistent error responses
@@ -64,11 +68,19 @@ export async function GET(request: NextRequest) {
       validatedParams.offset
     )
 
+    // Fetch all users for enrichment
+    const allUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
+    })
+
+    // Enrich messages with user data
+    const enrichedMessages = messages.map((message: any) => enrichMessageWithUserData(message, allUsers)).filter(Boolean)
+
     return NextResponse.json({
       success: true,
-      data: messages.reverse(), // Reverse to show oldest first
+      data: enrichedMessages.reverse(), // Reverse to show oldest first
       meta: {
-        total: messages.length,
+        total: enrichedMessages.length,
         limit: validatedParams.limit,
         offset: validatedParams.offset
       }
@@ -88,6 +100,12 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return createErrorResponse('Unauthorized', 401)
     }
+
+    // Create Supabase admin client for broadcasting
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!
+    )
 
     // Parse and validate request body
     const body = await request.json()
@@ -123,18 +141,40 @@ export async function POST(request: NextRequest) {
     })
 
     // Fetch complete message with relations
-    const completeMessage = await prisma.messages.findUnique({
-      where: { id: message.id },
-      include: {
-        read_receipts: true,
-        reactions: true,
-        attachments: true,
-      },
+    // const completeMessage = await prisma.messages.findUnique({
+    //   where: { id: message.id },
+    //   include: {
+    //     read_receipts: true,
+    //     reactions: true,
+    //     attachments: true,
+    //   },
+    // })
+
+    // Broadcast the message to realtime subscribers
+    try {
+      const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
+      await channel.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: message
+      })
+      console.log('📡 Message broadcasted to channel:', validatedData.channel_id)
+    } catch (broadcastError) {
+      console.error('❌ Failed to broadcast message:', broadcastError)
+      // Don't fail the request if broadcast fails
+    }
+
+    // Fetch all users for enrichment
+    const allUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
     })
+
+    // Enrich message with user data
+    const enrichedMessage = enrichMessageWithUserData(message, allUsers)
 
     return NextResponse.json({
       success: true,
-      data: completeMessage,
+      data: enrichedMessage,
       message: 'Message sent successfully'
     })
   } catch (error: any) {

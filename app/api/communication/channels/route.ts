@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       client_id: validatedData.client_id,
       is_private: validatedData.is_private
     })
-
+    console.log("memberIds141",memberIds);
     // For DM channels, check if one already exists between these users
     if (validatedData.type === 'dm' && memberIds.length === 2) {
       const sortedMembers = memberIds.sort()

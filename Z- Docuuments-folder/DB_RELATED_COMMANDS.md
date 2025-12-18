@@ -44,7 +44,6 @@ npx prisma migrate reset --force
 npx prisma db push
 # or npm run db:push
 
-Schema Validation
-Validates your schema.prisma file for syntax and consistency errors.
+### Schema Validation (Validates your schema.prisma file for syntax and consistency errors.)
 
 npx prisma validate

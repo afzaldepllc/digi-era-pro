@@ -16,7 +16,8 @@ export interface RealtimeEventHandlers {
 }
 
 export class RealtimeManager {
-  private channels: Map<string, RealtimeChannel> = new Map()
+  private rtChannels: Map<string, RealtimeChannel> = new Map()
+  private subscriptionPromises: Map<string, Promise<void>> = new Map()
   private eventHandlers: RealtimeEventHandlers = {}
 
   constructor(handlers: RealtimeEventHandlers = {}) {
@@ -24,177 +25,105 @@ export class RealtimeManager {
   }
 
   // Subscribe to a channel's events
-  subscribeToChannel(channelId: string): RealtimeChannel {
-    if (this.channels.has(channelId)) {
-      return this.channels.get(channelId)!
+  subscribeToChannel(channelId: string): Promise<void> {
+    const existingPromise = this.subscriptionPromises.get(channelId)
+    if (existingPromise) {
+      console.log("🔄 Returning existing subscription promise for:", channelId)
+      return existingPromise
     }
 
-    const channel = supabase.channel(`channel_${channelId}`, {
-      config: {
-        presence: {
-          key: channelId,
-        },
-      },
-    })
+    if (this.rtChannels.has(channelId)) {
+      console.log("🔄 RT Channel already exists for:", channelId)
+      return Promise.resolve()
+    }
 
-    // Subscribe to messages table changes
-    channel
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `channel_id=eq.${channelId}`,
+    console.log("🆕 Creating RT channel for:", channelId)
+
+    const subscriptionPromise = new Promise<void>((resolve, reject) => {
+      // RT Channel for broadcast and presence
+      const rtChannel = supabase.channel(`rt_${channelId}`, {
+        config: {
+          broadcast: {
+            self: false, // Prevent sender from receiving own broadcasts
+          },
+          presence: {
+            key: channelId,
+          },
         },
-        (payload) => {
-          console.log('🔔 Realtime: New message detected', payload)
+      })
+
+      // Subscribe to broadcast events (new messages, typing indicators, etc.)
+      rtChannel
+        .on('broadcast', { event: 'new_message' }, (payload) => {
+          console.log('🔔 Realtime: New message broadcast', payload)
           if (this.eventHandlers.onNewMessage) {
             console.log('✅ Calling onNewMessage handler')
-            this.eventHandlers.onNewMessage(payload.new)
+            this.eventHandlers.onNewMessage(payload.payload)
           } else {
             console.log('❌ No onNewMessage handler registered')
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          console.log('🔔 Realtime: Message updated', payload)
-          if (this.eventHandlers.onMessageUpdate) {
-            this.eventHandlers.onMessageUpdate(payload.new)
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'messages',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          console.log('🔔 Realtime: Message deleted', payload)
-          if (this.eventHandlers.onMessageDelete) {
-            this.eventHandlers.onMessageDelete(payload.old.id)
-          }
-        }
-      )
-      // Subscribe to channel members changes
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'channel_members',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          this.eventHandlers.onUserJoined?.(payload.new)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'channel_members',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          this.eventHandlers.onUserLeft?.(payload.old.mongo_member_id)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'channel_members',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          if (payload.new.is_online && !payload.old.is_online) {
-            this.eventHandlers.onUserOnline?.(payload.new.mongo_member_id)
-          } else if (!payload.new.is_online && payload.old.is_online) {
-            this.eventHandlers.onUserOffline?.(payload.new.mongo_member_id)
-          }
-        }
-      )
-      // Subscribe to reactions
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'reactions',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          this.eventHandlers.onReactionAdd?.(payload.new)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'reactions',
-          filter: `channel_id=eq.${channelId}`,
-        },
-        (payload) => {
-          this.eventHandlers.onReactionRemove?.(payload.old.id)
-        }
-      )
-      // Subscribe to broadcast events (typing indicators, etc.)
-      .on('broadcast', { event: 'typing_start' }, (payload) => {
-        this.eventHandlers.onTypingStart?.(payload.payload.userId)
-      })
-      .on('broadcast', { event: 'typing_stop' }, (payload) => {
-        this.eventHandlers.onTypingStop?.(payload.payload.userId)
-      })
+        })
+        .on('broadcast', { event: 'typing_start' }, (payload) => {
+          console.log('🔔 Realtime: Typing start', payload)
+          this.eventHandlers.onTypingStart?.(payload.payload.userId)
+        })
+        .on('broadcast', { event: 'typing_stop' }, (payload) => {
+          console.log('🔔 Realtime: Typing stop', payload)
+          this.eventHandlers.onTypingStop?.(payload.payload.userId)
+        })
 
-    // Subscribe to the channel
-    channel.subscribe(async (status, err) => {
-      console.log(`🔌 Channel subscription status for ${channelId}:`, status)
-      if (err) {
-        console.error('❌ Subscription error:', err)
-      }
-      if (status === 'SUBSCRIBED') {
-        console.log(`✅ Successfully subscribed to channel ${channelId}`)
-        console.log('📡 Active handlers:', Object.keys(this.eventHandlers))
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error(`❌ Channel error for ${channelId}`)
-      } else if (status === 'TIMED_OUT') {
-        console.error(`⏱️ Channel subscription timed out for ${channelId}`)
-      }
+      rtChannel.subscribe((status, err) => {
+        console.log(`🔌 RT Channel subscription status for ${channelId}:`, status)
+        if (err) {
+          console.error('❌ RT Subscription error:', err)
+          this.subscriptionPromises.delete(channelId) // Clean up on error
+          reject(err)
+        }
+        if (status === 'SUBSCRIBED') {
+          console.log(`✅ Successfully subscribed to RT channel ${channelId}`)
+          this.rtChannels.set(channelId, rtChannel)
+          this.subscriptionPromises.delete(channelId) // Clean up after success
+          resolve()
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error(`❌ RT Channel error for ${channelId}`)
+          this.subscriptionPromises.delete(channelId)
+          reject(new Error(`RT Channel error for ${channelId}`))
+        } else if (status === 'TIMED_OUT') {
+          console.error(`⏱️ RT Channel subscription timed out for ${channelId}`)
+          this.subscriptionPromises.delete(channelId)
+          reject(new Error(`RT Channel subscription timed out for ${channelId}`))
+        }
+      })
     })
 
-    this.channels.set(channelId, channel)
-    return channel
+    this.subscriptionPromises.set(channelId, subscriptionPromise)
+    return subscriptionPromise
   }
 
   // Unsubscribe from a channel
   unsubscribeFromChannel(channelId: string) {
-    const channel = this.channels.get(channelId)
-    if (channel) {
-      supabase.removeChannel(channel)
-      this.channels.delete(channelId)
+    const rtChannel = this.rtChannels.get(channelId)
+    if (rtChannel) {
+      supabase.removeChannel(rtChannel)
+      this.rtChannels.delete(channelId)
     }
+    this.subscriptionPromises.delete(channelId)
   }
 
   // Send typing indicator
-  sendTypingStart(channelId: string, userId: string) {
-    const channel = this.channels.get(channelId)
-    if (channel) {
-      channel.send({
+  async sendTypingStart(channelId: string, userId: string) {
+    let rtChannel = this.rtChannels.get(channelId)
+    if (!rtChannel) {
+      try {
+        await this.subscribeToChannel(channelId)
+        rtChannel = this.rtChannels.get(channelId)
+      } catch (error) {
+        console.error('❌ Failed to subscribe for typing start:', error)
+        return
+      }
+    }
+    if (rtChannel) {
+      rtChannel.send({
         type: 'broadcast',
         event: 'typing_start',
         payload: { userId, timestamp: Date.now() },
@@ -202,14 +131,50 @@ export class RealtimeManager {
     }
   }
 
-  sendTypingStop(channelId: string, userId: string) {
-    const channel = this.channels.get(channelId)
-    if (channel) {
-      channel.send({
+  async sendTypingStop(channelId: string, userId: string) {
+    let rtChannel = this.rtChannels.get(channelId)
+    if (!rtChannel) {
+      try {
+        await this.subscribeToChannel(channelId)
+        rtChannel = this.rtChannels.get(channelId)
+      } catch (error) {
+        console.error('❌ Failed to subscribe for typing stop:', error)
+        return
+      }
+    }
+    if (rtChannel) {
+      rtChannel.send({
         type: 'broadcast',
         event: 'typing_stop',
         payload: { userId, timestamp: Date.now() },
       })
+    }
+  }
+
+  // Broadcast a new message to channel
+  async broadcastMessage(channelId: string, message: any) {
+    console.log('📡 Attempting to broadcast message to channel:', channelId)
+    console.log('📡 Available rt channels:', Array.from(this.rtChannels.keys()))
+    let rtChannel = this.rtChannels.get(channelId)
+    if (!rtChannel) {
+      console.log('🆕 RT Channel not found, subscribing first...')
+      try {
+        await this.subscribeToChannel(channelId)
+        rtChannel = this.rtChannels.get(channelId)
+      } catch (error) {
+        console.error('❌ Failed to subscribe to channel for broadcasting:', error)
+        return
+      }
+    }
+    if (rtChannel) {
+      console.log('📡 Broadcasting message to rt channel:', channelId, message)
+      rtChannel.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: message
+      })
+    } else {
+      console.error('❌ No channel found for broadcasting:', channelId)
     }
   }
 
@@ -220,10 +185,11 @@ export class RealtimeManager {
 
   // Cleanup all subscriptions
   cleanup() {
-    for (const [channelId, channel] of this.channels) {
-      supabase.removeChannel(channel)
+    for (const [channelId, rtChannel] of this.rtChannels) {
+      supabase.removeChannel(rtChannel)
     }
-    this.channels.clear()
+    this.rtChannels.clear()
+    this.subscriptionPromises.clear()
   }
 }
 

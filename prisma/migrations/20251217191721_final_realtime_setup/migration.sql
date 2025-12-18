@@ -131,7 +131,7 @@ ALTER TABLE "read_receipts" ADD CONSTRAINT "read_receipts_message_id_fkey" FOREI
 -- Supabase Realtime Setup - API-Level Security
 -- ============================================
 
--- This configuration disables RLS and relies on API-level authentication
+-- This configuration DISABLES RLS and relies on API-level authentication
 -- All security is handled through MongoDB auth and API endpoints
 -- Supabase is only accessible via API keys (secure server-side)
 
@@ -195,9 +195,8 @@ BEGIN
   END IF;
 END $$;
 
--- 3. DISABLE Row Level Security (RLS) on ALL tables in public schema
--- Security is handled at the API level with MongoDB authentication
--- Only servers with Supabase keys can access this data
+-- 3. DISABLE Row Level Security (RLS) on communication tables for real-time
+-- Security is handled through API authentication, not database-level
 DO $$
 DECLARE
   table_name text;
@@ -206,23 +205,8 @@ BEGIN
     SELECT tablename
     FROM pg_tables
     WHERE schemaname = 'public'
-    AND tablename NOT IN ('_prisma_migrations')  -- Exclude Prisma internal table
+    AND tablename IN ('messages', 'channels', 'channel_members', 'reactions', 'attachments', 'read_receipts')
   LOOP
     EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY;', table_name);
-  END LOOP;
-END $$;
-
--- 4. Drop any existing RLS policies from ALL tables (if any)
-DO $$
-DECLARE
-  pol record;
-BEGIN
-  -- Drop all policies from all public schema tables
-  FOR pol IN
-    SELECT schemaname, tablename, policyname
-    FROM pg_policies
-    WHERE schemaname = 'public'
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I;', pol.policyname, pol.schemaname, pol.tablename);
   END LOOP;
 END $$;

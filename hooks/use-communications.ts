@@ -43,18 +43,26 @@ import type {
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager } from '@/lib/realtime-manager'
-import { enrichChannelWithUserData } from '@/lib/communication/utils'
+import { enrichMessageWithUserData } from '@/lib/communication/utils'
 
 // Global flag to prevent multiple channel fetches across component remounts
-let globalChannelsFetched = false
+// let globalChannelsFetched = false
+
+// Global maps to prevent duplicate fetches per user across component remounts
+const globalFetchedUsers = new Map<string, boolean>()
+const globalFetchedChannels = new Map<string, boolean>()
 
 export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
   const realtimeManager = useMemo(() => getRealtimeManager(), [])
-  const hasInitialized = useRef(false)
+  const hasInitialized = useRef(false)  
   const hasUsersInitialized = useRef(false)
+  const channelsFetchedRef = useRef(false)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasFetchedUsersRef = useRef(false)
+  const hasFetchedChannelsRef = useRef(false)
   
   // State for real users data
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -99,17 +107,35 @@ export function useCommunications() {
   // Memoized event handlers for realtime manager
   const onNewMessage = useCallback((message: any) => {
     console.log('📩 onNewMessage handler called with:', message)
-    dispatch(addMessage({ channelId: message.channel_id, message }))
-  }, [dispatch])
+    
+    // Skip messages from self to avoid duplicates
+    if (message.mongo_sender_id === sessionUserId) {
+      console.log('📩 Skipping message from self')
+      return
+    }
+    
+    if (message && typeof message === 'object' && message.mongo_sender_id) {
+      // Enrich message with user data
+      const enrichedMessage = enrichMessageWithUserData(message, allUsers)
+      console.log('📩 Enriched message:', enrichedMessage)
+      
+      if (enrichedMessage) {
+        dispatch(addMessage({ channelId: message.channel_id, message: enrichedMessage }))
+      }
+    } else {
+      console.error('Invalid message received, skipping:', message)
+    }
+  }, [dispatch, allUsers, sessionUserId])
 
   const onMessageUpdate = useCallback((message: any) => {
     console.log('📝 onMessageUpdate handler called')
+    const enrichedMessage = enrichMessageWithUserData(message, allUsers)
     dispatch(updateMessage({
       channelId: message.channel_id,
       messageId: message.id,
-      updates: message
+      updates: enrichedMessage
     }))
-  }, [dispatch])
+  }, [dispatch, allUsers])
 
   const onMessageDelete = useCallback((messageId: any) => {
     console.log('🗑️ Message deleted:', messageId)
@@ -150,27 +176,21 @@ export function useCommunications() {
     dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
   }, [dispatch, activeChannelId])
 
-  // Initialize realtime manager with event handlers
-  useEffect(() => {
-    console.log('🔧 Updating realtime handlers')
-    realtimeManager.updateHandlers({
-      onNewMessage,
-      onMessageUpdate,
-      onMessageDelete,
-      onUserJoined,
-      onUserLeft,
-      onUserOnline,
-      onUserOffline,
-      onTypingStart,
-      onTypingStop
-    })
-    console.log('✅ Realtime handlers updated')
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop])
 
-  // Fetch all users on mount for user directory
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
+
+
   useEffect(() => {
     const fetchAllUsers = async () => {
-      if (sessionUserId && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
+      if (sessionUserId && !globalFetchedUsers.get(sessionUserId) && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
+        globalFetchedUsers.set(sessionUserId, true)
+        hasFetchedUsersRef.current = true
         hasUsersInitialized.current = true
         try {
           setUsersLoading(true)
@@ -189,9 +209,11 @@ export function useCommunications() {
 
   // Fetch channels on mount - but only if not already initialized globally
   useEffect(() => {
-    console.log('🔄 Channels fetch useEffect running, globalChannelsFetched:', globalChannelsFetched, 'sessionUserId:', sessionUserId, 'loading:', loading)
-    if (!globalChannelsFetched && sessionUserId && !loading) {
-      globalChannelsFetched = true
+    console.log('🔄 Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
+    if (sessionUserId && !globalFetchedChannels.get(sessionUserId) && !loading) {
+      globalFetchedChannels.set(sessionUserId, true)
+      hasFetchedChannelsRef.current = true
+      channelsFetchedRef.current = true
       console.log('🚀 Fetching channels')
       fetchChannels()
     }
@@ -200,11 +222,18 @@ export function useCommunications() {
 
   // Subscribe to active channel
   useEffect(() => {
-    if (activeChannelId) {
-      console.log('Subscribing to channel:', activeChannelId)
-      realtimeManager.subscribeToChannel(activeChannelId)
-      fetchMessages({ channel_id: activeChannelId })
+    const subscribe = async () => {
+      if (activeChannelId) {
+        console.log('Subscribing to channel:', activeChannelId)
+        try {
+          await realtimeManager.subscribeToChannel(activeChannelId)
+          fetchMessages({ channel_id: activeChannelId })
+        } catch (error) {
+          console.error('Failed to subscribe to channel:', error)
+        }
+      }
     }
+    subscribe()
 
     return () => {
       if (activeChannelId) {
@@ -213,6 +242,21 @@ export function useCommunications() {
       }
     }
   }, [activeChannelId, realtimeManager])
+
+  // Update handlers when they change
+  useEffect(() => {
+    realtimeManager.updateHandlers({
+      onNewMessage,
+      onMessageUpdate,
+      onMessageDelete,
+      onUserJoined,
+      onUserLeft,
+      onUserOnline,
+      onUserOffline,
+      onTypingStart,
+      onTypingStop
+    })
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop])
 
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
@@ -230,10 +274,8 @@ export function useCommunications() {
       
       const response = await apiRequest(url)
       console.log('Raw response from API:', response)
-      const enrichedChannels = response.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
-      console.log('Enriched channels:', enrichedChannels)
-      dispatch(setChannels(enrichedChannels))
-      return enrichedChannels
+      dispatch(setChannels(response))
+      return response  
     } catch (error) {
       dispatch(setError('Failed to fetch channels'))
       dispatch(setChannelsInitialized(true)) // Prevent infinite retries
@@ -251,6 +293,8 @@ export function useCommunications() {
 
   const selectChannel = useCallback((channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
+    // Clear messages to force re-fetch with enriched data
+    dispatch(setMessages({ channelId: channel_id, messages: [] }))
   }, [dispatch])
 
   const clearChannel = useCallback(() => {
@@ -269,8 +313,10 @@ export function useCommunications() {
       })
       
       const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
-      dispatch(setMessages({ channelId: params.channel_id, messages: response.messages }))
-      return response.messages
+      // Enrich messages with user data
+      const enrichedMessages = response.map((message: any) => enrichMessageWithUserData(message, allUsers))
+      dispatch(setMessages({ channelId: params.channel_id, messages: enrichedMessages }))
+      return enrichedMessages
     } catch (error) {
       dispatch(setError('Failed to fetch messages'))
       toast({
@@ -286,21 +332,64 @@ export function useCommunications() {
   }, [dispatch]) // Removed toast to prevent infinite loop
 
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
+    const tempId = crypto.randomUUID()
     try {
       dispatch(setActionLoading(true))
+
+      // Create optimistic message
+      const optimisticMessage = {
+        id: tempId,
+        channel_id: messageData.channel_id,
+        mongo_sender_id: sessionUserId,
+        content: messageData.content,
+        content_type: messageData.content_type || 'text',
+        thread_id: messageData.thread_id,
+        parent_message_id: messageData.parent_message_id,
+        mongo_mentioned_user_ids: messageData.mongo_mentioned_user_ids || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        read_receipts: [],
+        reactions: [],
+        attachments: [],
+        isOptimistic: true // Flag to identify optimistic messages
+      }
+
+      // Enrich optimistic message
+      const enrichedOptimisticMessage = enrichMessageWithUserData(optimisticMessage, allUsers)
+
+      // Add optimistic message to state
+      dispatch(addMessage({ channelId: messageData.channel_id, message: enrichedOptimisticMessage }))
+
+      // Send to API
       const response = await apiRequest('/api/communication/messages', {
         method: 'POST',
         body: JSON.stringify(messageData)
       })
 
-      // Immediately add the message to Redux state (optimistic update)
-      // This ensures the sender sees their message instantly
-      if (response.message) {
-        dispatch(addMessage({ 
-          channelId: messageData.channel_id, 
-          message: response.message 
+      // Check if response is valid
+      if (!response || !response.id) {
+        console.error('Invalid response from API:', response)
+        dispatch(updateMessage({
+          channelId: messageData.channel_id,
+          messageId: tempId,
+          updates: { isFailed: true }
+        }))
+        return
+      }
+
+      // Update optimistic message with real data
+      const realMessage = enrichMessageWithUserData(response, allUsers)
+      if (realMessage) {
+        dispatch(updateMessage({
+          channelId: messageData.channel_id,
+          messageId: tempId,
+          updates: { ...realMessage, isOptimistic: false }
         }))
       }
+
+      // Broadcast is now handled by the API route
+      // console.log('📤 Broadcasting message, channel_id:', messageData.channel_id)
+      // await realtimeManager.broadcastMessage(messageData.channel_id, response)
 
       toast({
         title: "Message sent",
@@ -309,6 +398,13 @@ export function useCommunications() {
 
       return response.message
     } catch (error) {
+      // Mark optimistic message as failed
+      dispatch(updateMessage({
+        channelId: messageData.channel_id,
+        messageId: tempId,
+        updates: { isFailed: true }
+      }))
+
       dispatch(setError('Failed to send message'))
       toast({
         title: "Error",
@@ -320,7 +416,7 @@ export function useCommunications() {
       dispatch(setActionLoading(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]) // Removed toast to prevent infinite loop
+  }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -338,7 +434,7 @@ export function useCommunications() {
         description: "New conversation started successfully",
       })
 
-      return response.channel
+      return response
     } catch (error) {
       dispatch(setError('Failed to create channel'))
       toast({
@@ -365,20 +461,26 @@ export function useCommunications() {
   }, [])
 
   // Real-time operations
-  const setUserTyping = useCallback((typingIndicator: ITypingIndicator) => {
+  const setUserTyping = useCallback(async (typingIndicator: ITypingIndicator) => {
     if (activeChannelId) {
-      realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+
+      // Send typing start
+      await realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
       dispatch(setTyping(typingIndicator))
 
-      // Auto-remove typing indicator after 3 seconds
-      setTimeout(() => {
+      // Auto-stop typing after 3 seconds
+      typingTimeoutRef.current = setTimeout(() => {
         removeUserTyping(activeChannelId, typingIndicator.userId)
       }, 3000)
     }
   }, [dispatch, activeChannelId, realtimeManager])
 
-  const removeUserTyping = useCallback((channelId: string, userId: string) => {
-    realtimeManager.sendTypingStop(channelId, userId)
+  const removeUserTyping = useCallback(async (channelId: string, userId: string) => {
+    await realtimeManager.sendTypingStop(channelId, userId)
     dispatch(removeTyping({ channelId, userId }))
   }, [dispatch, realtimeManager])
 

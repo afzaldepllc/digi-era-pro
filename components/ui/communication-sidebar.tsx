@@ -47,7 +47,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
   return (
     <div className={cn("flex flex-col h-full bg-card border-r", className)}>
       {/* Header */}
-      <div className="p-4 border-b">
+      <div className="pl-4 pr-10 pt-4 pb-2 border-b">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg">Messages</h2>
           {onCreateChannel && (
@@ -133,7 +133,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               <div className={cn("mt-2", !showUsers && "hidden")}>
                 <UserDirectory
                   onStartDM={handleStartDM}
-                  className="border-0 shadow-none max-h-96"
+                  className="border-0 shadow-none"
                 />
               </div>
             </div>

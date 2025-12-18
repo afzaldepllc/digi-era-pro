@@ -7,7 +7,7 @@ export const CHANNEL_CONSTANTS = {
     MAX_LENGTH: 100,
   },
   TYPE: {
-    VALUES: ['dm', 'group', 'project', 'department', 'client-support'] as const,
+    VALUES: ['dm', 'group', 'project', 'department', 'department-category', 'multi-category', 'client-support'] as const,
     DEFAULT: 'group' as const,
   },
   DEPARTMENT_CATEGORY: {

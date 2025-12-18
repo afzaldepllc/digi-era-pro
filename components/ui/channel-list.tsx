@@ -55,7 +55,7 @@ export const ChannelList = memo(function ChannelList({
 }: ChannelListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<'all' | 'dm' | 'project' | 'client-support'>('all')
-
+  console.log("channels prop 58",channels);
   const getChannelIcon = (channel: IChannel) => {
     switch (channel.type) {
       case 'dm':
@@ -73,8 +73,11 @@ export const ChannelList = memo(function ChannelList({
 
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
+      console.log("channel members76",channel.channel_members);
+      console.log("currentUserId76",currentUserId);
       // For DM, show the other participant's name
       const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
+      console.log("otherParticipant78",otherParticipant);
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name || 'Unnamed Channel'
@@ -344,36 +347,61 @@ export const ChannelList = memo(function ChannelList({
               </div>
             ) : (
               <>
-                {/* Unread channels first */}
-                {filteredChannels
-                  .filter(channel => (channel.unreadCount || 0) > 0)
-                  .map((channel) => (
-                    <ChannelItem key={channel.id} channel={channel} />
-                  ))
-                }
-                
-                {/* Separator if there are both unread and read channels */}
-                {filteredChannels.some(c => (c.unreadCount || 0) > 0) && 
-                 filteredChannels.some(c => c.unreadCount === 0) && (
-                  <div className="py-3 px-2">
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-border/40" />
-                      </div>
-                      <div className="relative flex justify-center text-xs text-muted-foreground">
-                        <span className="bg-card px-2 font-medium">Recent</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Read channels */}
-                {filteredChannels
-                  .filter(channel => (channel.unreadCount || 0) === 0)
-                  .map((channel) => (
-                    <ChannelItem key={channel.id} channel={channel} />
-                  ))
-                }
+                {/* DM Channels */}
+                {(() => {
+                  const dmChannels = filteredChannels.filter(channel => channel.type === 'dm')
+                  const otherChannels = filteredChannels.filter(channel => channel.type !== 'dm')
+                  
+                  return (
+                    <>
+                      {/* DM Unread */}
+                      {dmChannels
+                        .filter(channel => (channel.unreadCount || 0) > 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* DM Read */}
+                      {dmChannels
+                        .filter(channel => (channel.unreadCount || 0) === 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* Separator between DM and other channels */}
+                      {dmChannels.length > 0 && otherChannels.length > 0 && (
+                        <div className="py-3 px-2">
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t border-border/40" />
+                            </div>
+                            <div className="relative flex justify-center text-xs text-muted-foreground">
+                              <span className="bg-card px-2 font-medium">Channels</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Other Channels Unread */}
+                      {otherChannels
+                        .filter(channel => (channel.unreadCount || 0) > 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* Other Channels Read */}
+                      {otherChannels
+                        .filter(channel => (channel.unreadCount || 0) === 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                    </>
+                  )
+                })()}
               </>
             )}
           </div>

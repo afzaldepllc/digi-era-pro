@@ -27,19 +27,33 @@ interface UserDirectoryProps {
 export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { createChannel, loading: channelLoading, selectChannel } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
 
   // Filter active users (exclude current user and inactive users, and clients)
   const activeUsers = useMemo(() => {
+    // Get users who already have DM channels with current user
+    const dmUserIds = new Set<string>()
+    channels.filter(channel => channel.type === 'dm').forEach(channel => {
+      const currentUserInChannel = channel.channel_members.some(p => p.mongo_member_id === (session?.user as any)?.id)
+      if (currentUserInChannel) {
+        channel.channel_members.forEach(p => {
+          if (p.mongo_member_id !== (session?.user as any)?.id) {
+            dmUserIds.add(p.mongo_member_id)
+          }
+        })
+      }
+    })
+
     return users.filter(user =>
-      user._id !== (session?.user as any)?.id
+      user._id.toString() !== (session?.user as any)?.id &&
+      !dmUserIds.has(user._id.toString())
       //  &&
       // user.isClient === false
     )
-  }, [users, (session?.user as any)?.id]);
-
+  }, [users, channels, (session?.user as any)?.id]);
+  console.log("activeUsers42",activeUsers);
   // Filter users based on search
   const filteredUsers = useMemo(() => {
     return activeUsers.filter(user => {
@@ -117,7 +131,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search users..."
+            placeholder="Search users..."   
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -126,7 +140,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
       </div>
 
       {/* User List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea>
         <div className="p-2">
           {filteredUsers.length === 0 ? (
             <div className="text-center py-8">
@@ -136,7 +150,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
               </p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 max-h-[500px] overflow-y-auto pb-6">
+            {/* <div className="space-y-1"> */}
               {filteredUsers.map((user) => (
                 <div
                   key={user._id as string}
