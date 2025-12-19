@@ -302,7 +302,14 @@ export function ProfileSettings() {
                   <AvatarImage src={profileData.avatar} alt={profileData.name} className="object-cover" />
                 ) : (
                   <AvatarFallback className="text-lg">
-                    {profileData.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()}
+                    {profileData.name ? (() => {
+                      const parts = profileData.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                   </AvatarFallback>
                 )}
               </Avatar>

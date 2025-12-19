@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeVariantProvider } from "@/components/theme-variant-provider";
 import { ProfessionalSessionProvider } from "@/components/providers/professional-session-provider";
 import { NavigationProvider } from "@/components/providers/navigation-provider";
-import { NavigationLoadingBar } from "@/components/ui/navigation-loading-bar";
+import { NavigationLoadingBar } from "@/components/shared/navigation-loading-bar";
 import { ServerSessionProvider } from "@/components/providers/session-provider-server";
 import { store } from "@/store";
 import dynamic from "next/dynamic";

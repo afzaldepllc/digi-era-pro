@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ChatWindow } from "@/components/ui/chat-window"
-import { CommunicationSidebar } from "@/components/ui/communication-sidebar"
-import { OnlineIndicator } from "@/components/ui/online-indicator"
-import PageHeader from "@/components/ui/page-header"
+import { ChatWindow } from "@/components/communication/chat-window"
+import { CommunicationSidebar } from "@/components/communication/communication-sidebar"
+import { OnlineIndicator } from "@/components/communication/online-indicator"
+import PageHeader from "@/components/shared/page-header"
 import {
   MessageSquare,
   Plus,
@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/sheet"
 import { handleAPIError } from "@/lib/utils/api-client"
 import { CreateChannelModal } from "@/components/communication/create-channel-modal"
-import FullscreenToggle, { FullscreenToggleRef } from '@/components/ui/FullscreenToggle';
+import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle';
 
 export default function CommunicationsPage() {
   const router = useRouter()

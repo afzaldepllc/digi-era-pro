@@ -94,10 +94,14 @@ function DashboardPage() {
             ) : (
               <AvatarFallback className="bg-primary text-white text-xl font-semibold">
                 {user?.name
-                  ?.split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .toUpperCase() || "U"}
+                  ? (() => {
+                      const parts = user.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
               </AvatarFallback>
             )}
           </Avatar>

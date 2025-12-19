@@ -162,7 +162,14 @@ export const ChannelList = memo(function ChannelList({
               <Avatar className="h-10 w-10 transition-transform duration-200 group-hover:scale-110">
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
-                  {avatar.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                  {avatar.name ? (() => {
+                      const parts = avatar.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                 </AvatarFallback>
               </Avatar>
               {/* Online indicator */}

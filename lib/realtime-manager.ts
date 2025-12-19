@@ -192,7 +192,7 @@ export class RealtimeManager {
     this.subscriptionPromises.clear()
   }
 }
-
+  
 // Singleton instance
 let realtimeManager: RealtimeManager | null = null
 

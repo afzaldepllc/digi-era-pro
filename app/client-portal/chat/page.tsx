@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MessageList } from "@/components/ui/message-list"
-import { MessageInput } from "@/components/ui/message-input"
+import { MessageList } from "@/components/communication/message-list"
+import { MessageInput } from "@/components/communication/message-input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { 
-  MessageSquare, 
-  Phone, 
+import {
+  MessageSquare,
+  Phone,
   Mail,
   Clock,
   CheckCircle,
@@ -43,7 +43,7 @@ export default function ClientChatPage() {
 
   // Find client support channel
   const supportChannel = channels.find(ch => ch.type === 'client-support')
-  
+
   useEffect(() => {
     if (channels.length === 0) {
       fetchChannels({ is_private: false })
@@ -131,7 +131,7 @@ export default function ClientChatPage() {
               <Badge variant="outline" className="text-sm">
                 {clientInfo.subscription}
               </Badge>
-              
+
               <div className="text-right text-sm">
                 <p className="font-medium text-gray-900">{clientInfo.name}</p>
                 <p className="text-gray-500">{clientInfo.company}</p>
@@ -154,13 +154,13 @@ export default function ClientChatPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className={cn("w-full justify-center", getStatusColor(supportTicketStatus))}
                 >
                   {supportTicketStatus.charAt(0).toUpperCase() + supportTicketStatus.slice(1).replace('-', ' ')}
                 </Badge>
-                
+
                 <div className="mt-4 space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Priority:</span>
@@ -185,19 +185,27 @@ export default function ClientChatPage() {
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={clientInfo.accountManager.avatar} alt={clientInfo.accountManager.name} />
                       <AvatarFallback>
-                        {clientInfo.accountManager.name.split(' ').map(n => n[0]).join('')}
+                        {clientInfo.accountManager.name
+                          ? (() => {
+                            const parts = clientInfo.accountManager.name.trim().split(' ');
+                            if (parts.length === 1) {
+                              return parts[0][0].toUpperCase();
+                            }
+                            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                          })()
+                          : ''}
                       </AvatarFallback>
                     </Avatar>
                     {clientInfo.accountManager.isOnline && (
                       <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-white" />
                     )}
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{clientInfo.accountManager.name}</p>
                     <p className="text-xs text-muted-foreground">{clientInfo.accountManager.role}</p>
                     <p className="text-xs text-muted-foreground truncate mt-1">{clientInfo.accountManager.email}</p>
-                    
+
                     <div className="flex gap-2 mt-2">
                       <Button size="sm" variant="outline" className="h-7 px-2">
                         <Phone className="h-3 w-3 mr-1" />
@@ -252,7 +260,7 @@ export default function ClientChatPage() {
                   <span>Sunday:</span>
                   <span>Closed</span>
                 </div>
-                
+
                 <div className="mt-3 pt-3 border-t">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 bg-green-500 rounded-full" />
@@ -275,7 +283,7 @@ export default function ClientChatPage() {
                       Chat with our support team in real-time
                     </CardDescription>
                   </div>
-                  
+
                   {clientInfo.accountManager.isOnline && (
                     <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                       <div className="h-2 w-2 bg-green-500 rounded-full mr-2" />

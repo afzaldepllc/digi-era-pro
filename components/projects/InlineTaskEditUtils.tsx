@@ -347,7 +347,14 @@ export const InlineAssigneeDropdown = memo(function InlineAssigneeDropdown({
               <Avatar className="h-4 w-4">
                 <AvatarImage src={currentAssignee.avatar} />
                 <AvatarFallback className="text-xs">
-                  {currentAssignee.name?.charAt(0).toUpperCase()}
+                  {currentAssignee.name ? (() => {
+                      const parts = currentAssignee.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                 </AvatarFallback>
               </Avatar>
               <span className="max-w-[100px] truncate">{currentAssignee.name}</span>
@@ -402,7 +409,14 @@ export const InlineAssigneeDropdown = memo(function InlineAssigneeDropdown({
                 <Check className={cn("mr-2 h-3 w-3", task.assigneeId === user._id ? "opacity-100" : "opacity-0")} />
                 <Avatar className="mr-2 h-4 w-4">
                   <AvatarImage src={user.avatar} />
-                  <AvatarFallback className="text-xs">{user.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarFallback className="text-xs">{user.name ? (() => {
+                      const parts = user.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}</AvatarFallback>
                 </Avatar>
                 <span className="flex-1 truncate">{user.name}</span>
                 {user.email && <span className="ml-2 text-xs text-muted-foreground truncate">{user.email}</span>}

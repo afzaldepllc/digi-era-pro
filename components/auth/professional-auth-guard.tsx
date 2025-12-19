@@ -3,7 +3,7 @@
 import type React from "react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback, useMemo } from "react"
-import { ProfessionalLoader } from "../ui/professional-loader"
+import { ProfessionalLoader } from "../shared/professional-loader"
 import { useProfessionalSession } from "../providers/professional-session-provider"
 
 interface ProfessionalAuthGuardProps {

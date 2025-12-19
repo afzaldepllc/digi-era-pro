@@ -115,27 +115,25 @@ export function useCommunications() {
     }
     
     if (message && typeof message === 'object' && message.mongo_sender_id) {
-      // Enrich message with user data
-      const enrichedMessage = enrichMessageWithUserData(message, allUsers)
-      console.log('📩 Enriched message:', enrichedMessage)
+      // Message is already enriched from the API broadcast
+      console.log('📩 Received enriched message:', message)
       
-      if (enrichedMessage) {
-        dispatch(addMessage({ channelId: message.channel_id, message: enrichedMessage }))
-      }
+      dispatch(addMessage({ channelId: message.channel_id, message }))
     } else {
       console.error('Invalid message received, skipping:', message)
     }
-  }, [dispatch, allUsers, sessionUserId])
+  }, [dispatch, sessionUserId])
 
   const onMessageUpdate = useCallback((message: any) => {
     console.log('📝 onMessageUpdate handler called')
-    const enrichedMessage = enrichMessageWithUserData(message, allUsers)
+    // Message is already enriched from the API broadcast
+    console.log('📝 Received updated enriched message:', message)
     dispatch(updateMessage({
       channelId: message.channel_id,
       messageId: message.id,
-      updates: enrichedMessage
+      updates: message
     }))
-  }, [dispatch, allUsers])
+  }, [dispatch])
 
   const onMessageDelete = useCallback((messageId: any) => {
     console.log('🗑️ Message deleted:', messageId)
@@ -313,10 +311,10 @@ export function useCommunications() {
       })
       
       const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
-      // Enrich messages with user data
-      const enrichedMessages = response.map((message: any) => enrichMessageWithUserData(message, allUsers))
-      dispatch(setMessages({ channelId: params.channel_id, messages: enrichedMessages }))
-      return enrichedMessages
+      dispatch(setMessages({ channelId: params.channel_id, messages: response }))
+
+      console.log('Fetched and enriched messages320:', response) 
+      return response
     } catch (error) {
       dispatch(setError('Failed to fetch messages'))
       toast({
@@ -340,7 +338,7 @@ export function useCommunications() {
       const optimisticMessage = {
         id: tempId,
         channel_id: messageData.channel_id,
-        mongo_sender_id: sessionUserId,
+        mongo_sender_id: sessionUserId!,
         content: messageData.content,
         content_type: messageData.content_type || 'text',
         thread_id: messageData.thread_id,
@@ -351,21 +349,28 @@ export function useCommunications() {
         read_receipts: [],
         reactions: [],
         attachments: [],
-        isOptimistic: true // Flag to identify optimistic messages
+        reply_count: 0,
+        is_edited: false,
+        isOptimistic: true, // Flag to identify optimistic messages
+        sender: {
+          mongo_member_id: sessionUserId!,
+          name: sessionUser?.name || sessionUser?.email || 'Unknown User',
+          email: sessionUser?.email || '',
+          avatar: sessionUser?.image || '',
+          role: sessionUser?.role || 'User',
+          userType: 'User' as 'User' | 'Client',
+          isOnline: false
+        }
       }
 
-      // Enrich optimistic message
-      const enrichedOptimisticMessage = enrichMessageWithUserData(optimisticMessage, allUsers)
-
       // Add optimistic message to state
-      dispatch(addMessage({ channelId: messageData.channel_id, message: enrichedOptimisticMessage }))
+      dispatch(addMessage({ channelId: messageData.channel_id, message: optimisticMessage }))
 
       // Send to API
       const response = await apiRequest('/api/communication/messages', {
         method: 'POST',
         body: JSON.stringify(messageData)
       })
-
       // Check if response is valid
       if (!response || !response.id) {
         console.error('Invalid response from API:', response)
@@ -376,14 +381,11 @@ export function useCommunications() {
         }))
         return
       }
-
-      // Update optimistic message with real data
-      const realMessage = enrichMessageWithUserData(response, allUsers)
-      if (realMessage) {
+      if (response.id) {
         dispatch(updateMessage({
           channelId: messageData.channel_id,
           messageId: tempId,
-          updates: { ...realMessage, isOptimistic: false }
+          updates: { ...response, isOptimistic: false }
         }))
       }
 
@@ -395,6 +397,7 @@ export function useCommunications() {
         title: "Message sent",
         description: "Your message has been sent successfully",
       })
+      
 
       return response.message
     } catch (error) {

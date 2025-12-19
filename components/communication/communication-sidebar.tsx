@@ -13,9 +13,9 @@ import {
   ChevronRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ChannelList } from "./channel-list"
 import { UserDirectory } from "./user-directory"
 import { IChannel } from "@/types/communication"
+import { ChannelList } from "./channel-list"
 
 interface CommunicationSidebarProps {
   channels: IChannel[]

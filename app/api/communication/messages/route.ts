@@ -140,30 +140,6 @@ export async function POST(request: NextRequest) {
       data: { last_message_at: new Date() },
     })
 
-    // Fetch complete message with relations
-    // const completeMessage = await prisma.messages.findUnique({
-    //   where: { id: message.id },
-    //   include: {
-    //     read_receipts: true,
-    //     reactions: true,
-    //     attachments: true,
-    //   },
-    // })
-
-    // Broadcast the message to realtime subscribers
-    try {
-      const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: message
-      })
-      console.log('📡 Message broadcasted to channel:', validatedData.channel_id)
-    } catch (broadcastError) {
-      console.error('❌ Failed to broadcast message:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
-
     // Fetch all users for enrichment
     const allUsers = await executeGenericDbQuery(async () => {
       return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
@@ -171,6 +147,20 @@ export async function POST(request: NextRequest) {
 
     // Enrich message with user data
     const enrichedMessage = enrichMessageWithUserData(message, allUsers)
+
+    // Broadcast the enriched message to realtime subscribers
+    try {
+      const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
+      await channel.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: enrichedMessage
+      })
+      console.log('📡 Message broadcasted to channel:', validatedData.channel_id)
+    } catch (broadcastError) {
+      console.error('❌ Failed to broadcast message:', broadcastError)
+      // Don't fail the request if broadcast fails
+    }
 
     return NextResponse.json({
       success: true,

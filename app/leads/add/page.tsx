@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import PageHeader from "@/components/ui/page-header";
-import GenericForm from "@/components/ui/generic-form";
+import PageHeader from "@/components/shared/page-header";
+import GenericForm from "@/components/shared/generic-form";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";

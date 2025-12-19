@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MessageList } from "@/components/ui/message-list"
-import { MessageInput } from "@/components/ui/message-input"
-import { OnlineIndicator } from "@/components/ui/online-indicator"
+import { MessageList } from "@/components/communication/message-list"
+import { MessageInput } from "@/components/communication/message-input"
+import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
 import { 
   Info, 
@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import FullscreenToggle from "./FullscreenToggle"
+import FullscreenToggle from "../shared/FullscreenToggle"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded }: ChatWindowProps) {
   const {
@@ -63,7 +63,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
-  
+  console.log('selectedChannel messages in ChatWindow66:', messages)
   // Auto-select channel if channelId is provided and no channel is selected
   useEffect(() => {
     if (channelId && !selectedChannel) {

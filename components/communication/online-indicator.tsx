@@ -14,12 +14,12 @@ interface OnlineIndicatorProps {
   className?: string
 }
 
-export function OnlineIndicator({ 
-  users, 
-  maxVisible = 5, 
-  showNames = false, 
+export function OnlineIndicator({
+  users,
+  maxVisible = 5,
+  showNames = false,
   size = "md",
-  className 
+  className
 }: OnlineIndicatorProps) {
   const onlineUsers = users.filter(user => user.isOnline)
   const visibleUsers = onlineUsers.slice(0, maxVisible)
@@ -27,7 +27,7 @@ export function OnlineIndicator({
 
   const sizeClasses = {
     sm: "h-6 w-6",
-    md: "h-8 w-8", 
+    md: "h-8 w-8",
     lg: "h-10 w-10"
   }
 
@@ -66,7 +66,15 @@ export function OnlineIndicator({
                   <Avatar className={cn(sizeClasses[size], "border-2 border-background")}>
                     <AvatarImage src={user.avatar} alt={user.name} />
                     <AvatarFallback className={textSizeClasses[size]}>
-                      {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      {user.name
+                        ? (() => {
+                          const parts = user.name.trim().split(' ');
+                          if (parts.length === 1) {
+                            return parts[0][0].toUpperCase();
+                          }
+                          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                        })()
+                        : ''}
                     </AvatarFallback>
                   </Avatar>
                   {/* Online dot */}
@@ -86,7 +94,7 @@ export function OnlineIndicator({
               </TooltipContent>
             </Tooltip>
           ))}
-          
+
           {remainingCount > 0 && (
             <Tooltip>
               <TooltipTrigger>

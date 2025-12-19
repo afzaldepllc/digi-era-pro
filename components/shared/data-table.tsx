@@ -38,7 +38,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { TableLoader } from "./loader";
+import { TableLoader } from "../ui/loader";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useRouter } from "next/navigation";
 import { useNavigation } from "../providers/navigation-provider";

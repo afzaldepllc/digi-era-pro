@@ -6,12 +6,12 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { 
-  X, 
-  Users, 
-  Hash, 
-  Calendar, 
-  FileText, 
+import {
+  X,
+  Users,
+  Hash,
+  Calendar,
+  FileText,
   ExternalLink,
   Settings,
   Bell,
@@ -78,7 +78,7 @@ export function ContextPanel({
       type: 'pdf'
     },
     {
-      id: '2', 
+      id: '2',
       name: 'project-requirements.docx',
       size: '1.2 MB',
       uploadedBy: 'Afzal Habib',
@@ -106,7 +106,7 @@ export function ContextPanel({
           <h3 className="font-semibold">Channel Info</h3>
           <Button
             variant="ghost"
-            size="sm" 
+            size="sm"
             onClick={onClose || onToggle}
             className="h-8 w-8 p-0"
           >
@@ -122,23 +122,23 @@ export function ContextPanel({
                 <Hash className="h-5 w-5 text-muted-foreground" />
                 <h4 className="font-medium">{channel.name}</h4>
               </div>
-              
+
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Type:</span>
                   <Badge variant="outline">{getChannelTypeLabel(channel.type)}</Badge>
                 </div>
-                
+
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created:</span>
                   <span>{format(new Date(channel.created_at), 'MMM d, yyyy')}</span>
                 </div>
-                
+
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Members:</span>
                   <span>{channel.channel_members.length}</span>
                 </div>
-                
+
                 {!channel.is_private && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Visibility:</span>
@@ -151,8 +151,8 @@ export function ContextPanel({
               <div className="flex gap-2 pt-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => setIsNotificationEnabled(!isNotificationEnabled)}
                     >
@@ -170,8 +170,8 @@ export function ContextPanel({
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => setIsPinned(!isPinned)}
                     >
@@ -206,23 +206,23 @@ export function ContextPanel({
                     <FileText className="h-5 w-5 text-muted-foreground" />
                     <h4 className="font-medium">Project Details</h4>
                   </div>
-                  
+
                   <div className="space-y-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">Name:</span>
                       <p className="font-medium">{mockProjectInfo.name}</p>
                     </div>
-                    
+
                     <div>
                       <span className="text-muted-foreground">Description:</span>
                       <p>{mockProjectInfo.description}</p>
                     </div>
-                    
+
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Status:</span>
                       <Badge variant="default">{mockProjectInfo.status}</Badge>
                     </div>
-                    
+
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Deadline:</span>
                       <span>{format(new Date(mockProjectInfo.deadline), 'MMM d, yyyy')}</span>
@@ -245,7 +245,7 @@ export function ContextPanel({
                 <Users className="h-5 w-5 text-muted-foreground" />
                 <h4 className="font-medium">Members ({channel.channel_members.length})</h4>
               </div>
-              
+
               <div className="space-y-2">
                 {channel.channel_members.map((participant) => (
                   <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
@@ -253,14 +253,22 @@ export function ContextPanel({
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={participant.avatar} alt={participant.name} />
                         <AvatarFallback className="text-xs">
-                          {participant.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                          {participant.name
+                            ? (() => {
+                              const parts = participant.name.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0].toUpperCase();
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                            : ''}
                         </AvatarFallback>
                       </Avatar>
                       {participant.isOnline && (
                         <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
                       )}
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{participant.name}</p>
                       <div className="flex items-center gap-2">
@@ -292,14 +300,14 @@ export function ContextPanel({
                   View all
                 </Button>
               </div>
-              
+
               <div className="space-y-2">
                 {mockFiles.slice(0, 3).map((file) => (
                   <div key={file.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
                     <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{file.name}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -324,7 +332,7 @@ export function ContextPanel({
             {/* Channel Settings */}
             <div className="space-y-3">
               <h4 className="font-medium text-sm">Channel Settings</h4>
-              
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Notifications</span>
@@ -332,7 +340,7 @@ export function ContextPanel({
                     {isNotificationEnabled ? "On" : "Off"}
                   </Badge>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Pinned</span>
                   <Badge variant={isPinned ? "default" : "secondary"}>

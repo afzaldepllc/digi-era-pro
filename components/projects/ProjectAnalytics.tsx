@@ -59,7 +59,7 @@ import {
   Cell,
 } from 'recharts';
 import GenericReportExporter from '@/components/shared/GenericReportExporter';
-import GenericFilter, { FilterConfig } from '@/components/ui/generic-filter';
+import GenericFilter, { FilterConfig } from '@/components/shared/generic-filter';
 import { useToast } from '@/hooks/use-toast';
 import { useDepartments } from '@/hooks/use-departments';
 import { useUsers } from '@/hooks/use-users';

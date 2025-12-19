@@ -8,10 +8,10 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { SearchableSelect } from "@/components/ui/generic-form";
-import CustomModal from "@/components/ui/custom-modal";
-import RichTextEditor from "@/components/ui/rich-text-editor";
-import HtmlTextRenderer from "@/components/ui/html-text-renderer";
+import { SearchableSelect } from "@/components/shared/generic-form";
+import CustomModal from "@/components/shared/custom-modal";
+import RichTextEditor from "@/components/shared/rich-text-editor";
+import HtmlTextRenderer from "@/components/shared/html-text-renderer";
 import {
     DropdownMenu,
     DropdownMenuContent,

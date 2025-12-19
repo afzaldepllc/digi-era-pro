@@ -3,12 +3,12 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useClients } from "@/hooks/use-clients";
-import PageHeader from "@/components/ui/page-header";
-import DataTable, { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
-import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
+import PageHeader from "@/components/shared/page-header";
+import DataTable, { ColumnDef, ActionMenuItem } from "@/components/shared/data-table";
+import GenericFilter, { FilterConfig } from "@/components/shared/generic-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import CustomModal from "@/components/ui/custom-modal";
+import CustomModal from "@/components/shared/custom-modal";
 import { Client, ClientFilters, ClientSort, Project } from "@/types";
 import { Building2, Users, User, Mail, Phone, FolderPlus, MapPin, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";

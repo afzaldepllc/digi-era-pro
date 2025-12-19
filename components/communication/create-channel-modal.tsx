@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import CustomModal from '@/components/ui/custom-modal'
+import CustomModal from '@/components/shared/custom-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'

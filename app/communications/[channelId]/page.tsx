@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useParams, notFound } from "next/navigation"
-import { ChatWindow } from "@/components/ui/chat-window"
+import { ChatWindow } from "@/components/communication/chat-window"
 import { useCommunications } from "@/hooks/use-communications"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"

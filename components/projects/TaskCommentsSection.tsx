@@ -34,8 +34,8 @@ import { createCommentFormSchema, updateCommentFormSchema } from "@/lib/validati
 import type { CreateCommentFormData, UpdateCommentFormData } from "@/lib/validations/comment";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
-import RichTextEditor from "../ui/rich-text-editor";
-import HtmlTextRenderer from "../ui/html-text-renderer";
+import RichTextEditor from "../shared/rich-text-editor";
+import HtmlTextRenderer from "../shared/html-text-renderer";
 
 interface TaskCommentsSectionProps {
   taskId: string;
@@ -80,7 +80,14 @@ function CommentItem({
                 <Avatar className="h-10 w-10 ring-2 ring-primary/20 hover:ring-primary/40 transition-all">
                   <AvatarImage src={comment.author?.avatar} alt={comment.author?.name} />
                   <AvatarFallback className="text-sm font-bold bg-gradient-to-br from-primary to-accent text-white">
-                    {comment.author?.name?.substring(0, 2)?.toUpperCase()}
+                    {comment.author?.name ? (() => {
+                      const parts = comment.author.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                   </AvatarFallback>
                 </Avatar>
                 <div>

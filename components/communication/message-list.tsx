@@ -167,6 +167,8 @@ export function MessageList({
     const readers = channel_members.filter(p =>
       receipts.some(r => r.mongo_user_id === p.mongo_member_id)
     )
+    console.log('sender170', sender)
+    console.log('readers171', readers)
 
     return (
       <div
@@ -186,8 +188,16 @@ export function MessageList({
           </Avatar> */}
           <Avatar className="h-8 w-8 transition-transform duration-200 group-hover:scale-110">
             <AvatarImage src={sender?.avatar} alt={sender?.name} />
-            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
-              {sender?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold text-sm">
+              {sender?.name
+                ? (() => {
+                  const parts = sender.name.trim().split(' ');
+                  if (parts.length === 1) {
+                    return parts[0][0].toUpperCase();
+                  }
+                  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                })()
+                : ''}
             </AvatarFallback>
           </Avatar>
         </div>
@@ -334,7 +344,14 @@ export function MessageList({
                         <Avatar key={`typing-${typing.userId}`} className="h-6 w-6 border-2 border-background">
                           <AvatarImage src={user.avatar} alt={user.name} />
                           <AvatarFallback className="text-xs">
-                            {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            {user.name ? (() => {
+                              const parts = user.name.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0].toUpperCase();
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                              : ''}
                           </AvatarFallback>
                         </Avatar>
                       )

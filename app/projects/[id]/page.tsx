@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import PageHeader from "@/components/ui/page-header";
+import PageHeader from "@/components/shared/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -27,7 +27,7 @@ import { ProjectCategorization } from "@/components/projects/ProjectCategorizati
 import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
 import { useNavigation } from "@/components/providers/navigation-provider";
 import { Project } from "@/types";
-import HtmlTextRenderer from "@/components/ui/html-text-renderer";
+import HtmlTextRenderer from "@/components/shared/html-text-renderer";
 import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
 
 interface Risk {
@@ -533,7 +533,7 @@ export default function ProjectDetailsPage() {
                               day: 'numeric'
                             }) : 'Not set'}
                           </p>
-                        </div>  
+                        </div>
                         <div className="col-span-3">
                           <label className="text-sm text-muted-foreground">Last Updated</label>
                           <p className="font-medium">{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString('en-US', {
@@ -557,7 +557,14 @@ export default function ProjectDetailsPage() {
                             <Avatar className="h-8 w-8">
                               <AvatarImage src={project.creator?.avatar} />
                               <AvatarFallback className="text-xs">
-                                {project.creator?.name.split(' ').map((n: string) => n[0]).join('') || 'U'}
+                                {project.creator?.name ? (() => {
+                                  const parts = project.creator.name.trim().split(' ');
+                                  if (parts.length === 1) {
+                                    return parts[0][0].toUpperCase();
+                                  }
+                                  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                                })()
+                                  : ''}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
@@ -573,7 +580,14 @@ export default function ProjectDetailsPage() {
                             <Avatar className="h-8 w-8">
                               <AvatarImage src={project.client?.avatar} />
                               <AvatarFallback className="text-xs">
-                                {project.client?.name.split(' ').map((n: string) => n[0]).join('') || 'C'}
+                                {project.client?.name ? (() => {
+                                  const parts = project.client.name.trim().split(' ');
+                                  if (parts.length === 1) {
+                                    return parts[0][0].toUpperCase();
+                                  }
+                                  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                                })()
+                                  : ''}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
@@ -846,7 +860,13 @@ export default function ProjectDetailsPage() {
                                         <Avatar className="h-8 w-8">
                                           <AvatarImage src={member.avatar} />
                                           <AvatarFallback className="text-xs">
-                                            {member.name.split(' ').map((n: string) => n[0]).join('')}
+                                            {member.name ? (() => {
+                                              const parts = member.name.trim().split(' ');
+                                              if (parts.length === 1) {
+                                                return parts[0][0].toUpperCase();
+                                              }
+                                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                                            })() : ''}
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1 min-w-0">
@@ -891,7 +911,13 @@ export default function ProjectDetailsPage() {
                             <Avatar className="h-10 w-10">
                               <AvatarImage src={project.client.avatar} />
                               <AvatarFallback className="text-sm">
-                                {project.client.name.split(' ').map((n: string) => n[0]).join('') || 'C'}
+                                {project.client.name ? (() => {
+                                  const parts = project.client.name.trim().split(' ');
+                                  if (parts.length === 1) {
+                                    return parts[0][0].toUpperCase();
+                                  }
+                                  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                                })() : 'C'}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">

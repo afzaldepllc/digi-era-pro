@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import CustomModal from "@/components/ui/custom-modal";
+import CustomModal from "@/components/shared/custom-modal";
 import { createTimeLogFormSchema, updateTimeLogFormSchema, formatHours } from "@/lib/validations/timeLog";
 import type { CreateTimeLogFormData, UpdateTimeLogFormData } from "@/lib/validations/timeLog";
 import { useToast } from "@/hooks/use-toast";

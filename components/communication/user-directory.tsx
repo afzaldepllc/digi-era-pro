@@ -95,13 +95,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
     return 'offline'
   }
 
-  const getUserInitials = (user: User) => {
-    if (user.name) {
-      return user.name.split(' ').map(n => n[0]).join('').toUpperCase()
-    }
-    return user.email?.[0]?.toUpperCase() || 'U'
-  }
-
   const getRoleColor = (role?: string | any) => {
     const roleStr = typeof role === 'string' ? role : 'user'
     switch (roleStr?.toLowerCase()) {
@@ -161,7 +154,15 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
                   <div className="relative">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={user.avatar} alt={user.name || user.email} />
-                      <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
+                      <AvatarFallback>{user.name
+                        ? (() => {
+                          const parts = user.name.trim().split(' ');
+                          if (parts.length === 1) {
+                            return parts[0][0].toUpperCase();
+                          }
+                          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                        })()
+                        : user.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
                     <div className={cn(
                       "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background",
