@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { memberOperations } from '@/lib/db-utils'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { apiLogger as logger } from '@/lib/logger'
 
 // GET /api/communication/members?channel_id=... - Get channel members
 export async function GET(request: NextRequest) {
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ members })
   } catch (error) {
-    console.error('Error fetching channel members:', error)
+    logger.error('Error fetching channel members:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   } catch (error) {
-    console.error('Error managing channel member:', error)
+    logger.error('Error managing channel member:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -174,7 +175,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error removing channel member:', error)
+    logger.error('Error removing channel member:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

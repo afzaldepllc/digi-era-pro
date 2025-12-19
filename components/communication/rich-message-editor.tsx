@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote } from "lucide-react"
+import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote, Reply, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEditor, EditorContent } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
@@ -22,9 +22,15 @@ import OrderedList from '@tiptap/extension-ordered-list'
 import ListItem from '@tiptap/extension-list-item'
 
 import HardBreak from '@tiptap/extension-hard-break'
+import { InlineEmojiPicker } from './emoji-picker'
+import { MentionPicker } from './mention-picker'
+import { VoiceRecorder } from './voice-recorder'
+import { ICommunication, IChannelMember } from '@/types/communication'
 
 export interface RichMessageEditorRef {
     focus: () => void
+    setReplyTo: (message: ICommunication | null) => void
+    setEditMessage: (message: ICommunication | null) => void
 }
 
 interface RichMessageEditorProps {
@@ -36,12 +42,19 @@ interface RichMessageEditorProps {
     onTyping?: () => void
     onStopTyping?: () => void
     // Called when editor requests a send. Should resolve true on success.
-    onSend?: (html: string, text: string, files: File[]) => Promise<boolean>
+    onSend?: (html: string, text: string, files: File[], mentionedUserIds: string[], replyToId?: string, editMessageId?: string) => Promise<boolean>
+    // Called when voice message is sent
+    onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
     className?: string
+    channelMembers?: IChannelMember[] // For @mentions
+    replyTo?: ICommunication | null // Reply to message
+    editMessage?: ICommunication | null // Message to edit
+    onCancelReply?: () => void
+    onCancelEdit?: () => void
 }
 
 const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProps>(
-    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, className }, ref) => {
+    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, onSendVoice, className, channelMembers = [], replyTo, editMessage, onCancelReply, onCancelEdit }, ref) => {
         const contentRef = useRef<HTMLDivElement | null>(null)
         const textareaRef = useRef<HTMLTextAreaElement | null>(null)
         const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -50,15 +63,23 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const [isFocused, setIsFocused] = useState(false)
         const [attachments, setAttachments] = useState<File[]>([])
         const [showToolbar, setShowToolbar] = useState(true)
+        const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
 
-        const [users, setUsers] = useState<Array<{ id: string; name: string; email?: string }>>([])
-        const [showSuggestions, setShowSuggestions] = useState(false)
+        // Mention state
+        const [showMentionPicker, setShowMentionPicker] = useState(false)
         const [mentionQuery, setMentionQuery] = useState("")
-        const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string }>>([])
+        const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([])
 
+        // Emoji picker state
         const [showEmojiPicker, setShowEmojiPicker] = useState(false)
         const emojiPickerRef = useRef<HTMLDivElement | null>(null)
-        const EMOJIS = ['😀', '😄', '😊', '😂', '👍', '🎉', '🔥', '❤️', '😮', '😢', '🤝', '🙌', '😎', '🤔']
+
+        // Reply/Edit state (managed internally or via props)
+        const [internalReplyTo, setInternalReplyTo] = useState<ICommunication | null>(null)
+        const [internalEditMessage, setInternalEditMessage] = useState<ICommunication | null>(null)
+        
+        const activeReplyTo = replyTo !== undefined ? replyTo : internalReplyTo
+        const activeEditMessage = editMessage !== undefined ? editMessage : internalEditMessage
 
         const editor = useEditor({
             extensions: [
@@ -95,19 +116,24 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 onChange?.(html, text)
                 triggerTyping()
 
-                // mention detection (last token starting with @)
+                // Mention detection (last token starting with @)
                 const m = text.match(/@([\w-]*)$/)
                 if (m) {
                     setMentionQuery(m[1])
-                    setShowSuggestions(true)
-                    const q = m[1].toLowerCase()
-                    setSuggestions(users.filter(u => u.name.toLowerCase().includes(q)).slice(0, 6))
+                    setShowMentionPicker(true)
                 } else {
-                    setShowSuggestions(false)
+                    setShowMentionPicker(false)
                     setMentionQuery("")
                 }
             },
         })
+
+        // Set editor content when editing a message
+        useEffect(() => {
+            if (editor && activeEditMessage) {
+                editor.commands.setContent(activeEditMessage.content || '')
+            }
+        }, [editor, activeEditMessage])
 
         // Update editor content when value prop changes
         useEffect(() => {
@@ -118,6 +144,19 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
 
         useImperativeHandle(ref, () => ({
             focus: () => {
+                editor?.commands.focus()
+            },
+            setReplyTo: (message: ICommunication | null) => {
+                setInternalReplyTo(message)
+                setInternalEditMessage(null)
+                editor?.commands.focus()
+            },
+            setEditMessage: (message: ICommunication | null) => {
+                setInternalEditMessage(message)
+                setInternalReplyTo(null)
+                if (message) {
+                    editor?.commands.setContent(message.content || '')
+                }
                 editor?.commands.focus()
             }
         }))
@@ -134,26 +173,6 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             }, 2000)
         }, [disabled, onTyping, onStopTyping])
 
-        // Fetch simple user list for mentions (best-effort)
-        useEffect(() => {
-            let mounted = true
-                ; (async () => {
-                    try {
-                        const res = await fetch('/api/users?limit=50')
-                        const data = await res.json()
-                        if (!mounted) return
-                        if (Array.isArray(data)) {
-                            setUsers(data.map((u: any) => ({ id: u._id || u.id || u.id_str || u.id, name: u.name || u.username || u.email })))
-                        } else if (data?.users) {
-                            setUsers(data.users.map((u: any) => ({ id: u._id || u.id || u.id_str || u.id, name: u.name || u.username || u.email })))
-                        }
-                    } catch (e) {
-                        // ignore
-                    }
-                })()
-            return () => { mounted = false }
-        }, [])
-
         const addLink = useCallback(() => {
             const url = window.prompt("Enter URL")
             if (!url) return
@@ -161,24 +180,212 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         }, [editor])
 
         const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                // If in a list, allow default behavior (create new list item)
-                if (editor?.isActive('bulletList') || editor?.isActive('orderedList')) {
-                    return;
+            if (!editor) return
+            
+            // Get editor state for analysis
+            const { state } = editor.view
+            const { $from, empty: isSelectionEmpty } = state.selection
+            const currentNode = $from.parent
+            const isInBulletList = editor.isActive('bulletList')
+            const isInOrderedList = editor.isActive('orderedList')
+            const isInList = isInBulletList || isInOrderedList
+            
+            // Check if we're in a list item by traversing up the node hierarchy
+            // The cursor is usually in a paragraph inside a listItem, not directly in listItem
+            let isInListItem = false
+            let listItemDepth = -1
+            for (let d = $from.depth; d > 0; d--) {
+                if ($from.node(d).type.name === 'listItem') {
+                    isInListItem = true
+                    listItemDepth = d
+                    break
                 }
+            }
+            
+            const isAtStart = $from.parentOffset === 0
+            const isEmptyNode = currentNode.textContent.trim() === ''
+            
+            // Check if entire list item content is empty (not just current paragraph)
+            let isListItemEmpty = false
+            if (isInListItem && listItemDepth > 0) {
+                const listItemNode = $from.node(listItemDepth)
+                isListItemEmpty = listItemNode.textContent.trim() === ''
+            }
+            
+            // ==================== ENTER KEY (WITHOUT SHIFT) ====================
+            // Send message - primary action
+            if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
-                // send plain text
-                const text = editor?.getText() || ""
-                const success = await onSend?.("", text, attachments)
+                const text = editor.getText() || ""
+                const html = editor.getHTML() || ""
+                const success = await onSend?.(
+                    html, 
+                    text, 
+                    attachments, 
+                    mentionedUserIds,
+                    activeReplyTo?.id,
+                    activeEditMessage?.id
+                )
                 if (success) {
-                    // clear
-                    editor?.commands.setContent('')
+                    editor.commands.setContent('')
                     setAttachments([])
-                    setShowSuggestions(false)
+                    setShowMentionPicker(false)
+                    setMentionedUserIds([])
+                    setInternalReplyTo(null)
+                    setInternalEditMessage(null)
                 }
                 return
             }
-        }, [editor, onSend, attachments])
+            
+            // ==================== SHIFT+ENTER ====================
+            // New line or new list item
+            if (e.key === "Enter" && e.shiftKey) {
+                e.preventDefault()
+                
+                if (isInList && isInListItem) {
+                    // In a list item
+                    if (isListItemEmpty) {
+                        // Empty list item - exit the list
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .run()
+                    } else {
+                        // Non-empty list item - create a new list item in the same list
+                        editor.chain()
+                            .focus()
+                            .splitListItem('listItem')
+                            .run()
+                    }
+                } else {
+                    // Not in a list - insert line break
+                    editor.chain()
+                        .focus()
+                        .setHardBreak()
+                        .run()
+                }
+                return
+            }
+            
+            // ==================== BACKSPACE KEY ====================
+            if (e.key === "Backspace") {
+                // Only handle when cursor (no text selection)
+                if (!isSelectionEmpty) {
+                    return // Let default handle text selection deletion
+                }
+                
+                if (isInList && isInListItem && isAtStart && listItemDepth > 0) {
+                    const listNode = $from.node(listItemDepth - 1)
+                    const listItemIndex = $from.index(listItemDepth - 1)
+                    const totalListItems = listNode.childCount
+                    
+                    if (isListItemEmpty) {
+                        e.preventDefault()
+                        
+                        if (totalListItems === 1) {
+                            // Only one empty item in list - remove entire list and create paragraph
+                            editor.chain()
+                                .focus()
+                                .liftListItem('listItem')
+                                .run()
+                        } else if (listItemIndex === totalListItems - 1) {
+                            // Last item in list and it's empty - delete this item and position after list
+                            // Use deleteNode to remove just this list item
+                            const listItemPos = $from.before(listItemDepth)
+                            editor.chain()
+                                .focus()
+                                .command(({ tr, dispatch }) => {
+                                    if (dispatch) {
+                                        const listItemNode = $from.node(listItemDepth)
+                                        tr.delete(listItemPos, listItemPos + listItemNode.nodeSize)
+                                    }
+                                    return true
+                                })
+                                .run()
+                        } else if (listItemIndex === 0) {
+                            // First item but there are more items - just lift this item out
+                            editor.chain()
+                                .focus()
+                                .liftListItem('listItem')
+                                .run()
+                        } else {
+                            // Middle empty item - delete it and stay in list
+                            const listItemPos = $from.before(listItemDepth)
+                            editor.chain()
+                                .focus()
+                                .command(({ tr, dispatch }) => {
+                                    if (dispatch) {
+                                        const listItemNode = $from.node(listItemDepth)
+                                        tr.delete(listItemPos, listItemPos + listItemNode.nodeSize)
+                                    }
+                                    return true
+                                })
+                                .run()
+                        }
+                    } else if (listItemIndex === 0) {
+                        // First item with content - lift it out of list
+                        e.preventDefault()
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .run()
+                    }
+                    // Otherwise let default behavior merge with previous item
+                }
+                return
+            }
+            
+            // ==================== TAB KEY ====================
+            // Indent/outdent list items
+            if (e.key === "Tab" && isInList && isInListItem) {
+                e.preventDefault()
+                if (e.shiftKey) {
+                    // Shift+Tab - decrease indent (lift)
+                    editor.chain().focus().liftListItem('listItem').run()
+                } else {
+                    // Tab - increase indent (sink)
+                    editor.chain().focus().sinkListItem('listItem').run()
+                }
+                return
+            }
+        }, [editor, onSend, attachments, mentionedUserIds, activeReplyTo, activeEditMessage])
+        
+        // Enhanced list toggle handlers that handle list type switching properly
+        const toggleBulletList = useCallback(() => {
+            if (!editor) return
+            
+            // If currently in an ordered list, convert to bullet list (not exit and create new)
+            if (editor.isActive('orderedList')) {
+                // First toggle off ordered list, then toggle on bullet list
+                // This converts the list in place
+                editor.chain()
+                    .focus()
+                    .toggleOrderedList()
+                    .toggleBulletList()
+                    .run()
+            } else {
+                // Just toggle bullet list normally (turn on or off)
+                editor.chain().focus().toggleBulletList().run()
+            }
+        }, [editor])
+        
+        const toggleOrderedList = useCallback(() => {
+            if (!editor) return
+            
+            // If currently in a bullet list, convert to ordered list (not exit and create new)
+            if (editor.isActive('bulletList')) {
+                // First toggle off bullet list, then toggle on ordered list
+                // This converts the list in place
+                editor.chain()
+                    .focus()
+                    .toggleBulletList()
+                    .toggleOrderedList()
+                    .run()
+            } else {
+                // Just toggle ordered list normally (turn on or off)
+                editor.chain().focus().toggleOrderedList().run()
+            }
+        }, [editor])
 
         const { toast } = (function safeRequire() {
             try {
@@ -217,10 +424,40 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             setAttachments(prev => prev.filter((_, i) => i !== index))
         }, [])
 
-        const insertMentionAtCaret = useCallback((name: string) => {
-            editor?.commands.insertContent('@' + name + ' ')
-            setShowSuggestions(false)
-        }, [editor])
+        const insertMentionAtCaret = useCallback((user: { id: string; name: string }) => {
+            if (!editor) return
+            
+            // Remove the partial @query text first
+            const text = editor.getText()
+            const match = text.match(/@[\w-]*$/)
+            
+            // Use Unicode zero-width space after mention to mark its boundary
+            // Format: @Name\u200B (zero-width space acts as invisible delimiter)
+            const mentionText = `@${user.name}\u200B `
+            
+            if (match) {
+                // Delete the @query text and insert the mention
+                const from = editor.state.selection.from - match[0].length
+                editor.chain()
+                    .focus()
+                    .deleteRange({ from, to: editor.state.selection.from })
+                    .insertContent(mentionText)
+                    .run()
+            } else {
+                editor.commands.insertContent(mentionText)
+            }
+            
+            // Track mentioned user
+            if (user.id !== 'everyone') {
+                setMentionedUserIds(prev => [...new Set([...prev, user.id])])
+            } else {
+                // For @everyone, add all channel members
+                const allMemberIds = channelMembers.map(m => m.mongo_member_id)
+                setMentionedUserIds(prev => [...new Set([...prev, ...allMemberIds])])
+            }
+            
+            setShowMentionPicker(false)
+        }, [editor, channelMembers])
 
         // Emoji insertion
         const insertEmoji = useCallback((emoji: string) => {
@@ -242,49 +479,93 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             return () => document.removeEventListener('click', onDocClick)
         }, [showEmojiPicker])
 
-        const openMentionSuggestions = useCallback(() => {
-            setShowSuggestions(true)
+        const openMentionPicker = useCallback(() => {
+            setShowMentionPicker(true)
             setMentionQuery('')
-            setSuggestions(users.slice(0, 6))
             editor?.commands.focus()
-        }, [users, editor])
+        }, [editor])
+
+        // Cancel reply/edit handlers
+        const handleCancelReply = useCallback(() => {
+            setInternalReplyTo(null)
+            onCancelReply?.()
+        }, [onCancelReply])
+
+        const handleCancelEdit = useCallback(() => {
+            setInternalEditMessage(null)
+            editor?.commands.setContent('')
+            onCancelEdit?.()
+        }, [onCancelEdit, editor])
 
         return (
             <div className={cn("rich-message-editor border rounded-md bg-background", className)}>
 
+                {/* Reply Preview */}
+                {activeReplyTo && (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+                        <Reply className="h-4 w-4 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground">
+                                Replying to <span className="font-medium text-foreground">{activeReplyTo.sender?.name || activeReplyTo.sender_name}</span>
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                                {activeReplyTo.content.replace(/<[^>]*>/g, '').slice(0, 50)}
+                                {activeReplyTo.content.length > 50 ? '...' : ''}
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleCancelReply}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Edit Preview */}
+                {activeEditMessage && (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-primary/5">
+                        <span className="text-xs font-medium text-primary">Editing message</span>
+                        <div className="flex-1" />
+                        <button
+                            onClick={handleCancelEdit}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+
                 {/* topbar for text editing options */}
                 {showToolbar && (
-                    <div className="flex items-center gap-1 border-b p-2 bg-card">
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBold().run()} className={editor?.isActive('bold') ? 'bg-accent' : ''} title="Bold">
+                    <div className="flex items-center gap-1 border-b p-1 bg-card">
+                        <button onClick={() => editor?.chain().focus().toggleBold().run()} className={`${editor?.isActive('bold') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bold">
                             <Bold className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleItalic().run()} className={editor?.isActive('italic') ? 'bg-accent' : ''} title="Italic">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleItalic().run()} className={`${editor?.isActive('italic') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Italic">
                             <Italic className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleStrike().run()} className={editor?.isActive('strike') ? 'bg-accent' : ''} title="Strikethrough">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleStrike().run()} className={`${editor?.isActive('strike') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Strikethrough">
                             <Strikethrough className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBulletList().run()} className={editor?.isActive('bulletList') ? 'bg-accent' : ''} title="Bullet list">
+                        <button onClick={toggleBulletList} className={`${editor?.isActive('bulletList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bullet list">
                             <List className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleOrderedList().run()} className={editor?.isActive('orderedList') ? 'bg-accent' : ''} title="Numbered list">
+                        </button>
+                        <button onClick={toggleOrderedList} className={`${editor?.isActive('orderedList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Numbered list">
                             <ListOrdered className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={addLink} className={editor?.isActive('link') ? 'bg-accent' : ''} title="Add link">
+                        <button onClick={addLink} className={`${editor?.isActive('link') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Add link">
                             <Link className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleCodeBlock().run()} className={editor?.isActive('codeBlock') ? 'bg-accent' : ''} title="Code block">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleCodeBlock().run()} className={`${editor?.isActive('codeBlock') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Code block">
                             <Code className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBlockquote().run()} className={editor?.isActive('blockquote') ? 'bg-accent' : ''} title="Blockquote">
+                        <button onClick={() => editor?.chain().focus().toggleBlockquote().run()} className={`${editor?.isActive('blockquote') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title ="Blockquote">
                             <Quote className="h-4 w-4" />
-                        </Button>
-
-
-
+                        </button>
 
                     </div>
                 )}
@@ -308,11 +589,11 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 <div className="relative">
                     <EditorContent
                         editor={editor}
-                        data-placeholder={placeholder}
+                        data-placeholder={activeEditMessage ? "Edit your message..." : placeholder}
                         onKeyDown={handleKeyDown}
                         className={cn(
                             "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
-                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px]",
+                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-all [&_.ProseMirror]:max-w-full",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
@@ -321,28 +602,30 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             // List styling
                             "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:ml-6 [&_.ProseMirror_ul]:my-2",
                             "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:ml-6 [&_.ProseMirror_ol]:my-2",
-                            "[&_.ProseMirror_li]:my-1",
+                            "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-all [&_.ProseMirror_li]:max-w-full",
                             "[&_.ProseMirror_ul_ul]:list-[circle] [&_.ProseMirror_ul_ul_ul]:list-[square]",
-                            "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic",
-                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto",
-                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm",
+                            "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic [&_.ProseMirror_blockquote]:break-all",
+                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-all",
+                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-all",
+                            "[&_.ProseMirror_p]:break-all [&_.ProseMirror_p]:max-w-full",
+                            "[&_.ProseMirror_*]:max-w-full",
+                            // Mention styling
+                            "[&_.ProseMirror_.mention]:bg-primary/10 [&_.ProseMirror_.mention]:text-primary [&_.ProseMirror_.mention]:px-1 [&_.ProseMirror_.mention]:rounded [&_.ProseMirror_.mention]:font-medium",
                             disabled && 'opacity-50 cursor-not-allowed'
                         )}
+                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                     />
 
-                    {/* Mention suggestions dropdown */}
-                    {showSuggestions && suggestions.length > 0 && (
-                        <div className="absolute z-40 left-2 top-full mt-1 w-56 bg-card border rounded shadow">
-                            {suggestions.map(s => (
-                                <div
-                                    key={s.id}
-                                    className="px-3 py-2 hover:bg-accent/10 cursor-pointer"
-                                    onMouseDown={(e) => { e.preventDefault(); insertMentionAtCaret(s.name) }}
-                                >
-                                    {s.name}
-                                </div>
-                            ))}
-                        </div>
+                    {/* Mention picker dropdown */}
+                    {showMentionPicker && channelMembers.length > 0 && (
+                        <MentionPicker
+                            users={channelMembers}
+                            searchQuery={mentionQuery}
+                            onSelect={(user) => insertMentionAtCaret(user)}
+                            onClose={() => setShowMentionPicker(false)}
+                            showEveryone={true}
+                            className="left-2 bottom-full mb-1"
+                        />
                     )}
                 </div>
 
@@ -355,38 +638,42 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             onClick={() => fileInputRef.current?.click()}
                             title="Attach file"
                         >
-                            <Paperclip className="h-5 w-5" />
+                            <Paperclip className="h-4 w-4" />
                         </button>
                         <button
                             className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowToolbar(p => !p)} title="Toggle formatting">
-                            <TypeIcon className="h-5 w-5" />
+                            <TypeIcon className="h-4 w-4" />
                         </button>
 
                         {/* Mention button */}
-                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
-                            <AtSign className="h-5 w-5" />
+                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
+                            <AtSign className="h-4 w-4" />
                         </button>
-                        {/* Emoji picker (bottom) */}
+                        
+                        {/* Emoji picker */}
                         <div className="relative" ref={emojiPickerRef}>
                             <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
-                                <Smile className="h-5 w-5" />
+                                <Smile className="h-4 w-4" />
                             </button>
 
                             {showEmojiPicker && (
-                                <div className="absolute bottom-full mb-2 left-0 w-44 p-2 bg-card border rounded shadow grid grid-cols-6 gap-1">
-                                    {EMOJIS.map(e => (
-                                        <button
-                                            key={e}
-                                            className="p-1 text-lg hover:bg-accent/10 rounded"
-                                            onMouseDown={(evt) => { evt.preventDefault(); insertEmoji(e) }}
-                                            aria-label={`Insert ${e}`}
-                                        >
-                                            {e}
-                                        </button>
-                                    ))}
-                                </div>
+                                <InlineEmojiPicker
+                                    onSelect={insertEmoji}
+                                    onClose={() => setShowEmojiPicker(false)}
+                                />
                             )}
                         </div>
+
+                        {/* Voice message button */}
+                        {onSendVoice && (
+                            <button 
+                                className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" 
+                                onClick={() => setShowVoiceRecorder(true)} 
+                                title="Record voice message"
+                            >
+                                <Mic className="h-4 w-4" />
+                            </button>
+                        )}
 
                     </div>
 
@@ -394,23 +681,50 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         <div>
                             {(editor?.getText() || '').length}/{maxLength}
                         </div>
-                        {/* Send button inside editor */}
+                        {/* Send/Update button */}
                         <button
                             className="border-0 p-2 transition-colors duration-150 hover:text-primary [&>svg]:transition-all [&>svg]:duration-150 hover:[&>svg]:rotate-45 hover:[&>svg]:text-primary hover:[&>svg]:scale-110"
                             onClick={async () => {
                                 const html = editor?.getHTML() || ''
                                 const text = editor?.getText() || ''
-                                const success = await onSend?.(html, text, attachments)
+                                const success = await onSend?.(
+                                    html, 
+                                    text, 
+                                    attachments,
+                                    mentionedUserIds,
+                                    activeReplyTo?.id,
+                                    activeEditMessage?.id
+                                )
                                 if (success) {
                                     editor?.commands.setContent('')
                                     setAttachments([])
-                                    setShowSuggestions(false)
+                                    setShowMentionPicker(false)
+                                    setMentionedUserIds([])
+                                    setInternalReplyTo(null)
+                                    setInternalEditMessage(null)
                                 }
-                            }} title="Send message">
-                            <Send className="h-5 w-5 text-primary" />
+                            }} 
+                            title={activeEditMessage ? "Update message" : "Send message"}
+                        >
+                            <Send className="h-4 w-4 text-primary" />
                         </button>
                     </div>
                 </div>
+
+                {/* Voice Recorder Overlay */}
+                {showVoiceRecorder && onSendVoice && (
+                    <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm rounded-lg flex items-center justify-center p-4">
+                        <VoiceRecorder
+                            onSendVoice={async (blob, duration) => {
+                                await onSendVoice(blob, duration)
+                                setShowVoiceRecorder(false)
+                            }}
+                            onCancel={() => setShowVoiceRecorder(false)}
+                            disabled={disabled}
+                            className="w-full"
+                        />
+                    </div>
+                )}
             </div>
         )
     }

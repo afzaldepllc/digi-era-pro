@@ -423,7 +423,24 @@ export async function POST(request: NextRequest) {
         assignedBy: validatedData.assigneeId ? user.id : undefined
       })
 
-      return await newTask.save()
+      const savedTask = await newTask.save()
+
+      // Sync assignee to project channel if task has both assignee and project
+      if (validatedData.assigneeId && validatedData.projectId) {
+        try {
+          const { channelSyncManager } = await import('@/lib/communication/channel-sync-manager')
+          await channelSyncManager.syncAssigneeToProjectChannel(
+            validatedData.assigneeId,
+            validatedData.projectId,
+            user.id
+          )
+        } catch (syncError) {
+          console.warn('Failed to sync assignee to project channel:', syncError)
+          // Don't block task creation if sync fails
+        }
+      }
+
+      return savedTask
     })
 
     // Clear relevant cache patterns after creation

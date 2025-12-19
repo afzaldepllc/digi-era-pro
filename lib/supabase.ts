@@ -27,5 +27,8 @@ export const supabase =
 
 if (process.env.NODE_ENV !== 'production') globalForSupabase.supabase = supabase
 
+// Default export for convenience
+export default supabase
+
 // Database types (will be generated from Supabase)
 export type { Database } from '@/types/supabase'

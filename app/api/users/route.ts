@@ -384,6 +384,21 @@ export async function POST(request: NextRequest) {
       console.log('Creating user with data: 374', user)
       await user.save()
 
+      // Sync user to department channels if department is set
+      if (user.department) {
+        try {
+          const { channelSyncManager } = await import('@/lib/communication/channel-sync-manager')
+          await channelSyncManager.syncUserToDepartmentChannels(
+            user._id.toString(),
+            user.department.toString(),
+            session.user.id
+          )
+        } catch (syncError) {
+          console.warn('Failed to sync user to department channels:', syncError)
+          // Don't block user creation if sync fails
+        }
+      }
+
       // Clear relevant caches
       const { clearCache } = await import('@/lib/mongodb')
       clearCache('users') // Clear user-related cache

@@ -1,14 +1,15 @@
 import { z } from 'zod'
 
 // File type constants that match S3Service configuration
-export const FILE_TYPES = ['PROFILE_PICTURES', 'DOCUMENTS', 'EMAIL_ATTACHMENTS'] as const
+export const FILE_TYPES = ['PROFILE_PICTURES', 'DOCUMENTS', 'EMAIL_ATTACHMENTS', 'CHAT_ATTACHMENTS'] as const
 export type FileType = typeof FILE_TYPES[number]
 
 // File size limits (in bytes)
 export const FILE_SIZE_LIMITS = {
     PROFILE_PICTURES: 1 * 1024 * 1024, // 1MB
     DOCUMENTS: 25 * 1024 * 1024, // 25MB
-    EMAIL_ATTACHMENTS: 25 * 1024 * 1024 // 25MB
+    EMAIL_ATTACHMENTS: 25 * 1024 * 1024, // 25MB
+    CHAT_ATTACHMENTS: 25 * 1024 * 1024 // 25MB for chat files
 } as const
 
 // Allowed MIME types for each file type
@@ -50,6 +51,30 @@ export const ALLOWED_MIME_TYPES = {
         'image/gif',
         'application/zip',
         'application/x-zip-compressed'
+    ],
+    CHAT_ATTACHMENTS: [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain',
+        'text/csv',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/svg+xml',
+        'application/zip',
+        'application/x-zip-compressed',
+        'video/mp4',
+        'video/webm',
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/ogg'
     ]
 } as const
 

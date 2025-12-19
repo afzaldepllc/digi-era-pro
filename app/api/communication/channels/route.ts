@@ -9,6 +9,8 @@ import { enrichChannelWithUserData } from '@/lib/communication/utils'
 import { default as User } from '@/models/User'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
+import { apiLogger as logger } from '@/lib/logger'
+import { supabase } from '@/lib/supabase'
 
 
 // Helper to create consistent error responses
@@ -79,6 +81,31 @@ export async function GET(request: NextRequest) {
       orderBy: { updated_at: 'desc' },
     })
 
+    // Sort channels: pinned first (by pinned_at desc), then by updated_at desc
+    const sortedChannels = channels.sort((a: any, b: any) => {
+      // Find current user's membership in each channel
+      const aMember = a.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      const bMember = b.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      const aIsPinned = aMember?.is_pinned || false
+      const bIsPinned = bMember?.is_pinned || false
+      
+      // Pinned channels first
+      if (aIsPinned && !bIsPinned) return -1
+      if (!aIsPinned && bIsPinned) return 1
+      
+      // If both pinned, sort by pinned_at (most recently pinned first)
+      if (aIsPinned && bIsPinned) {
+        const aPinnedAt = aMember?.pinned_at ? new Date(aMember.pinned_at).getTime() : 0
+        const bPinnedAt = bMember?.pinned_at ? new Date(bMember.pinned_at).getTime() : 0
+        return bPinnedAt - aPinnedAt
+      }
+      
+      // For non-pinned, sort by updated_at desc
+      const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0
+      const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0
+      return bUpdated - aUpdated
+    })
+
     // Fetch all users for enrichment
     const allUsers = await executeGenericDbQuery(async () => {
       return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
@@ -86,21 +113,31 @@ export async function GET(request: NextRequest) {
 
     // Enrich channels with user data from MongoDB
     const enrichedChannels = await Promise.all(
-      channels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
+      sortedChannels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
     )
+
+    // Add pin info to each channel for easy access
+    const channelsWithPinInfo = enrichedChannels.map((channel: any) => {
+      const memberInfo = channel.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      return {
+        ...channel,
+        is_pinned: memberInfo?.is_pinned || false,
+        pinned_at: memberInfo?.pinned_at || null
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      data: enrichedChannels,
+      data: channelsWithPinInfo,
       meta: {
-        total: enrichedChannels.length,
+        total: channelsWithPinInfo.length,
         page: 1,
-        limit: enrichedChannels.length,
+        limit: channelsWithPinInfo.length,
         pages: 1
       }
     })
   } catch (error: any) {
-    console.error('Error fetching channels:', error)
+    logger.error('Error fetching channels:', error)
     return createAPIErrorResponse('Failed to fetch channels', 500, undefined, getClientInfo(request))
   }
 }
@@ -138,7 +175,7 @@ export async function POST(request: NextRequest) {
       client_id: validatedData.client_id,
       is_private: validatedData.is_private
     })
-    console.log("memberIds141",memberIds);
+    logger.debug("Channel members created:", memberIds);
     // For DM channels, check if one already exists between these users
     if (validatedData.type === 'dm' && memberIds.length === 2) {
       const sortedMembers = memberIds.sort()
@@ -237,13 +274,33 @@ export async function POST(request: NextRequest) {
     // Enrich channel with user data
     const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
 
+    // Broadcast new channel to all members for real-time sync
+    try {
+      // Broadcast to each member's personal notification channel
+      for (const memberId of memberIds) {
+        const rtChannel = supabase.channel(`user:${memberId}:channels`)
+        await rtChannel.send({
+          type: 'broadcast',
+          event: 'channel_update',
+          payload: {
+            id: enrichedChannel.id,
+            type: 'new_channel',
+            channel: enrichedChannel
+          }
+        })
+        await supabase.removeChannel(rtChannel)
+      }
+    } catch (broadcastError) {
+      logger.warn('Failed to broadcast new channel:', broadcastError)
+    }
+
     return NextResponse.json({
       success: true,
       data: enrichedChannel,
       message: 'Channel created successfully'
     })
   } catch (error: any) {
-    console.error('Error creating channel:', error)
+    logger.error('Error creating channel:', error)
     return createAPIErrorResponse('Failed to create channel', 500, undefined, getClientInfo(request))
   }
 }

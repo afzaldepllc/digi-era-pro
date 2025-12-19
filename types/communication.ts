@@ -1,4 +1,5 @@
 // Communication Types - Updated for Supabase integration
+import { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 
 // Messages table interface
 export interface ICommunication {
@@ -6,7 +7,7 @@ export interface ICommunication {
   channel_id: string // Supabase channel UUID reference
   mongo_sender_id: string // MongoDB user ID of sender
   content: string // Message content
-  content_type: 'text' | 'file' | 'system' // Content type
+  content_type: 'text' | 'file' | 'audio' | 'system' // Content type
   thread_id?: string // For threading (optional)
   reply_count: number // Number of replies
   mongo_mentioned_user_ids?: string[] // Array of mentioned user IDs
@@ -16,7 +17,17 @@ export interface ICommunication {
   parent_message_id?: string // For replies
   attachments?: IAttachment[]
   read_receipts?: IReadReceipt[]
-  sender?: IParticipant // Enriched sender data
+  reactions?: IReaction[] // Message reactions
+  
+  // Denormalized sender fields (stored in Supabase for real-time performance)
+  sender_name: string
+  sender_email: string
+  sender_avatar?: string
+  sender_role: string
+  
+  // Enriched sender object (computed from denormalized fields)
+  sender?: IParticipant
+  
   // UI helper fields (not in schema)
   isOptimistic?: boolean // For optimistic updates
   isFailed?: boolean // For failed message sends
@@ -25,7 +36,7 @@ export interface ICommunication {
 // Channels table interface
 export interface IChannel {
   id: string // Supabase UUID
-  type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Channel type
+  type: 'dm' | 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support' // Channel type
   name?: string // Channel name (optional for DMs)
   avatar_url?: string // Channel avatar URL
   mongo_department_id?: string // MongoDB department reference
@@ -36,6 +47,18 @@ export interface IChannel {
   last_message_at?: string // Last message timestamp
   created_at: string // Creation timestamp
   updated_at: string // Update timestamp
+  // Advanced Channel Settings (Phase 2)
+  auto_sync_enabled: boolean // Auto-add new dept members/assignees
+  allow_external_members: boolean // Allow members outside dept/project
+  admin_only_post: boolean // Only admins can send messages
+  admin_only_add: boolean // Only admins can add new members
+  // Archive fields (Phase 2)
+  is_archived?: boolean // Whether the channel is archived
+  archived_at?: string // Archive timestamp
+  archived_by?: string // MongoDB user ID who archived
+  // Pin fields (per-user, added from channel_members)
+  is_pinned?: boolean // Whether the current user has pinned this channel
+  pinned_at?: string | null // When the current user pinned this channel
   // UI helper fields (not in schema)
   last_message?: ICommunication
   unreadCount?: number
@@ -48,11 +71,12 @@ export interface IChannelMember {
   id: string // Supabase UUID
   channel_id: string // Supabase channel UUID
   mongo_member_id: string // MongoDB user ID
-  channelRole: 'admin' | 'member' // Channel role (renamed from role)
+  channelRole: 'owner' | 'admin' | 'member' // Channel role (owner = creator)
   joined_at: string // Join timestamp
   last_seen_at?: string // Last seen timestamp
-  is_online: boolean // Online status
   notifications_enabled: boolean // Notification preference
+  added_by?: string // MongoDB user ID who added this member
+  added_via?: 'creation' | 'auto_sync' | 'manual_add' | 'invitation' // How the member was added
   
   // Enriched user fields
   userRole: string // User role from MongoDB
@@ -60,7 +84,7 @@ export interface IChannelMember {
   email: string // User email
   avatar?: string // User avatar
   userType: 'User' | 'Client' // User type
-  isOnline: boolean // Online status (alias for is_online)
+  isOnline: boolean // Online status (enriched from presence or is_online db field)
 }
 
 export interface IParticipant {
@@ -108,8 +132,17 @@ export interface FetchMessagesParams {
 export interface CreateMessageData {
   channel_id: string
   content: string // Changed from 'message'
-  content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
+  content_type?: 'text' | 'file' | 'audio' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
+  attachment_ids?: string[] // IDs of pre-uploaded attachments
+  // Audio attachment data for voice messages
+  audio_attachment?: {
+    file_url: string
+    file_name?: string
+    file_size?: number
+    file_type?: string
+    duration_seconds?: number
+  }
   thread_id?: string // Changed from 'parentMessageId'
   parent_message_id?: string // For replies
   mongo_mentioned_user_ids?: string[] // Mentioned users
@@ -134,6 +167,8 @@ export interface ChatWindowProps {
   className?: string
   onToggleSidebar?: () => void
   isSidebarExpanded?: boolean
+  fullscreenRef?: React.RefObject<FullscreenToggleRef | null>
+  onFullscreenChange?: (isFullscreen: boolean) => void
 }
 
 export interface MessageListProps {
@@ -201,9 +236,19 @@ export interface ChannelApiResponse {
 export interface IReaction {
   id: string
   message_id: string
+  channel_id: string
   mongo_user_id: string
-  reaction_type: string
+  user_name?: string
+  emoji: string
   created_at: string
+}
+
+// Grouped reactions for display
+export interface IGroupedReaction {
+  emoji: string
+  count: number
+  users: { id: string; mongo_user_id: string; name?: string }[]
+  hasCurrentUserReacted: boolean
 }
 
 export interface IAttachment {

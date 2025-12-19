@@ -21,42 +21,80 @@ import { User } from "@/types"
 
 interface UserDirectoryProps {
   onStartDM?: (userId: string) => void
+  onChannelSelect?: (channelId: string) => void
   className?: string
 }
 
-export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
+export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelSelect, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { channels, createChannel, loading: channelLoading, selectChannel } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
 
-  // Filter active users (exclude current user and inactive users, and clients)
+  // Filter active users (exclude current user)
   const activeUsers = useMemo(() => {
-    // Get users who already have DM channels with current user
-    const dmUserIds = new Set<string>()
-    channels.filter(channel => channel.type === 'dm').forEach(channel => {
-      const currentUserInChannel = channel.channel_members.some(p => p.mongo_member_id === (session?.user as any)?.id)
-      if (currentUserInChannel) {
-        channel.channel_members.forEach(p => {
-          if (p.mongo_member_id !== (session?.user as any)?.id) {
-            dmUserIds.add(p.mongo_member_id)
-          }
-        })
-      }
-    })
-
     return users.filter(user =>
-      user._id.toString() !== (session?.user as any)?.id &&
-      !dmUserIds.has(user._id.toString())
+      user._id.toString() !== (session?.user as any)?.id
       //  &&
       // user.isClient === false
     )
-  }, [users, channels, (session?.user as any)?.id]);
-  console.log("activeUsers42",activeUsers);
-  // Filter users based on search
+  }, [users, (session?.user as any)?.id]);
+  
+  // Sort users by recent message activity
+  // Users with recent DM messages appear first
+  const sortedUsers = useMemo(() => {
+    const currentUserId = (session?.user as any)?.id
+    if (!currentUserId) return activeUsers
+    
+    // Create a map of userId -> last_message_at from DM channels
+    const userLastMessageMap = new Map<string, string>()
+    
+    channels.forEach(channel => {
+      if (channel.type === 'dm' && channel.last_message_at) {
+        // Find the other user in this DM
+        const otherMember = channel.channel_members.find(
+          m => m.mongo_member_id !== currentUserId
+        )
+        if (otherMember) {
+          const existingTime = userLastMessageMap.get(otherMember.mongo_member_id)
+          // Keep the most recent message time
+          if (!existingTime || new Date(channel.last_message_at) > new Date(existingTime)) {
+            userLastMessageMap.set(otherMember.mongo_member_id, channel.last_message_at)
+          }
+        }
+      }
+    })
+    
+    // Sort users: those with recent messages first, then by online status, then alphabetically
+    return [...activeUsers].sort((a, b) => {
+      const aTime = userLastMessageMap.get(a._id.toString())
+      const bTime = userLastMessageMap.get(b._id.toString())
+      
+      // Both have messages - sort by most recent
+      if (aTime && bTime) {
+        return new Date(bTime).getTime() - new Date(aTime).getTime()
+      }
+      
+      // Only one has messages - that one goes first
+      if (aTime && !bTime) return -1
+      if (!aTime && bTime) return 1
+      
+      // Neither has messages - sort by online status, then name
+      const aOnline = onlineUserIds.includes(a._id.toString())
+      const bOnline = onlineUserIds.includes(b._id.toString())
+      
+      if (aOnline && !bOnline) return -1
+      if (!aOnline && bOnline) return 1
+      
+      // Both same status - sort alphabetically
+      return (a.name || a.email || '').localeCompare(b.name || b.email || '')
+    })
+  }, [activeUsers, channels, onlineUserIds, (session?.user as any)?.id])
+
+  // Filter users based on search (using sorted users)
   const filteredUsers = useMemo(() => {
-    return activeUsers.filter(user => {
+    return sortedUsers.filter(user => {
       if (!searchQuery) return true
       const query = searchQuery.toLowerCase()
       return (
@@ -65,7 +103,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
         (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
       )
     })
-  }, [activeUsers, searchQuery])
+  }, [sortedUsers, searchQuery])
 
   const handleStartDM = async (user: User) => {
     if (!(session?.user as any)?.id) {
@@ -74,16 +112,32 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
     }
 
     try {
-      // Create DM channel
-      const channel = await createChannel({
-        type: 'dm',
-        channel_members: [(session?.user as any)?.id, user._id as string],
-        is_private: true
+      // Check if DM channel already exists
+      const existingChannel = channels.find(channel => {
+        if (channel.type !== 'dm') return false
+        const memberIds = channel.channel_members.map(m => m.mongo_member_id)
+        return memberIds.includes((session?.user as any)?.id) && memberIds.includes(user._id.toString())
       })
 
-      if (channel) {
-        // Select the new channel
-        selectChannel(channel.id)
+      if (existingChannel) {
+        // Open existing channel
+        selectChannel(existingChannel.id)
+        if (onChannelSelect) {
+          onChannelSelect(existingChannel.id)
+        }
+      } else {
+        // Create new DM channel
+        const channel = await createChannel({
+          type: 'dm',
+          channel_members: [(session?.user as any)?.id, user._id as string],
+          is_private: true
+        })
+
+        if (channel && onChannelSelect) {
+          // Select the new channel
+          selectChannel(channel.id)
+          onChannelSelect(channel.id)
+        }
       }
     } catch (error) {
       console.error('Failed to create DM:', error)
@@ -91,8 +145,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
   }
 
   const getUserStatus = (user: User) => {
-    // TODO: Implement online status checking
-    return 'offline'
+    // Use real-time onlineUserIds from Supabase presence
+    return onlineUserIds.includes(user._id.toString()) ? 'online' : 'offline'
   }
 
   const getRoleColor = (role?: string | any) => {
@@ -115,11 +169,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
       <div className="p-4 border-b">
-        <div className="flex items-center gap-3 mb-4">
-          <Users className="h-5 w-5" />
-          <h3 className="font-semibold">Start a Conversation</h3>
-        </div>
-
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -148,11 +197,16 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
               {filteredUsers.map((user) => (
                 <div
                   key={user._id as string}
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors group"
+                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => !channelLoading && handleStartDM(user)}
                 >
                   {/* Avatar */}
                   <div className="relative">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className={cn(
+                      "h-10 w-10",
+                      // WhatsApp-style green ring for online users
+                      getUserStatus(user) === 'online' && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+                    )}>
                       <AvatarImage src={user.avatar} alt={user.name || user.email} />
                       <AvatarFallback>{user.name
                         ? (() => {
@@ -164,9 +218,10 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
                         })()
                         : user.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
+                    {/* Online indicator dot */}
                     <div className={cn(
                       "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background",
-                      getUserStatus(user) === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                      getUserStatus(user) === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'
                     )} />
                   </div>
 
@@ -183,17 +238,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
                       )}
                     </div>
                   </div>
-
-                  {/* Action Button */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleStartDM(user)}
-                    disabled={channelLoading}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
             </div>
@@ -204,11 +248,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
       {/* Footer */}
       <div className="p-4 border-t bg-muted/30">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>{filteredUsers.length} active user{filteredUsers.length !== 1 ? 's' : ''}</span>
-          <div className="flex items-center gap-1">
-            <UserCheck className="h-3 w-3" />
-            <span>Start a conversation</span>
-          </div>
+          <span>{filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
     </div>

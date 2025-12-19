@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, memo } from "react"
+import { useState, memo, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -14,7 +14,10 @@ import {
   Phone, 
   Plus,
   Settings,
-  Filter
+  Filter,
+  Archive,
+  Pin,
+  PinOff
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant } from "@/types/communication"
@@ -33,14 +36,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import HtmlTextRenderer from "../shared/html-text-renderer"
+import { useToast } from "@/hooks/use-toast"
 
 interface ChannelListProps {
   channels: IChannel[]
   activeChannelId?: string | null
   onChannelSelect: (channelId: string) => void
   currentUserId: string
+  onlineUserIds?: string[] // Real-time online user IDs from Supabase
   showSearch?: boolean
   onCreateChannel?: () => void
+  onPinChannel?: (channelId: string, isPinned: boolean) => Promise<void>
   className?: string
 }
 
@@ -49,13 +56,17 @@ export const ChannelList = memo(function ChannelList({
   activeChannelId,
   onChannelSelect,
   currentUserId,
+  onlineUserIds = [],
   showSearch = true,
   onCreateChannel,
+  onPinChannel,
   className
 }: ChannelListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<'all' | 'dm' | 'project' | 'client-support'>('all')
-  console.log("channels prop 58",channels);
+  const [pinLoading, setPinLoading] = useState<string | null>(null)
+  const { toast } = useToast()
+
   const getChannelIcon = (channel: IChannel) => {
     switch (channel.type) {
       case 'dm':
@@ -73,11 +84,8 @@ export const ChannelList = memo(function ChannelList({
 
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
-      console.log("channel members76",channel.channel_members);
-      console.log("currentUserId76",currentUserId);
       // For DM, show the other participant's name
       const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
-      console.log("otherParticipant78",otherParticipant);
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name || 'Unnamed Channel'
@@ -135,14 +143,47 @@ export const ChannelList = memo(function ChannelList({
     return true
   })
 
+  // Separate pinned and unpinned channels, then sort each group
+  const pinnedChannels = filteredChannels.filter((ch: any) => ch.is_pinned)
+  const unpinnedChannels = filteredChannels.filter((ch: any) => !ch.is_pinned)
+
+  // Handle pin toggle
+  const handlePinToggle = useCallback(async (e: React.MouseEvent, channel: IChannel) => {
+    e.stopPropagation()
+    if (!onPinChannel) return
+    
+    const isPinned = (channel as any).is_pinned || false
+    setPinLoading(channel.id)
+    
+    try {
+      await onPinChannel(channel.id, isPinned)
+    } catch (error: any) {
+      toast({
+        title: "Failed to update pin",
+        description: error.message || "Something went wrong",
+        variant: "destructive"
+      })
+    } finally {
+      setPinLoading(null)
+    }
+  }, [onPinChannel, toast])
+
   const ChannelItem = ({ channel }: { channel: IChannel }) => {
     const isActive = channel.id === activeChannelId
     const avatar = getChannelAvatar(channel)
     const displayName = getChannelDisplayName(channel)
     const subtitle = getChannelSubtitle(channel)
     const hasUnread = (channel.unreadCount || 0) > 0
-
-    console.log("channel  info 142",channel);
+    const isArchived = (channel as any).is_archived || false
+    const isPinned = (channel as any).is_pinned || false
+    const isPinLoading = pinLoading === channel.id
+    
+    // Check if user is online using real-time onlineUserIds from Supabase
+    const isAvatarUserOnline = avatar ? (
+      onlineUserIds.length > 0 
+        ? onlineUserIds.includes(avatar.mongo_member_id)
+        : avatar.isOnline
+    ) : false
 
     return (
       <div
@@ -152,14 +193,56 @@ export const ChannelList = memo(function ChannelList({
           "hover:shadow-lg hover:scale-[1.02]",
           "border-2 border-transparent hover:border-accent/30",
           isActive && "shadow-md border-primary/20",
-          hasUnread && "border-secondary-200/50"
+          hasUnread && "border-secondary-200/50",
+          isArchived && "opacity-60 bg-muted/30",
+          isPinned && "bg-primary/5 border-primary/10"
         )}
       >
+        {/* Pin indicator */}
+        {isPinned && (
+          <div className="absolute top-1 right-1">
+            <Pin className="h-3 w-3 text-primary fill-primary rotate-45" />
+          </div>
+        )}
+        
+        {/* Pin/Unpin button - visible on hover */}
+        {onPinChannel && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity",
+                  isPinned && "opacity-100"
+                )}
+                onClick={(e) => handlePinToggle(e, channel)}
+                disabled={isPinLoading}
+              >
+                {isPinLoading ? (
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                ) : isPinned ? (
+                  <PinOff className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                ) : (
+                  <Pin className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isPinned ? 'Unpin channel' : 'Pin channel'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
         {/* Avatar or Icon */}
         <div className="relative shrink-0">
           {avatar ? (
             <>
-              <Avatar className="h-10 w-10 transition-transform duration-200 group-hover:scale-110">
+              <Avatar className={cn(
+                "h-10 w-10 transition-transform duration-200 group-hover:scale-110",
+                // WhatsApp-style green ring for online users
+                isAvatarUserOnline && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+              )}>
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
                   {avatar.name ? (() => {
@@ -172,8 +255,8 @@ export const ChannelList = memo(function ChannelList({
                   : ''}
                 </AvatarFallback>
               </Avatar>
-              {/* Online indicator */}
-              {avatar.isOnline && (
+              {/* Online indicator dot */}
+              {isAvatarUserOnline && (
                 <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
               )}
             </>
@@ -209,12 +292,19 @@ export const ChannelList = memo(function ChannelList({
             {/* Subtitle or last message */}
             <div className="flex-1 min-w-0">
               {channel.last_message ? (
-                <p className={cn(
-                  "text-sm truncate leading-tight transition-colors",
-                  hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
-                )}>
-                  {channel.last_message.content}
-                </p>
+                // <p className={cn(
+                //   "text-sm truncate leading-tight transition-colors",
+                //   hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
+                // )}>
+                   <HtmlTextRenderer
+                        content={channel.last_message.content}
+                        fallbackText="No description"
+                        showFallback={true}
+                        renderAsHtml={true}
+                        className="line-clamp-1"
+                        truncateHtml={true}
+                      />
+                // </p>
               ) : (
                 <p className="text-sm text-muted-foreground/60 font-medium">
                   {subtitle}
@@ -239,7 +329,14 @@ export const ChannelList = memo(function ChannelList({
               {channel.type === 'dm' ? 'Direct' : channel.type === 'client-support' ? 'Support' : channel.type.replace('-', ' ')}
             </Badge>
             
-            {!channel.is_private && (
+            {isArchived && (
+              <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <Archive className="h-3 w-3" />
+                Archived
+              </Badge>
+            )}
+            
+            {!channel.is_private && !isArchived && (
               <Badge variant="secondary" className="text-xs">
                 External
               </Badge>
@@ -354,10 +451,36 @@ export const ChannelList = memo(function ChannelList({
               </div>
             ) : (
               <>
-                {/* DM Channels */}
+                {/* Pinned Channels Section */}
+                {pinnedChannels.length > 0 && (
+                  <>
+                    <div className="py-2 px-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+                        <Pin className="h-3 w-3" />
+                        <span>Pinned ({pinnedChannels.length}/5)</span>
+                      </div>
+                    </div>
+                    {pinnedChannels.map((channel) => (
+                      <ChannelItem key={channel.id} channel={channel} />
+                    ))}
+                    {/* Separator after pinned */}
+                    <div className="py-3 px-2">
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-border/40" />
+                        </div>
+                        <div className="relative flex justify-center text-xs text-muted-foreground">
+                          <span className="bg-card px-2 font-medium">All Chats</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                {/* Unpinned Channels - DM and Other */}
                 {(() => {
-                  const dmChannels = filteredChannels.filter(channel => channel.type === 'dm')
-                  const otherChannels = filteredChannels.filter(channel => channel.type !== 'dm')
+                  const dmChannels = unpinnedChannels.filter(channel => channel.type === 'dm')
+                  const otherChannels = unpinnedChannels.filter(channel => channel.type !== 'dm')
                   
                   return (
                     <>

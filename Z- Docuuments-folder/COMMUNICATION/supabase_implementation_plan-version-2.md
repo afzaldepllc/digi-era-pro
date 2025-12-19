@@ -2424,3 +2424,136 @@ Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
 you can reuse component also or create new one but every things should be to the point and optimized 
 
 along with we can 
+
+
+
+
+
+
+
+# fixed-01
+
+now make sure to implement these things properly with the realtime 
+
+use these docs to understand the main flow of this project and than make sure to impelement the requisted things  Z- Docuuments-folder\COMMUNICATION\supabase_implementation_plan-version-2.md
+D:\digi-era-pro\Z- Docuuments-folder\COMMUNICATION\SUPABASE_CHAT_COMPREHENSIVE_IMPLEMENTATION_PLAN-version-3.md
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_SYSTEM_README-WITH-SUPABASE-FINAL-VERSION-4.md
+
+1) in the groups we can mention anyone from the channel_members using this button 
+{/* Mention button */}
+                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
+                            <AtSign className="h-4 w-4" />
+                        </button>
+or @ when this than show the current memer of that chat and we can pick one of them and also handle mentions in the realtime , prisma, with the realtime notification for that who is mention 
+and we can mention "everyone" if so that all member have notification for alert and we can also remove the mention one using the backspace
+
+2) there should be proper emoji picker with search (slack inspired)
+ <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
+                                <Smile className="h-4 w-4" />
+                            </button>
+
+3) the reply should be working well with preview of the reply message and when click on it than navigate to that message also like in the whatsapp using the best practices 
+4) the message edit should also be working well with edit fields 
+
+5) there should be not sent icon, read icons, delivered icon and read icon and its completely realtime in the both side sender and reciver according to the professional approach
+
+
+makesure every things should be realtime and working well according to best practoces of the supabase and current flow of this project and ui should be slim like in the slack
+
+
+
+# fixes 02
+
+
+now make sure to implement these things properly with the realtime 
+
+use these docs to understand the main flow of this project and than make sure to impelement the requisted things  Z- Docuuments-folder\COMMUNICATION\supabase_implementation_plan-version-2.md
+D:\digi-era-pro\Z- Docuuments-folder\COMMUNICATION\SUPABASE_CHAT_COMPREHENSIVE_IMPLEMENTATION_PLAN-version-3.md
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_SYSTEM_README-WITH-SUPABASE-FINAL-VERSION-4.md
+
+1) handle the attachemnts using the supabase and implemented s3 with preview for different files(image,pdf and others like whatsapp)
+help the current s3 setup from this doc file 
+D:\digi-era-pro\Z- Docuuments-folder\FileSharing\S3-Integration.md
+D:\digi-era-pro\Z- Docuuments-folder\FileSharing\AWS_S3_SETUP.md
+but every things should be unified and realtime and working well without any error even not the type error and you can update the prisma or anyother things also but implmentation should be professional and according to bes pratices 
+
+2) in the D:\digi-era-pro\components\ui\context-panel.tsx make sure to replace mockfiles of mock attachment on that channel 
+ const mockFiles = [
+    {
+      id: '1',
+      name: 'ui-designs-v2.pdf',
+      size: '2.4 MB',
+      uploadedBy: 'Sarah Wilson',
+      uploadedAt: new Date('2025-10-09T15:45:00Z'),
+      type: 'pdf'
+    },
+    {
+      id: '2',
+      name: 'project-requirements.docx',
+      size: '1.2 MB',
+      uploadedBy: 'Afzal Habib',
+      uploadedAt: new Date('2025-10-08T10:30:00Z'),
+      type: 'document'
+    },
+    {
+      id: '3',
+      name: 'screenshot-2025-10-07.png',
+      size: '845 KB',
+      uploadedBy: 'Talha',
+      uploadedAt: new Date('2025-10-07T14:20:00Z'),
+      type: 'image'
+    }
+  ]
+
+  return (
+    <TooltipProvider>
+      <div className={cn(
+        "w-80 bg-card border-l flex flex-col h-full",
+        className
+
+
+make sure every things should be working well without any error and every things should be realtime 
+
+
+# fixes 03
+
+
+1) make sure in the components\communication\user-directory.tsx those user for which the messages are most recent incomming to send should be on  top
+
+2) in the messages-lists there should be proper pagination on scroll and proper cache and unified and simple ux loading for those messages load on pagination 
+
+3) this search should be fully working well with backend search and message navigation should also be working well 
+ {/* Search input */}
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search messages..."
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-muted/30 hover:bg-muted/50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Navigation arrows */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-muted"
+                    disabled
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-muted"
+                    disabled
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </Button>
+                </div>

@@ -72,7 +72,7 @@ export default function ChannelPage() {
         </div>
 
         {/* Input skeleton */}
-        <div className="border-t bg-card p-4">
+        <div className="border-t bg-card p-2">
           <div className="flex items-end gap-2">
             <Skeleton className="h-10 w-10" />
             <Skeleton className="h-10 flex-1" />

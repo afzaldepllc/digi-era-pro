@@ -217,6 +217,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .populate('assigner', 'name email')
       .populate('parentTask', 'title status')
 
+      // Sync assignee to project channel if assignee was changed
+      if (validatedData.assigneeId && updated?.projectId) {
+        try {
+          const { channelSyncManager } = await import('@/lib/communication/channel-sync-manager')
+          await channelSyncManager.syncAssigneeToProjectChannel(
+            validatedData.assigneeId.toString(),
+            updated.projectId.toString(),
+            user.id
+          )
+        } catch (syncError) {
+          console.warn('Failed to sync assignee to project channel:', syncError)
+          // Don't block task update if sync fails
+        }
+      }
+
       return updated
     })
 

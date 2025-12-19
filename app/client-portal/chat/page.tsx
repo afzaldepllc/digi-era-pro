@@ -323,6 +323,7 @@ export default function ClientChatPage() {
                       typingUsers={typingUsers}
                       currentUserId={currentUser.mongo_member_id}
                       onMessageRead={handleMessageRead}
+                      channel_members={supportChannel.channel_members || []}
                     />
                   )
                 )}
