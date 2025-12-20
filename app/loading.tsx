@@ -1,4 +1,4 @@
-import { ProfessionalLoader } from "@/components/ui/professional-loader";
+import { ProfessionalLoader } from "@/components/shared/professional-loader";
 
 export default function Loading() {
   return (

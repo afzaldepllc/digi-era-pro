@@ -1,7 +1,7 @@
 // components/FullscreenToggle.tsx (with tooltip)
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
 // Changed mode names to concise/descriptive variants
@@ -15,12 +15,21 @@ interface FullscreenToggleProps {
   selectors?: string;
 }
 
-export default function FullscreenToggle({
-  mode = 'fullscreen-hide-layout',
-  selectors = 'header, footer, aside, [data-role="sidebar"], .sidebar, .header, .footer',
-}: FullscreenToggleProps) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isLayoutHidden, setIsLayoutHidden] = useState(false);
+export interface FullscreenToggleRef {
+  isFullscreen: boolean;
+}
+
+const FullscreenToggle = forwardRef<FullscreenToggleRef, FullscreenToggleProps>(
+  ({
+    mode = 'fullscreen-hide-layout',
+    selectors = 'header, footer, aside, [data-role="sidebar"], .sidebar, .header, .footer, .mainCollapserBtn',
+  }, ref) => {
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isLayoutHidden, setIsLayoutHidden] = useState(false);
+
+    useImperativeHandle(ref, () => ({
+      isFullscreen,
+    }), [isFullscreen]);
 
   useEffect(() => {
     const hideLayoutElements = () => {
@@ -162,4 +171,6 @@ export default function FullscreenToggle({
       )}
     </button>
   );
-}
+});
+
+export default FullscreenToggle;

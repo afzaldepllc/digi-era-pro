@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { usePermissions } from "@/hooks/use-permissions"
 import { useNavigation } from "@/components/providers/navigation-provider"
 import { Deferred } from "@/components/ui/deferred"
-import { UserCog, Handshake } from 'lucide-react';
+import { UserCog, Handshake, AlignLeft } from 'lucide-react';
 import {
   Home,
   Users2,
@@ -281,9 +281,9 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { navigateTo, isNavigating } = useNavigation()
-  
+
   // Memoize route calculations
-  const isCommunicationsRoute = useMemo(() => 
+  const isCommunicationsRoute = useMemo(() =>
     pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal"),
     [pathname]
   )
@@ -374,11 +374,9 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
   // Collapse sidebar for communications routes
   useEffect(() => {
     const isMobile = window.innerWidth < 1024
-    if (isMobile && isCommunicationsRoute) {
+    if (isMobile || isCommunicationsRoute) {
       setCollapsed(false) // On mobile, always show full sidebar when open
       setMobileOpen(false)
-    } else if (!isMobile && isCommunicationsRoute) {
-      setCollapsed(true)
     }
   }, [pathname])
 
@@ -413,26 +411,40 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
     setCollapsed(!collapsed)
   }
 
+  const translateClass = mobileOpen ? "translate-x-0" : (isCommunicationsRoute ? "-translate-x-full" : "-translate-x-full lg:translate-x-0")
+
   return (
     <>
       {/* Mobile Menu Button */}
-      <Button
-        variant="ghost"
-        size="sm"
+      <button
+        // variant="ghost"
+        // size="sm"
         onClick={toggleMobileSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden h-9 w-9 p-0 bg-background/80 backdrop-blur-sm border shadow-sm"
+        className={`mainCollapserBtn fixed top-4 border-0 left-4 z-50 ${isCommunicationsRoute ? '' : 'lg:hidden'} h-9 w-9 p-0 bg-background/80 backdrop-blur-sm border shadow-sm hover:text-primary transition-all duration-300  flex items-center justify-center hover:scale-110`}
       >
         {mobileOpen ? (
           <X className="h-4 w-4" />
         ) : (
-          <Menu className="h-4 w-4" />
+           <svg
+            width={24}
+            height={24}
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <rect x="3" y="5" width="18" height="3" rx="1.5" />
+            <rect x="3" y="10.5" width="10" height="3" rx="1.5" />
+            <rect x="3" y="16" width="18" height="3" rx="1.5" />
+          </svg>
+
+         
+         
         )}
-      </Button>
+      </button>
 
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 ${isCommunicationsRoute ? '' : 'lg:hidden'}`}
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -441,12 +453,8 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
       <div
         className={cn(
           "flex flex-col sidebar border-r bg-sidebar/95 backdrop-blur-sm transition-all duration-300 ease-in-out",
-          // Desktop: sticky positioning for always visible during scroll
-          "lg:sticky lg:top-0 lg:h-screen lg:max-h-screen",
-          // Mobile: fixed positioning for overlay
-          "fixed z-50 h-screen max-h-screen lg:z-auto",
-          "lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          isCommunicationsRoute ? "fixed z-50 h-screen max-h-screen" : "lg:sticky lg:top-0 lg:h-screen lg:max-h-screen fixed z-50 h-screen max-h-screen lg:z-auto",
+          translateClass,
           // Width based on collapsed state
           collapsed ? "w-16" : "w-72",
           // Mobile always full width when open
@@ -485,7 +493,12 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={toggleCollapsed}
-            className={` ${collapsed ? "h-9 w-9 " : "h-8 w-8 "} p-0 hover:bg-primary hover:shadow-md transition-all duration-300 hidden lg:flex shrink-0 hover:scale-110`}
+            className={cn(
+              "p-0 hover:bg-primary hover:shadow-md transition-all duration-300 shrink-0 hover:scale-110",
+              collapsed ? "h-9 w-9" : "h-8 w-8",
+              "hidden",
+              !isCommunicationsRoute && "lg:flex"
+            )}
           >
             <ChevronLeft className={cn(
               "transition-transform duration-300",
@@ -499,7 +512,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
             variant="ghost"
             size="sm"
             onClick={() => setMobileOpen(false)}
-            className="h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 lg:hidden shrink-0 hover:scale-110"
+            className={`h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 ${isCommunicationsRoute ? '' : 'lg:hidden'} shrink-0 hover:scale-110`}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -597,7 +610,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                     {accessibleSubItems?.map((subItem, subIndex) => {
                                       const isSubActive = pathname === subItem.href
                                       return (
-                                        <div 
+                                        <div
                                           key={subIndex}
                                           onClick={() => navigateTo(subItem.href)}
                                           className={cn(
@@ -619,10 +632,10 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                           )}>
                                             <subItem.icon className="h-3.5 w-3.5" />
                                           </div>
-                                            <span className="tracking-wide truncate min-w-0">
-                                              {subItem.title}
-                                            </span>
-                                          </div>
+                                          <span className="tracking-wide truncate min-w-0">
+                                            {subItem.title}
+                                          </span>
+                                        </div>
                                       )
                                     })}
                                   </div>
@@ -658,14 +671,14 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
                                       <span className="tracking-wide truncate">
                                         {item.title}
                                       </span>
-                                        {item.badge && (
-                                          <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
-                                            {item.badge}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                      {item.badge && (
+                                        <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
+                                          {item.badge}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               )
                             )}
                           </div>

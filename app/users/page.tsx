@@ -6,10 +6,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useAppSelector } from "@/hooks/redux";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import DataTable from "@/components/ui/data-table";
-import PageHeader from "@/components/ui/page-header";
-import CustomModal from "@/components/ui/custom-modal";
-import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
+import DataTable from "@/components/shared/data-table";
+import PageHeader from "@/components/shared/page-header";
+import CustomModal from "@/components/shared/custom-modal";
+import GenericFilter, { FilterConfig } from "@/components/shared/generic-filter";
 import { cn } from "@/lib/utils";
 import { handleAPIError } from "@/lib/utils/api-client";
 import Swal from 'sweetalert2'
@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Trash2,
 } from "lucide-react";
-import type { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
+import type { ColumnDef, ActionMenuItem } from "@/components/shared/data-table";
 import type { Role, User } from "@/types";
 import type { UserFilters, UserSort } from "@/store/slices/userSlice";
 import { useDepartments } from "@/hooks/use-departments";

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -44,7 +44,7 @@ interface ChannelListProps {
   className?: string
 }
 
-export function ChannelList({
+export const ChannelList = memo(function ChannelList({
   channels,
   activeChannelId,
   onChannelSelect,
@@ -55,7 +55,7 @@ export function ChannelList({
 }: ChannelListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<'all' | 'dm' | 'project' | 'client-support'>('all')
-
+  console.log("channels prop 58",channels);
   const getChannelIcon = (channel: IChannel) => {
     switch (channel.type) {
       case 'dm':
@@ -73,8 +73,11 @@ export function ChannelList({
 
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
+      console.log("channel members76",channel.channel_members);
+      console.log("currentUserId76",currentUserId);
       // For DM, show the other participant's name
-      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
+      const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
+      console.log("otherParticipant78",otherParticipant);
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name || 'Unnamed Channel'
@@ -82,24 +85,24 @@ export function ChannelList({
 
   const getChannelSubtitle = (channel: IChannel) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find(p => p.mongo_member_id !== currentUserId)
-      return otherParticipant?.role || otherParticipant?.userType || ''
+      const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
+      return otherParticipant?.userRole || otherParticipant?.userType || ''
     }
     
     if (channel.type === 'project') {
-      return `${channel.participants.length} members`
+      return `${channel.channel_members.length} members`
     }
     
     if (channel.type === 'client-support') {
       return 'Client Support'
     }
     
-    return `${channel.participants.length} members`
+    return `${channel.channel_members.length} members`
   }
 
   const getChannelAvatar = (channel: IChannel): IParticipant | null => {
     if (channel.type === 'dm') {
-      return channel.participants.find(p => p.mongo_member_id !== currentUserId) as IParticipant || null
+      return channel.channel_members.find(p => p.mongo_member_id !== currentUserId) as IParticipant || null
     }
     return null
   }
@@ -114,12 +117,12 @@ export function ChannelList({
       const query = searchQuery.toLowerCase()
       const channelName = getChannelDisplayName(channel).toLowerCase()
       const matchesName = channelName.includes(query)
-      const matchesParticipants = channel.participants.some(p => 
+      const matchesChannelMembers = channel.channel_members.some(p => 
         p.name.toLowerCase().includes(query)
       )
       const matchesLastMessage = channel.last_message?.content.toLowerCase().includes(query)
       
-      if (!matchesName && !matchesParticipants && !matchesLastMessage) {
+      if (!matchesName && !matchesChannelMembers && !matchesLastMessage) {
         return false
       }
     }
@@ -139,6 +142,8 @@ export function ChannelList({
     const subtitle = getChannelSubtitle(channel)
     const hasUnread = (channel.unreadCount || 0) > 0
 
+    console.log("channel  info 142",channel);
+
     return (
       <div
         onClick={() => onChannelSelect(channel.id)}
@@ -157,7 +162,14 @@ export function ChannelList({
               <Avatar className="h-10 w-10 transition-transform duration-200 group-hover:scale-110">
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
-                  {avatar.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                  {avatar.name ? (() => {
+                      const parts = avatar.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                 </AvatarFallback>
               </Avatar>
               {/* Online indicator */}
@@ -242,8 +254,8 @@ export function ChannelList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-gradient-to-b from-card to-card/95 border-r border-border/50 shadow-sm overflow-hidden", className)}>
         {/* Header */}
-        <div className="p-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        <div className="p-2 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary" />
               <h2 className="font-semibold text-lg tracking-tight">Messages</h2>
@@ -342,36 +354,61 @@ export function ChannelList({
               </div>
             ) : (
               <>
-                {/* Unread channels first */}
-                {filteredChannels
-                  .filter(channel => (channel.unreadCount || 0) > 0)
-                  .map((channel) => (
-                    <ChannelItem key={channel.id} channel={channel} />
-                  ))
-                }
-                
-                {/* Separator if there are both unread and read channels */}
-                {filteredChannels.some(c => (c.unreadCount || 0) > 0) && 
-                 filteredChannels.some(c => c.unreadCount === 0) && (
-                  <div className="py-3 px-2">
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-border/40" />
-                      </div>
-                      <div className="relative flex justify-center text-xs text-muted-foreground">
-                        <span className="bg-card px-2 font-medium">Recent</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Read channels */}
-                {filteredChannels
-                  .filter(channel => channel.unreadCount === 0)
-                  .map((channel) => (
-                    <ChannelItem key={channel.id} channel={channel} />
-                  ))
-                }
+                {/* DM Channels */}
+                {(() => {
+                  const dmChannels = filteredChannels.filter(channel => channel.type === 'dm')
+                  const otherChannels = filteredChannels.filter(channel => channel.type !== 'dm')
+                  
+                  return (
+                    <>
+                      {/* DM Unread */}
+                      {dmChannels
+                        .filter(channel => (channel.unreadCount || 0) > 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* DM Read */}
+                      {dmChannels
+                        .filter(channel => (channel.unreadCount || 0) === 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* Separator between DM and other channels */}
+                      {dmChannels.length > 0 && otherChannels.length > 0 && (
+                        <div className="py-3 px-2">
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t border-border/40" />
+                            </div>
+                            <div className="relative flex justify-center text-xs text-muted-foreground">
+                              <span className="bg-card px-2 font-medium">Channels</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Other Channels Unread */}
+                      {otherChannels
+                        .filter(channel => (channel.unreadCount || 0) > 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                      
+                      {/* Other Channels Read */}
+                      {otherChannels
+                        .filter(channel => (channel.unreadCount || 0) === 0)
+                        .map((channel) => (
+                          <ChannelItem key={channel.id} channel={channel} />
+                        ))
+                      }
+                    </>
+                  )
+                })()}
               </>
             )}
           </div>
@@ -379,4 +416,4 @@ export function ChannelList({
       </div>
     </TooltipProvider>
   )
-}
+})

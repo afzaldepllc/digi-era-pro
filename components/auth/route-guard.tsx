@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/use-permissions'
 import { useToast } from '@/hooks/use-toast'
 import { PermissionError } from '@/components/ui/error-display'
-import { ProfessionalLoader } from '../ui/professional-loader'
+import { ProfessionalLoader } from '../shared/professional-loader'
 import { useNavigation } from '../providers/navigation-provider'
 
 interface RouteGuardProps {

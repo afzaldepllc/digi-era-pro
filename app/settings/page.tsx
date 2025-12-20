@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useSettings, type ThemeVariant } from "@/hooks/use-settings"
 import { useThemeManagement } from "@/hooks/use-theme-management"
 import { useTheme } from "next-themes"
-import PageHeader from "@/components/ui/page-header"
+import PageHeader from "@/components/shared/page-header"
 import { FormLoader } from "@/components/ui/loader"
 import { BackupManagement } from "@/components/settings/backup-management"
 import {

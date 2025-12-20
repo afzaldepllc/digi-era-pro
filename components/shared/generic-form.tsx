@@ -25,9 +25,9 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { InlineLoader } from "./loader";
+import { InlineLoader } from "../ui/loader";
 import { cn } from "@/lib/utils";
-import { Label } from "./label";
+import { Label } from "../ui/label";
 import { Separator } from "@radix-ui/react-dropdown-menu";
 import {
   Collapsible,

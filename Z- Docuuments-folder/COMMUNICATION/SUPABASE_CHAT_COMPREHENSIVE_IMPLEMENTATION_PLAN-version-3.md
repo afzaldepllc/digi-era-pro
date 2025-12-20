@@ -15,6 +15,7 @@
 6. [Detailed Implementation Steps](#detailed-implementation-steps)
 7. [Testing Strategy](#testing-strategy)
 
+
 ---
 
 ## Overview
@@ -194,7 +195,7 @@ interface ChannelCreationParams {
   project_id?: string
   
   // For DM/group channels
-  participants?: string[]
+  channel_members?: string[]
   
   // For client support
   client_id?: string
@@ -310,9 +311,9 @@ export async function getChannelMembers(params: ChannelCreationParams): Promise<
   switch (params.type) {
     case 'dm':
     case 'group':
-      // Direct participants
-      if (params.participants) {
-        params.participants.forEach(p => members.add(p))
+      // Direct channel_members
+      if (params.channel_members) {
+        params.channel_members.forEach(p => members.add(p))
       }
       break
       
@@ -432,7 +433,7 @@ export async function POST(request: NextRequest) {
     const {
       type,
       name,
-      participants,
+      channel_members,
       mongo_department_id,
       mongo_project_id,
       is_private,
@@ -462,7 +463,7 @@ export async function POST(request: NextRequest) {
       name,
       department_id: mongo_department_id,
       project_id: mongo_project_id,
-      participants,
+      channel_members,
       category,
       categories,
       client_id,
@@ -653,7 +654,7 @@ export function CreateChannelModal({
             toast({ title: 'Error', description: 'Please select at least one member', variant: 'destructive' })
             return
           }
-          payload.participants = selectedMembers
+          payload.channel_members = selectedMembers
           break
 
         case 'department':

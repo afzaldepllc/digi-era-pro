@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { 
-  Bell, 
-  MessageSquare, 
-  X, 
+import {
+  Bell,
+  MessageSquare,
+  X,
   Check
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -29,12 +29,12 @@ interface MessageNotificationProps {
   showBadge?: boolean
 }
 
-export function MessageNotification({ 
-  className, 
-  showBadge = true 
+export function MessageNotification({
+  className,
+  showBadge = true
 }: MessageNotificationProps) {
   const [isOpen, setIsOpen] = useState(false)
-  
+
   const {
     channels,
     unreadCount,
@@ -57,7 +57,7 @@ export function MessageNotification({
 
   const handleMarkAllRead = () => {
     unreadChannels.forEach(channel => {
-      if (channel.last_message && !channel.last_message.read_receipts?.length ) {
+      if (channel.last_message && !channel.last_message.read_receipts?.length) {
         markAsRead(channel.last_message.id, channel.id)
       }
     })
@@ -81,7 +81,7 @@ export function MessageNotification({
 
   const getChannelDisplayName = (channel: any, currentUserId: string) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.participants.find((p: any) => p.mongo_member_id !== currentUserId)
+      const otherParticipant = channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name
@@ -96,10 +96,10 @@ export function MessageNotification({
           className={cn("relative", className)}
         >
           <Bell className="h-4 w-4" />
-          
+
           {showBadge && unreadCount > 0 && (
-            <Badge 
-              variant="destructive" 
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 min-w-[20px] flex items-center justify-center text-xs px-1"
             >
               {unreadCount > 99 ? '99+' : unreadCount}
@@ -107,11 +107,11 @@ export function MessageNotification({
           )}
         </Button>
       </DropdownMenuTrigger>
-      
+
       <DropdownMenuContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold">Message Notifications</h4>
-          
+
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
               <Button
@@ -124,7 +124,7 @@ export function MessageNotification({
                 Mark all read
               </Button>
             )}
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -147,7 +147,7 @@ export function MessageNotification({
               {/* Recent notifications */}
               {notifications.slice(0, 3).map((notification) => {
                 const sender = getUserInfo(notification.message.mongo_sender_id)
-                
+
                 return (
                   <div
                     key={notification.id}
@@ -157,20 +157,28 @@ export function MessageNotification({
                     <Avatar className="h-8 w-8 mt-0.5">
                       <AvatarImage src={sender.avatar} alt={sender.name} />
                       <AvatarFallback className="text-xs">
-                        {sender.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                        {sender.name
+                          ? (() => {
+                            const parts = sender.name.trim().split(' ');
+                            if (parts.length === 1) {
+                              return parts[0][0].toUpperCase();
+                            }
+                            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                          })()
+                          : ''}
                       </AvatarFallback>
                     </Avatar>
-                    
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-sm">{sender.name}</span>
                         <Badge variant="secondary" className="text-xs">New</Badge>
                       </div>
-                      
+
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {notification.message.content}
                       </p>
-                      
+
                       <div className="flex items-center gap-2 mt-1">
                         <MessageSquare className="h-3 w-3 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">
@@ -194,14 +202,22 @@ export function MessageNotification({
                     onClick={() => handleNotificationClick(channel.id)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
-                    {channel.type === 'dm' && channel.participants.length > 0 ? (
+                    {channel.type === 'dm' && channel.channel_members.length > 0 ? (
                       <Avatar className="h-8 w-8 mt-0.5">
-                        <AvatarImage 
-                          src={channel.participants.find((p) => p.mongo_member_id !== 'user1')?.avatar} 
-                          alt={displayName} 
+                        <AvatarImage
+                          src={channel.channel_members.find((p) => p.mongo_member_id !== 'user1')?.avatar}
+                          alt={displayName}
                         />
                         <AvatarFallback className="text-xs">
-                          {displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                          {displayName
+                            ? (() => {
+                              const parts = displayName.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0].toUpperCase();
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                            : ''}
                         </AvatarFallback>
                       </Avatar>
                     ) : (
@@ -209,7 +225,7 @@ export function MessageNotification({
                         <MessageSquare className="h-4 w-4 text-muted-foreground" />
                       </div>
                     )}
-                    
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-sm truncate">{displayName}</span>
@@ -217,19 +233,19 @@ export function MessageNotification({
                           {channel.unreadCount || 0}
                         </Badge>
                       </div>
-                      
+
                       {last_message && (
                         <div>
                           <p className="text-sm text-muted-foreground line-clamp-1">
                             {sender && `${sender.name}: `}
                             {last_message.content}
                           </p>
-                          
+
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(last_message.created_at), { addSuffix: true })}
                             </span>
-                            
+
                             <Badge variant="outline" className="text-xs">
                               {channel.type.replace('-', ' ')}
                             </Badge>
@@ -259,7 +275,7 @@ export function MessageNotification({
                 <MessageSquare className="h-3 w-3 mr-1" />
                 View All Messages
               </Button>
-              
+
               {notifications.length > 0 && (
                 <Button
                   variant="ghost"

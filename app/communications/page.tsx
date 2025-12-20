@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ChatWindow } from "@/components/ui/chat-window"
-import { CommunicationSidebar } from "@/components/ui/communication-sidebar"
-import { OnlineIndicator } from "@/components/ui/online-indicator"
-import PageHeader from "@/components/ui/page-header"
+import { ChatWindow } from "@/components/communication/chat-window"
+import { CommunicationSidebar } from "@/components/communication/communication-sidebar"
+import { OnlineIndicator } from "@/components/communication/online-indicator"
+import PageHeader from "@/components/shared/page-header"
 import {
   MessageSquare,
   Plus,
@@ -14,7 +14,9 @@ import {
   X,
   Users,
   Search,
-  Settings
+  Settings,
+  AlignLeft,
+  AlignRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
@@ -23,6 +25,7 @@ import { usePermissions } from "@/hooks/use-permissions"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+
 import {
   Sheet,
   SheetContent,
@@ -33,6 +36,7 @@ import {
 } from "@/components/ui/sheet"
 import { handleAPIError } from "@/lib/utils/api-client"
 import { CreateChannelModal } from "@/components/communication/create-channel-modal"
+import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle';
 
 export default function CommunicationsPage() {
   const router = useRouter()
@@ -41,10 +45,20 @@ export default function CommunicationsPage() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
   const { canCreate } = usePermissions()
   const lastChannelParam = useRef<string | null>(null)
- 
+
   // Department integration for filtering
-  const [availableDepartments, setAvailableDepartments] = useState<Array<{ value: string, label: string }>>([])
   const { allDepartments } = useDepartments()
+
+  // Memoize available departments to prevent unnecessary re-renders
+  const availableDepartments = useMemo(() => {
+    if (allDepartments && allDepartments.length > 0) {
+      return allDepartments.map((dept: any) => ({
+        value: dept._id,
+        label: dept.name,
+      }))
+    }
+    return []
+  }, [allDepartments])
 
   const {
     channels,
@@ -65,7 +79,7 @@ export default function CommunicationsPage() {
     mockUsers,
     mockCurrentUser
   } = useCommunications()
-  
+
   // Handle URL params for direct channel access
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -76,6 +90,7 @@ export default function CommunicationsPage() {
       selectChannel(channelParam)
     }
   }, [activeChannelId, selectChannel])
+  const fullscreenRef = useRef<FullscreenToggleRef>(null);
 
   // Update URL when channel changes
   // useEffect(() => {
@@ -104,50 +119,19 @@ export default function CommunicationsPage() {
 
   // Fetch available departments for filter
   const fetchAvailableDepartments = useCallback(async () => {
-    try {
-      // Use allDepartments from the hook instead of fetching
-      const currentAllDepartments = allDepartments
-      if (currentAllDepartments && currentAllDepartments.length > 0) {
-        const departmentOptions = currentAllDepartments.map((dept: any) => ({
-          value: dept._id,
-          label: dept.name,
-        })) || []
-        setAvailableDepartments(departmentOptions)
-      }
-    } catch (error) {
-      console.error('Failed to fetch departments for filter:', error)
-      handleAPIError(error, "Failed to load departments for filtering")
-    }
-  }, []) // Remove allDepartments from dependencies to prevent infinite re-runs
+    // No longer needed since we use the memoized value directly
+  }, [])
 
-  // Fetch departments for filters on mount
-  useEffect(() => {
-    if (availableDepartments.length === 0) {
-      fetchAvailableDepartments()
-    }
-  }, [fetchAvailableDepartments])
-
-  // Update available departments when allDepartments changes
-  useEffect(() => {
-    if (allDepartments && allDepartments.length > 0) {
-      const departmentOptions = allDepartments.map((dept: any) => ({
-        value: dept._id,
-        label: dept.name,
-      })) || []
-      setAvailableDepartments(departmentOptions)
-    }
-  }, [allDepartments])
-
-  const handleChannelSelect = (channelId: string) => {
+  const handleChannelSelect = useCallback((channelId: string) => {
     selectChannel(channelId)
     setIsMobileMenuOpen(false) // Close mobile menu after selection
-  }
+  }, [selectChannel])
 
-  const handleCreateChannel = () => {
+  const handleCreateChannel = useCallback(() => {
     setIsCreateChannelOpen(true)
     // TODO: Implement create channel functionality
     console.log('Create new channel')
-  }
+  }, [])
 
   const handleRefresh = () => {
     fetchChannels()
@@ -174,16 +158,26 @@ export default function CommunicationsPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex flex-col bg-background">
+    <div className={`${fullscreenRef ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
       {/* Mobile header */}
       <div className="lg:hidden border-b bg-card p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Menu className="h-4 w-4" />
-                </Button>
+                <button className="h-9 w-9  border-0 shadow-sm hover:text-primary transition-all duration-300  flex items-center justify-center hover:scale-110">
+                  {/* <AlignLeft className="h-6 w-6" /> */}
+                  <svg
+                    width={24}
+                    height={24}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <rect x="3" y="5" width="18" height="3" rx="1.5" />
+                    <rect x="11" y="10.5" width="10" height="3" rx="1.5" />
+                    <rect x="3" y="16" width="18" height="3" rx="1.5" />
+                  </svg>
+                </button>
               </SheetTrigger>
               <SheetContent side="left" className="w-80 p-0">
                 <SheetHeader className="sr-only">

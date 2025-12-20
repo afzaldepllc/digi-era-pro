@@ -143,7 +143,7 @@ export const userSeeds: IUserSeed[] = [
     departmentName: 'Social Media',
     roleName: 'team_member',
     phone: '1234567811',
-    status: 'active',
+    status: 'active', 
     twoFactorEnabled: true
   },
 

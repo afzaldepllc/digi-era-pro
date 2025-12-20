@@ -26,6 +26,7 @@ import {
   setError,
   addNotification,
   clearNotifications,
+  setChannelsInitialized,
   resetState
 } from '@/store/slices/communicationSlice'
 import type {
@@ -42,13 +43,26 @@ import type {
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager } from '@/lib/realtime-manager'
+import { enrichMessageWithUserData } from '@/lib/communication/utils'
+
+// Global flag to prevent multiple channel fetches across component remounts
+// let globalChannelsFetched = false
+
+// Global maps to prevent duplicate fetches per user across component remounts
+const globalFetchedUsers = new Map<string, boolean>()
+const globalFetchedChannels = new Map<string, boolean>()
 
 export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
-  const realtimeManager = getRealtimeManager()
-  const hasInitialized = useRef(false)
+  const realtimeManager = useMemo(() => getRealtimeManager(), [])
+  const hasInitialized = useRef(false)  
+  const hasUsersInitialized = useRef(false)
+  const channelsFetchedRef = useRef(false)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasFetchedUsersRef = useRef(false)
+  const hasFetchedChannelsRef = useRef(false)
   
   // State for real users data
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -76,67 +90,6 @@ export function useCommunications() {
     notifications
   } = useAppSelector((state) => state.communications)
 
-  // Initialize realtime manager with event handlers
-  useEffect(() => {
-    console.log('🔧 Updating realtime handlers')
-    realtimeManager.updateHandlers({
-      onNewMessage: (message) => {
-        console.log('📩 onNewMessage handler called with:', message)
-        dispatch(addMessage({ channelId: message.channel_id, message }))
-      },
-      onMessageUpdate: (message) => {
-        console.log('📝 onMessageUpdate handler called')
-        dispatch(updateMessage({
-          channelId: message.channel_id,
-          messageId: message.id,
-          updates: message
-        }))
-      },
-      onMessageDelete: (messageId) => {
-        // Handle message deletion
-        console.log('🗑️ Message deleted:', messageId)
-      },
-      onUserJoined: (member) => {
-        // Handle user joined
-        console.log('👋 User joined:', member)
-      },
-      onUserLeft: (memberId) => {
-        // Handle user left
-        console.log('👋 User left:', memberId)
-      },
-      onUserOnline: (userId) => {
-        // Update online users list
-        const updatedUsers = [...onlineUsers]
-        const userIndex = updatedUsers.findIndex(u => u.mongo_member_id === userId)
-        if (userIndex !== -1) {
-          updatedUsers[userIndex].isOnline = true
-        }
-        dispatch(updateOnlineUsers(updatedUsers))
-      },
-      onUserOffline: (userId) => {
-        // Update online users list
-        const updatedUsers = [...onlineUsers]
-        const userIndex = updatedUsers.findIndex(u => u.mongo_member_id === userId)
-        if (userIndex !== -1) {
-          updatedUsers[userIndex].isOnline = false
-        }
-        dispatch(updateOnlineUsers(updatedUsers))
-      },
-      onTypingStart: (userId) => {
-        dispatch(setTyping({
-          channelId: activeChannelId || '',
-          userId,
-          userName: 'Unknown User', // Will be resolved later
-          timestamp: new Date().toISOString()
-        }))
-      },
-      onTypingStop: (userId) => {
-        dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
-      }
-    })
-    console.log('✅ Realtime handlers updated')
-  }, [dispatch, realtimeManager, activeChannelId, onlineUsers])
-
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
     id?: string
@@ -149,11 +102,94 @@ export function useCommunications() {
   }
   
   const sessionUser = session?.user as ExtendedSessionUser | undefined
+  const sessionUserId = useMemo(() => (session?.user as ExtendedSessionUser)?.id, [session?.user])
 
-  // Fetch all users on mount for user directory
+  // Memoized event handlers for realtime manager
+  const onNewMessage = useCallback((message: any) => {
+    console.log('📩 onNewMessage handler called with:', message)
+    
+    // Skip messages from self to avoid duplicates
+    if (message.mongo_sender_id === sessionUserId) {
+      console.log('📩 Skipping message from self')
+      return
+    }
+    
+    if (message && typeof message === 'object' && message.mongo_sender_id) {
+      // Message is already enriched from the API broadcast
+      console.log('📩 Received enriched message:', message)
+      
+      dispatch(addMessage({ channelId: message.channel_id, message }))
+    } else {
+      console.error('Invalid message received, skipping:', message)
+    }
+  }, [dispatch, sessionUserId])
+
+  const onMessageUpdate = useCallback((message: any) => {
+    console.log('📝 onMessageUpdate handler called')
+    // Message is already enriched from the API broadcast
+    console.log('📝 Received updated enriched message:', message)
+    dispatch(updateMessage({
+      channelId: message.channel_id,
+      messageId: message.id,
+      updates: message
+    }))
+  }, [dispatch])
+
+  const onMessageDelete = useCallback((messageId: any) => {
+    console.log('🗑️ Message deleted:', messageId)
+  }, [])
+
+  const onUserJoined = useCallback((member: any) => {
+    console.log('👋 User joined:', member)
+  }, [])
+
+  const onUserLeft = useCallback((memberId: any) => {
+    console.log('👋 User left:', memberId)
+  }, [])
+
+  const onUserOnline = useCallback((userId: any) => {
+    const updatedUsers = onlineUsers.map(u =>
+      u.mongo_member_id === userId ? { ...u, isOnline: true } : u
+    )
+    dispatch(updateOnlineUsers(updatedUsers))
+  }, [dispatch, onlineUsers])
+
+  const onUserOffline = useCallback((userId: any) => {
+    const updatedUsers = onlineUsers.map(u =>
+      u.mongo_member_id === userId ? { ...u, isOnline: false } : u
+    )
+    dispatch(updateOnlineUsers(updatedUsers))
+  }, [dispatch, onlineUsers])
+
+  const onTypingStart = useCallback((userId: any) => {
+    dispatch(setTyping({
+      channelId: activeChannelId || '',
+      userId,
+      userName: 'Unknown User',
+      timestamp: new Date().toISOString()
+    }))
+  }, [dispatch, activeChannelId])
+
+  const onTypingStop = useCallback((userId: any) => {
+    dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
+  }, [dispatch, activeChannelId])
+
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
+
+
   useEffect(() => {
     const fetchAllUsers = async () => {
-      if (sessionUser?.id && allUsers.length === 0 && !usersLoading) {
+      if (sessionUserId && !globalFetchedUsers.get(sessionUserId) && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
+        globalFetchedUsers.set(sessionUserId, true)
+        hasFetchedUsersRef.current = true
+        hasUsersInitialized.current = true
         try {
           setUsersLoading(true)
           const response = await apiRequest('/api/users')
@@ -167,24 +203,35 @@ export function useCommunications() {
     }
     
     fetchAllUsers()
-  }, [sessionUser?.id])
+  }, [sessionUserId])
 
   // Fetch channels on mount - but only if not already initialized globally
   useEffect(() => {
-    if (!channelsInitialized && !hasInitialized.current && sessionUser?.id) {
-      hasInitialized.current = true
+    console.log('🔄 Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
+    if (sessionUserId && !globalFetchedChannels.get(sessionUserId) && !loading) {
+      globalFetchedChannels.set(sessionUserId, true)
+      hasFetchedChannelsRef.current = true
+      channelsFetchedRef.current = true
+      console.log('🚀 Fetching channels')
       fetchChannels()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelsInitialized, sessionUser?.id]) // Re-run if channelsInitialized changes
+  }, [sessionUserId]) // Only depend on sessionUserId
 
   // Subscribe to active channel
   useEffect(() => {
-    if (activeChannelId) {
-      console.log('Subscribing to channel:', activeChannelId)
-      realtimeManager.subscribeToChannel(activeChannelId)
-      fetchMessages({ channel_id: activeChannelId })
+    const subscribe = async () => {
+      if (activeChannelId) {
+        console.log('Subscribing to channel:', activeChannelId)
+        try {
+          await realtimeManager.subscribeToChannel(activeChannelId)
+          fetchMessages({ channel_id: activeChannelId })
+        } catch (error) {
+          console.error('Failed to subscribe to channel:', error)
+        }
+      }
     }
+    subscribe()
 
     return () => {
       if (activeChannelId) {
@@ -194,8 +241,24 @@ export function useCommunications() {
     }
   }, [activeChannelId, realtimeManager])
 
+  // Update handlers when they change
+  useEffect(() => {
+    realtimeManager.updateHandlers({
+      onNewMessage,
+      onMessageUpdate,
+      onMessageDelete,
+      onUserJoined,
+      onUserLeft,
+      onUserOnline,
+      onUserOffline,
+      onTypingStart,
+      onTypingStop
+    })
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop])
+
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
+    console.log('🔄 fetchChannels called with params:', params)
     try {
       dispatch(setLoading(true))
       // Build query string
@@ -208,10 +271,12 @@ export function useCommunications() {
       const url = `/api/communication/channels${queryString ? `?${queryString}` : ''}`
       
       const response = await apiRequest(url)
-      dispatch(setChannels(response.channels))
-      return response.channels
+      console.log('Raw response from API:', response)
+      dispatch(setChannels(response))
+      return response  
     } catch (error) {
       dispatch(setError('Failed to fetch channels'))
+      dispatch(setChannelsInitialized(true)) // Prevent infinite retries
       toast({
         title: "Error",
         description: "Failed to load channels",
@@ -226,6 +291,8 @@ export function useCommunications() {
 
   const selectChannel = useCallback((channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
+    // Clear messages to force re-fetch with enriched data
+    dispatch(setMessages({ channelId: channel_id, messages: [] }))
   }, [dispatch])
 
   const clearChannel = useCallback(() => {
@@ -244,8 +311,10 @@ export function useCommunications() {
       })
       
       const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
-      dispatch(setMessages({ channelId: params.channel_id, messages: response.messages }))
-      return response.messages
+      dispatch(setMessages({ channelId: params.channel_id, messages: response }))
+
+      console.log('Fetched and enriched messages320:', response) 
+      return response
     } catch (error) {
       dispatch(setError('Failed to fetch messages'))
       toast({
@@ -261,29 +330,84 @@ export function useCommunications() {
   }, [dispatch]) // Removed toast to prevent infinite loop
 
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
+    const tempId = crypto.randomUUID()
     try {
       dispatch(setActionLoading(true))
+
+      // Create optimistic message
+      const optimisticMessage = {
+        id: tempId,
+        channel_id: messageData.channel_id,
+        mongo_sender_id: sessionUserId!,
+        content: messageData.content,
+        content_type: messageData.content_type || 'text',
+        thread_id: messageData.thread_id,
+        parent_message_id: messageData.parent_message_id,
+        mongo_mentioned_user_ids: messageData.mongo_mentioned_user_ids || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        read_receipts: [],
+        reactions: [],
+        attachments: [],
+        reply_count: 0,
+        is_edited: false,
+        isOptimistic: true, // Flag to identify optimistic messages
+        sender: {
+          mongo_member_id: sessionUserId!,
+          name: sessionUser?.name || sessionUser?.email || 'Unknown User',
+          email: sessionUser?.email || '',
+          avatar: sessionUser?.image || '',
+          role: sessionUser?.role || 'User',
+          userType: 'User' as 'User' | 'Client',
+          isOnline: false
+        }
+      }
+
+      // Add optimistic message to state
+      dispatch(addMessage({ channelId: messageData.channel_id, message: optimisticMessage }))
+
+      // Send to API
       const response = await apiRequest('/api/communication/messages', {
         method: 'POST',
         body: JSON.stringify(messageData)
       })
-
-      // Immediately add the message to Redux state (optimistic update)
-      // This ensures the sender sees their message instantly
-      if (response.message) {
-        dispatch(addMessage({ 
-          channelId: messageData.channel_id, 
-          message: response.message 
+      // Check if response is valid
+      if (!response || !response.id) {
+        console.error('Invalid response from API:', response)
+        dispatch(updateMessage({
+          channelId: messageData.channel_id,
+          messageId: tempId,
+          updates: { isFailed: true }
+        }))
+        return
+      }
+      if (response.id) {
+        dispatch(updateMessage({
+          channelId: messageData.channel_id,
+          messageId: tempId,
+          updates: { ...response, isOptimistic: false }
         }))
       }
+
+      // Broadcast is now handled by the API route
+      // console.log('📤 Broadcasting message, channel_id:', messageData.channel_id)
+      // await realtimeManager.broadcastMessage(messageData.channel_id, response)
 
       toast({
         title: "Message sent",
         description: "Your message has been sent successfully",
       })
+      
 
       return response.message
     } catch (error) {
+      // Mark optimistic message as failed
+      dispatch(updateMessage({
+        channelId: messageData.channel_id,
+        messageId: tempId,
+        updates: { isFailed: true }
+      }))
+
       dispatch(setError('Failed to send message'))
       toast({
         title: "Error",
@@ -295,7 +419,7 @@ export function useCommunications() {
       dispatch(setActionLoading(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]) // Removed toast to prevent infinite loop
+  }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -313,7 +437,7 @@ export function useCommunications() {
         description: "New conversation started successfully",
       })
 
-      return response.channel
+      return response
     } catch (error) {
       dispatch(setError('Failed to create channel'))
       toast({
@@ -340,20 +464,26 @@ export function useCommunications() {
   }, [])
 
   // Real-time operations
-  const setUserTyping = useCallback((typingIndicator: ITypingIndicator) => {
+  const setUserTyping = useCallback(async (typingIndicator: ITypingIndicator) => {
     if (activeChannelId) {
-      realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+
+      // Send typing start
+      await realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
       dispatch(setTyping(typingIndicator))
 
-      // Auto-remove typing indicator after 3 seconds
-      setTimeout(() => {
+      // Auto-stop typing after 3 seconds
+      typingTimeoutRef.current = setTimeout(() => {
         removeUserTyping(activeChannelId, typingIndicator.userId)
       }, 3000)
     }
   }, [dispatch, activeChannelId, realtimeManager])
 
-  const removeUserTyping = useCallback((channelId: string, userId: string) => {
-    realtimeManager.sendTypingStop(channelId, userId)
+  const removeUserTyping = useCallback(async (channelId: string, userId: string) => {
+    await realtimeManager.sendTypingStop(channelId, userId)
     dispatch(removeTyping({ channelId, userId }))
   }, [dispatch, realtimeManager])
 

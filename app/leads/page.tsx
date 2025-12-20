@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/hooks/redux";
 import { useLeads } from "@/hooks/use-leads";
 import { useDebounceSearch } from "@/hooks/use-debounced-search";
-import PageHeader from "@/components/ui/page-header";
-import DataTable, { ColumnDef, ActionMenuItem } from "@/components/ui/data-table";
-import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
+import PageHeader from "@/components/shared/page-header";
+import DataTable, { ColumnDef, ActionMenuItem } from "@/components/shared/data-table";
+import GenericFilter, { FilterConfig } from "@/components/shared/generic-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import CustomModal from "@/components/ui/custom-modal";
+import CustomModal from "@/components/shared/custom-modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Lead, LeadFilters, LeadSort } from "@/types";
 import {

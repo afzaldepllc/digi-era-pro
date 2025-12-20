@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import CustomModal from '@/components/ui/custom-modal'
+import CustomModal from '@/components/shared/custom-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +11,10 @@ import { Loader2, Users, Building, FolderKanban, UserCheck, Hash, Check } from '
 import { useToast } from '@/hooks/use-toast'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { useDepartments } from "@/hooks/use-departments";
+import { useProjects } from "@/hooks/use-projects";
+import { useUsers } from "@/hooks/use-users";
+import { useClients } from '@/hooks/use-clients'
 
 type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support'
 type DepartmentCategory = 'sales' | 'support' | 'it' | 'management'
@@ -38,55 +42,18 @@ export function CreateChannelModal({
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
-  // Data for dropdowns
-  const [departments, setDepartments] = useState<any[]>([])
-  const [projects, setProjects] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
-  const [loadingData, setLoadingData] = useState(false)
+  // Use standard hooks for data
+  const { allDepartments } = useDepartments();
+  const { projects } = useProjects();
+  const { users } = useUsers();
+  const { clients } = useClients();
 
   const categories: DepartmentCategory[] = ['sales', 'support', 'it', 'management']
 
-  const clientUsers = users.filter(u => u.isClient === true)
+  const clientUsers = clients
   const regularUsers = users.filter(u => u.isClient !== true)
-
-  // Fetch data when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      fetchData()
-    }
-  }, [isOpen])
-
-  const fetchData = async () => {
-    try {
-      setLoadingData(true)
-      
-      // Fetch departments
-      const deptResponse = await fetch('/api/departments')
-      if (deptResponse.ok) {
-        const deptData = await deptResponse.json()
-        setDepartments(deptData.departments || [])
-      }
-
-      // Fetch projects
-      const projResponse = await fetch('/api/projects')
-      if (projResponse.ok) {
-        const projData = await projResponse.json()
-        setProjects(projData.projects || [])
-      }
-
-      // Fetch users
-      const usersResponse = await fetch('/api/users')
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json()
-        setUsers(usersData.users || [])
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setLoadingData(false)
-    }
-  }
-
+  console.log("regularUsers53",regularUsers);
+  console.log("clientUsers54",clientUsers);
   const handleCategoryToggle = (category: DepartmentCategory) => {
     setSelectedCategories(prev =>
       prev.includes(category)
@@ -126,7 +93,7 @@ export function CreateChannelModal({
             toast({ title: 'Error', description: 'Please select at least one member', variant: 'destructive' })
             return
           }
-          payload.participants = selectedMembers
+          payload.channel_members = selectedMembers
           break
 
         case 'department':
@@ -221,7 +188,7 @@ export function CreateChannelModal({
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleCreateChannel} disabled={loading || loadingData}>
+          <Button onClick={handleCreateChannel} disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Channel
           </Button>
@@ -365,11 +332,7 @@ export function CreateChannelModal({
               <div className="space-y-2">
                 <Label>Select Members ({selectedMembers.length} selected)</Label>
                 <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                  {loadingData ? (
-                    <div className="flex items-center justify-center p-4">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
-                  ) : regularUsers.length === 0 ? (
+                  {regularUsers.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">No users available</p>
                   ) : (
                     regularUsers.map(user => (
@@ -392,28 +355,22 @@ export function CreateChannelModal({
             {channelType === 'department' && (
               <div className="space-y-2">
                 <Label htmlFor="department">Select Department</Label>
-                {loadingData ? (
-                  <div className="flex items-center justify-center p-4 border rounded-md">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
-                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                    <SelectTrigger id="department">
-                      <SelectValue placeholder="Choose a department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">No departments available</div>
-                      ) : (
-                        departments.map(dept => (
-                          <SelectItem key={dept._id} value={dept._id}>
-                            {dept.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                  <SelectTrigger id="department">
+                    <SelectValue placeholder="Choose a department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allDepartments.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">No departments available</div>
+                    ) : (
+                      allDepartments.map(dept => (
+                        <SelectItem key={dept._id} value={dept._id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -458,56 +415,44 @@ export function CreateChannelModal({
             {channelType === 'project' && (
               <div className="space-y-2">
                 <Label htmlFor="project">Select Project</Label>
-                {loadingData ? (
-                  <div className="flex items-center justify-center p-4 border rounded-md">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
-                  <Select value={selectedProject} onValueChange={setSelectedProject}>
-                    <SelectTrigger id="project">
-                      <SelectValue placeholder="Choose a project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">No projects available</div>
-                      ) : (
-                        projects.map(proj => (
-                          <SelectItem key={proj._id} value={proj._id}>
-                            {proj.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <SelectTrigger id="project">
+                    <SelectValue placeholder="Choose a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">No projects available</div>
+                    ) : (
+                      projects.map(proj => (
+                        <SelectItem key={proj._id} value={proj._id}>
+                          {proj.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
             {channelType === 'client-support' && (
               <div className="space-y-2">
                 <Label htmlFor="client">Select Client</Label>
-                {loadingData ? (
-                  <div className="flex items-center justify-center p-4 border rounded-md">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
-                  <Select value={selectedClient} onValueChange={setSelectedClient}>
-                    <SelectTrigger id="client">
-                      <SelectValue placeholder="Choose a client" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clientUsers.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">No clients available</div>
-                      ) : (
-                        clientUsers.map(client => (
-                          <SelectItem key={client._id} value={client._id}>
-                            {client.name} ({client.email})
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select value={selectedClient} onValueChange={setSelectedClient}>
+                  <SelectTrigger id="client">
+                    <SelectValue placeholder="Choose a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientUsers.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">No clients available</div>
+                    ) : (
+                      clientUsers.map(client => (
+                        <SelectItem key={client._id} value={client._id}>
+                          {client.name} ({client.email})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             )}
       </div>

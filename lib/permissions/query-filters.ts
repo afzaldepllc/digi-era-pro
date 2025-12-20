@@ -40,6 +40,13 @@ export class QueryFilters {
     const permission = userPermissions.find(p => p.resource === resource)
     
     if (!permission) {
+      // Check if user has system unrestricted access
+      const systemPermission = userPermissions.find(p => p.resource === 'system')
+      if (systemPermission && systemPermission.conditions?.unrestricted === true) {
+        console.log('QueryFilters: ✅ System unrestricted access granted for resource:', resource)
+        return baseQuery
+      }
+      
       // No permission = no access to any records
       console.log('QueryFilters: ❌ No permission found for resource, blocking access', {
         availableResources: userPermissions.map(p => p.resource),

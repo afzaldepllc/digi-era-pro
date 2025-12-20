@@ -42,7 +42,7 @@ interface MessageListProps {
   onDelete?: (messageId: string) => void
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
-  participants?: IParticipant[] // For showing who read
+  channel_members?: IParticipant[] // For showing who read
 }
 
 export function MessageList({
@@ -55,7 +55,7 @@ export function MessageList({
   onDelete,
   className,
   readReceipts = [],
-  participants = []
+  channel_members = []
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -65,7 +65,7 @@ export function MessageList({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
-  
+
   // Intersection Observer for read receipts
   useEffect(() => {
     if (observerRef.current) {
@@ -91,7 +91,7 @@ export function MessageList({
       },
       { threshold: 0.5 }
     )
-    
+
     // Observe all message elements
     const messageElements = document.querySelectorAll('[data-message-id]')
     messageElements.forEach(el => observerRef.current?.observe(el))
@@ -111,7 +111,7 @@ export function MessageList({
       return format(messageDate, 'MMM d, HH:mm')
     }
   }
-  
+
   // file_name: string
   // file_url?: string
   // s3_key?: string
@@ -120,10 +120,10 @@ export function MessageList({
   // file_type?: string
   const renderAttachment = (attachment: IAttachment, index: number) => {
     const fileName = attachment.file_name;
-    const isImage = attachment.file_type?.startsWith('image/')       
+    const isImage = attachment.file_type?.startsWith('image/')
 
     return (
-      <div key={index} className="mt-2">
+      <div key={attachment.id} className="mt-2">
         {isImage ? (
           <div className="relative max-w-xs">
             <img
@@ -155,7 +155,7 @@ export function MessageList({
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
-    const sender = message.mongo_sender_id as unknown as IParticipant
+    const sender = message.sender
 
     // Find all read receipts for this message (excluding sender)
     const receipts = readReceipts.filter(r => r.message_id === message.id && r.mongo_user_id !== message.mongo_sender_id)
@@ -164,32 +164,48 @@ export function MessageList({
     const isReadByCurrentUser = receipts.some(r => r.mongo_user_id === currentUserId)
 
     // For sender, show who has read
-    const readers = participants.filter(p =>
+    const readers = channel_members.filter(p =>
       receipts.some(r => r.mongo_user_id === p.mongo_member_id)
     )
+    console.log('sender170', sender)
+    console.log('readers171', readers)
 
     return (
       <div
         data-message-id={message.id}
         className={cn(
-          "flex gap-3 p-3 hover:bg-muted/50 group",
+          "flex gap-2 px-3 py-1 group",
           isOwn && "flex-row-reverse"
         )}
       >
         {/* Avatar */}
         <div className="shrink-0">
-          <Avatar className="h-8 w-8">
+          {/* <Avatar className="h-8 w-8">
             <AvatarImage src={sender?.avatar} alt={sender?.name} />
             <AvatarFallback className="text-xs">
               {sender?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+            </AvatarFallback>
+          </Avatar> */}
+          <Avatar className="h-8 w-8 transition-transform duration-200 group-hover:scale-110">
+            <AvatarImage src={sender?.avatar} alt={sender?.name} />
+            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold text-sm">
+              {sender?.name
+                ? (() => {
+                  const parts = sender.name.trim().split(' ');
+                  if (parts.length === 1) {
+                    return parts[0][0].toUpperCase();
+                  }
+                  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                })()
+                : ''}
             </AvatarFallback>
           </Avatar>
         </div>
 
         {/* Message content */}
-        <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}> 
+        <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}>
           {/* Header */}
-          <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}> 
+          <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}>
             <span className="font-medium text-sm">{sender?.name}</span>
 
             {sender?.role && (
@@ -253,7 +269,7 @@ export function MessageList({
           </div>
 
           {/* Read receipts UI */}
-          <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}> 
+          <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>
             {isOwn && (
               <TooltipProvider>
                 <Tooltip>
@@ -269,7 +285,7 @@ export function MessageList({
                     {readers.length > 0 && (
                       <div className="flex flex-col gap-1 mt-1">
                         {readers.map(r => (
-                          <span key={r.mongo_member_id} className="flex items-center gap-1">
+                          <span key={`reader-${r.mongo_member_id}`} className="flex items-center gap-1">
                             {r.name}
                             {/* Optionally show time: */}
                             {(() => {
@@ -300,9 +316,9 @@ export function MessageList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full", className)}>
         {/* Messages */}
-        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full max-h-[60vh]">
+        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full max-h-[60vh] p-3">
           {messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground h-full">
               <div className="text-center">
                 <p>No messages yet</p>
                 <p className="text-sm mt-1">Start the conversation!</p>
@@ -325,10 +341,17 @@ export function MessageList({
                     {typingUsers.slice(0, 3).map((typing) => {
                       const user = { name: typing.userName, avatar: '' }
                       return (
-                        <Avatar key={typing.userId} className="h-6 w-6 border-2 border-background">
+                        <Avatar key={`typing-${typing.userId}`} className="h-6 w-6 border-2 border-background">
                           <AvatarImage src={user.avatar} alt={user.name} />
                           <AvatarFallback className="text-xs">
-                            {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            {user.name ? (() => {
+                              const parts = user.name.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0].toUpperCase();
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                              : ''}
                           </AvatarFallback>
                         </Avatar>
                       )

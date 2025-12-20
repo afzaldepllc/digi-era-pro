@@ -26,7 +26,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import HtmlTextRenderer from "@/components/ui/html-text-renderer" // Fixed import to use default export
+import HtmlTextRenderer from "@/components/shared/html-text-renderer" // Fixed import to use default export
 import { cn } from "@/lib/utils"
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, useDroppable, closestCenter } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"

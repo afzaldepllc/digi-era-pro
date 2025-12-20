@@ -46,8 +46,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import CustomModal from "@/components/ui/custom-modal";
-import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
+import CustomModal from "@/components/shared/custom-modal";
+import GenericFilter, { FilterConfig } from "@/components/shared/generic-filter";
 import { createMilestoneFormSchema, updateMilestoneFormSchema, getMilestoneStatusColor, getMilestonePriorityColor } from "@/lib/validations/milestone";
 import type { CreateMilestoneFormData, UpdateMilestoneFormData } from "@/lib/validations/milestone";
 import { useToast } from "@/hooks/use-toast";

@@ -242,7 +242,7 @@ For user data, join with MongoDB collections:
 
 ```typescript
 // Example: Fetch channels with participant details
-const fetchChannelsWithParticipants = async () => {
+const fetchChannelsWithChannelMembers = async () => {
   const { data: channels } = await supabase
     .from('channels')
     .select(`
@@ -256,7 +256,7 @@ const fetchChannelsWithParticipants = async () => {
   // Enrich with MongoDB user data
   const enrichedChannels = await Promise.all(
     channels.map(async (channel) => {
-      const participants = await Promise.all(
+      const channel_members = await Promise.all(
         channel.channel_members.map(async (member) => {
           const user = await getUserFromMongo(member.mongo_member_id);
           return {
@@ -269,7 +269,7 @@ const fetchChannelsWithParticipants = async () => {
           };
         })
       );
-      return { ...channel, participants };
+      return { ...channel, channel_members };
     })
   );
 
@@ -464,7 +464,7 @@ Tables to create:
 4. **MessageInput** - Message composition
 5. **UserDirectory** - User selection for DMs
 6. **ChannelList** - Available channels
-7. **ParticipantsList** - Channel members
+7. **ChannelMembersList** - Channel members
 8. **TypingIndicator** - Shows who's typing
 9. **OnlineIndicator** - Shows online users
 10. **AttachmentPreview** - File attachments display

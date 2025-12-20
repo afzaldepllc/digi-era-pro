@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PermissionSelector } from "@/components/roles/permission-selector";
 import { Save, ArrowLeft, AlertTriangle, Shield, Crown, Users } from "lucide-react";
 import type { Permission } from "@/types";
-import PageHeader from "@/components/ui/page-header";
+import PageHeader from "@/components/shared/page-header";
 import { FormLoader } from "@/components/ui/loader";
 import { useNavigation } from "@/components/providers/navigation-provider";
 

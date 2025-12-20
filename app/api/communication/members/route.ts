@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is member of the channel
-    const membership = await prisma.channelMember.findFirst({
+    const membership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const members = await prisma.channelMember.findMany({
+    const members = await prisma.channel_members.findMany({
       where: { channel_id: channelId },
       orderBy: { joined_at: 'asc' },
     })
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has permission to manage this channel
-    const userMembership = await prisma.channelMember.findFirst({
+    const userMembership = await prisma.channel_members.findFirst({
       where: {
         channel_id,
         mongo_member_id: session.user.id,
@@ -83,8 +83,9 @@ export async function POST(request: NextRequest) {
 
     if (action === 'add' && mongo_member_id) {
       // Add new member
-      const member = await prisma.channelMember.create({
+      const member = await prisma.channel_members.create({
         data: {
+          id: crypto.randomUUID(),
           channel_id,
           mongo_member_id,
           role: 'member',
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
       })
 
       // Update member count
-      await prisma.channel.update({
+      await prisma.channels.update({
         where: { id: channel_id },
         data: {
           member_count: { increment: 1 },
@@ -140,7 +141,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if user has permission to remove members
-    const userMembership = await prisma.channelMember.findFirst({
+    const userMembership = await prisma.channel_members.findFirst({
       where: {
         channel_id: channelId,
         mongo_member_id: session.user.id,
@@ -156,7 +157,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove member
-    await prisma.channelMember.deleteMany({
+    await prisma.channel_members.deleteMany({
       where: {
         channel_id: channelId,
         mongo_member_id: memberId,
@@ -164,7 +165,7 @@ export async function DELETE(request: NextRequest) {
     })
 
     // Update member count
-    await prisma.channel.update({
+    await prisma.channels.update({
       where: { id: channelId },
       data: {
         member_count: { decrement: 1 },

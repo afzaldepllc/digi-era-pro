@@ -461,7 +461,7 @@ export const prismaChannels = {
     mongo_project_id?: string
     mongo_creator_id: string
     is_private?: boolean
-    participants?: string[]
+    channel_members?: string[]
   }) {
     const result = await executeSupabaseQuery(async () => {
       return supabaseAdmin
@@ -473,18 +473,18 @@ export const prismaChannels = {
           mongo_project_id: data.mongo_project_id,
           mongo_creator_id: data.mongo_creator_id,
           is_private: data.is_private || false,
-          member_count: data.participants?.length || 1
+          member_count: data.channel_members?.length || 1
         }])
         .select()
         .single()
     })
 
     // Add channel members if provided
-    if (data.participants && data.participants.length > 0) {
+    if (data.channel_members && data.channel_members.length > 0) {
       await supabaseAdmin
         .from('channel_members')
         .insert(
-          data.participants.map(memberId => ({
+          data.channel_members.map(memberId => ({
             channel_id: result.id,
             mongo_member_id: memberId,
             role: memberId === data.mongo_creator_id ? 'admin' : 'member'
@@ -772,7 +772,7 @@ export const baseMessageSchema = z.object({
 
 // Create schemas
 export const createChannelSchema = baseChannelSchema.extend({
-  participants: z.array(z.string()).min(1, 'At least one participant required'),
+  channel_members: z.array(z.string()).min(1, 'At least one participant required'),
 }).strict()
 
 export const createMessageSchema = baseMessageSchema.strict()
@@ -928,7 +928,7 @@ export async function GET(request: NextRequest) {
     // Enrich with MongoDB user data
     const enrichedChannels = await Promise.all(
       channels.map(async (channel) => {
-        const participants = await Promise.all(
+        const channel_members = await Promise.all(
           channel.channel_members?.map(async (member) => {
             const mongoUser = await getUserFromMongo(member.mongo_member_id)
             return {
@@ -945,7 +945,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...channel,
-          participants
+          channel_members
         }
       })
     )

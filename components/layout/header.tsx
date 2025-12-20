@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { MessageNotification } from "@/components/ui/message-notification"
-import CustomModal from "@/components/ui/custom-modal"
+import { MessageNotification } from "@/components/communication/message-notification"
+import CustomModal from "@/components/shared/custom-modal"
 import { ProfileSettings } from '@/components/profile/profile-setting'
 
 export const Header = memo(function Header() {
@@ -50,10 +50,14 @@ export const Header = memo(function Header() {
                     ) : (
                     <AvatarFallback className="text-xs hover:bg-primary hover:text-sm hover:font-semibold">
                       {sessionUser?.name
-                      ?.split(" ")
-                      .map((n: string) => n[0])
-                      .join("")
-                      .toUpperCase() || "U"}
+                      ? (() => {
+                      const parts = sessionUser.name.trim().split(' ');
+                      if (parts.length === 1) {
+                        return parts[0][0].toUpperCase();
+                      }
+                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                    })()
+                  : ''}
                     </AvatarFallback>
                     )}
                 </Avatar>

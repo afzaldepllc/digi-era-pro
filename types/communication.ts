@@ -13,8 +13,13 @@ export interface ICommunication {
   is_edited: boolean // Edit status
   edited_at?: string // Edit timestamp
   created_at: string // Creation timestamp
+  parent_message_id?: string // For replies
   attachments?: IAttachment[]
   read_receipts?: IReadReceipt[]
+  sender?: IParticipant // Enriched sender data
+  // UI helper fields (not in schema)
+  isOptimistic?: boolean // For optimistic updates
+  isFailed?: boolean // For failed message sends
 }
 
 // Channels table interface
@@ -34,20 +39,28 @@ export interface IChannel {
   // UI helper fields (not in schema)
   last_message?: ICommunication
   unreadCount?: number
-  participants: IChannelMember[] // Required for UI
+  channel_members: IChannelMember[] // Enriched channel members with user data
 }
 
 // Channel members table interface
-export interface IChannelMember extends IParticipant {
+export interface IChannelMember {
+  // Prisma fields
+  id: string // Supabase UUID
   channel_id: string // Supabase channel UUID
   mongo_member_id: string // MongoDB user ID
-  role: 'admin' | 'member' // Channel role
-  last_read_at: string // Last read timestamp
-  is_muted: boolean // Mute status
-  notification_level: 'all' | 'mentions' | 'none' // Notification preference
+  channelRole: 'admin' | 'member' // Channel role (renamed from role)
   joined_at: string // Join timestamp
-  mongo_invited_by_id?: string // Who invited this member
-  // UI helper fields (not in schema) - inherited from IParticipant
+  last_seen_at?: string // Last seen timestamp
+  is_online: boolean // Online status
+  notifications_enabled: boolean // Notification preference
+  
+  // Enriched user fields
+  userRole: string // User role from MongoDB
+  name: string // User name
+  email: string // User email
+  avatar?: string // User avatar
+  userType: 'User' | 'Client' // User type
+  isOnline: boolean // Online status (alias for is_online)
 }
 
 export interface IParticipant {
@@ -98,12 +111,14 @@ export interface CreateMessageData {
   content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
   thread_id?: string // Changed from 'parentMessageId'
+  parent_message_id?: string // For replies
+  mongo_mentioned_user_ids?: string[] // Mentioned users
 }
 
 export interface CreateChannelData {
   name?: string
   type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Updated to match schema
-  participants: string[] // MongoDB User IDs
+  channel_members: string[] // MongoDB User IDs
   mongo_project_id?: string
   mongo_department_id?: string
   is_private?: boolean // Changed from 'isInternal'

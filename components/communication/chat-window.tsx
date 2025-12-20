@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MessageList } from "@/components/ui/message-list"
-import { MessageInput } from "@/components/ui/message-input"
-import { OnlineIndicator } from "@/components/ui/online-indicator"
+import { MessageList } from "@/components/communication/message-list"
+import { MessageInput } from "@/components/communication/message-input"
+import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
 import { 
   Info, 
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import FullscreenToggle from "../shared/FullscreenToggle"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded }: ChatWindowProps) {
   const {
@@ -57,10 +58,18 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     setError,
     mockCurrentUser,
     sessionStatus,
-    usersLoading
+    usersLoading,
+    selectChannel
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  console.log('selectedChannel messages in ChatWindow66:', messages)
+  // Auto-select channel if channelId is provided and no channel is selected
+  useEffect(() => {
+    if (channelId && !selectedChannel) {
+      selectChannel(channelId)
+    }
+  }, [channelId, selectedChannel, selectChannel])
   
   // Show loading state while session is being fetched
   const isInitializing = sessionStatus === 'loading' || usersLoading
@@ -171,7 +180,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
   const getChannelTitle = () => {
     if (selectedChannel.type === 'dm' && mockCurrentUser) {
-      const otherParticipant = selectedChannel.participants.find(p => p.mongo_member_id !== mockCurrentUser._id)
+      const otherParticipant = selectedChannel.channel_members.find(p => p.mongo_member_id !== mockCurrentUser._id)
       return otherParticipant?.name || 'Unknown User'
     }
     return selectedChannel.name
@@ -179,27 +188,27 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
   const getChannelSubtitle = () => {
     if (selectedChannel.type === 'dm' && mockCurrentUser) {
-      const otherParticipant = selectedChannel.participants.find(p => p.mongo_member_id !== mockCurrentUser._id)
+      const otherParticipant = selectedChannel.channel_members.find(p => p.mongo_member_id !== mockCurrentUser._id)
       if (otherParticipant) {
         const status = otherParticipant.isOnline ? 'Online' : 'Offline'
-        const role = otherParticipant.role ? ` • ${otherParticipant.role}` : ''
+        const role = otherParticipant.userRole ? ` • ${otherParticipant.userRole}` : ''
         return `${status}${role}`
       }
       return 'Direct Message'
     }
     
-    const activeMembers = selectedChannel.participants.filter(p => p.isOnline).length
-    return `${selectedChannel.participants.length} members, ${activeMembers} online`
+    const activeMembers = selectedChannel.channel_members.filter(p => p.isOnline).length
+    return `${selectedChannel.channel_members.length} members, ${activeMembers} online`
   }
 
   return (
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-background overflow-hidden", className)}>
         {/* Header */}
-        <div className="border-b bg-card p-4">
+        <div className="border-b bg-card px-4 py-2">
           <div className="flex items-center justify-between">
             {/* Channel info */}
-            <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* Toggle sidebar button (desktop) */}
               {onToggleSidebar && (
                 <div className="hidden lg:flex items-center">
@@ -241,10 +250,10 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               </div>
               
               {/* Online indicators for group channels */}
-              {selectedChannel.participants.length > 2 && (
+              {selectedChannel.channel_members.length > 2 && (
                 <div className="shrink-0">
                   <OnlineIndicator 
-                    users={selectedChannel.participants as IParticipant[]} 
+                    users={selectedChannel.channel_members as IParticipant[]} 
                     maxVisible={3}
                     size="sm"
                   />
@@ -253,7 +262,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 ml-4">
+            <div className="flex items-center gap-1 ml-4">
               {/* Call buttons for DM */}
               {selectedChannel.type === 'dm' && (
                 <>
@@ -336,6 +345,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <FullscreenToggle mode="hide-layout" />
             </div>
           </div>
 

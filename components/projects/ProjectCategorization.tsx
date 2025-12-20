@@ -21,7 +21,7 @@ import { InlineLoader } from '@/components/ui/loader'
 import { type DragEndEvent, type DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 
 import { TaskGridView, TaskTableView, TaskBoardView } from "@/components/projects/TaskDataViews"
-import GenericFilter, { FilterConfig } from '@/components/ui/generic-filter'
+import GenericFilter, { FilterConfig } from '@/components/shared/generic-filter'
 import { useQueryClient } from '@tanstack/react-query'
 
 

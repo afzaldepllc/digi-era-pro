@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, memo } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -13,9 +13,9 @@ import {
   ChevronRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ChannelList } from "./channel-list"
 import { UserDirectory } from "./user-directory"
 import { IChannel } from "@/types/communication"
+import { ChannelList } from "./channel-list"
 
 interface CommunicationSidebarProps {
   channels: IChannel[]
@@ -27,7 +27,7 @@ interface CommunicationSidebarProps {
   className?: string
 }
 
-export function CommunicationSidebar({
+export const CommunicationSidebar = memo(function CommunicationSidebar({
   channels,
   activeChannelId,
   currentUserId,
@@ -39,10 +39,15 @@ export function CommunicationSidebar({
   const [showUsers, setShowUsers] = useState(true)
   const [showChannels, setShowChannels] = useState(true)
 
+  const handleStartDM = useCallback(async (userId: string) => {
+    // This will be handled by the parent component
+    // The UserDirectory component will handle the DM creation
+  }, [])
+
   return (
     <div className={cn("flex flex-col h-full bg-card border-r", className)}>
       {/* Header */}
-      <div className="p-4 border-b">
+      <div className="pl-4 pr-10 pt-4 pb-2 border-b">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg">Messages</h2>
           {onCreateChannel && (
@@ -72,22 +77,24 @@ export function CommunicationSidebar({
             ))}
           </div>
         ) : (
-          <div className="p-2 space-y-4">
+          <div className="pt-2 pr-0 pl-0 space-y-2">
             {/* Channels Section */}
             <div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto font-medium text-sm"
-                onClick={() => setShowChannels(!showChannels)}
-              >
-                {showChannels ? (
-                  <ChevronDown className="h-4 w-4 mr-2" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 mr-2" />
-                )}
-                <Hash className="h-4 w-4 mr-2" />
-                Channels ({channels.length})
-              </Button>
+              <div className="px-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start p-2 h-auto font-medium text-sm"
+                  onClick={() => setShowChannels(!showChannels)}
+                >
+                  {showChannels ? (
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 mr-2" />
+                  )}
+                  <Hash className="h-4 w-4 mr-2" />
+                  Channels ({channels.length})
+                </Button>
+              </div>
 
               {showChannels && (
                 <div className="mt-2">
@@ -107,27 +114,26 @@ export function CommunicationSidebar({
 
             {/* Users Section */}
             <div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto font-medium text-sm"
-                onClick={() => setShowUsers(!showUsers)}
-              >
-                {showUsers ? (
-                  <ChevronDown className="h-4 w-4 mr-2" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 mr-2" />
-                )}
-                <Users className="h-4 w-4 mr-2" />
-                Direct Messages
-              </Button>
+              <div className="px-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start p-2 h-auto font-medium text-sm"
+                  onClick={() => setShowUsers(!showUsers)}
+                >
+                  {showUsers ? (
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 mr-2" />
+                  )}
+                  <Users className="h-4 w-4 mr-2" />
+                  Direct Messages
+                </Button>
+              </div>
 
               <div className={cn("mt-2", !showUsers && "hidden")}>
                 <UserDirectory
-                  onStartDM={async (userId: string) => {
-                    // This will be handled by the parent component
-                    // The UserDirectory component will handle the DM creation
-                  }}
-                  className="border-0 shadow-none max-h-96"
+                  onStartDM={handleStartDM}
+                  className="border-0 shadow-none"
                 />
               </div>
             </div>
@@ -136,4 +142,4 @@ export function CommunicationSidebar({
       </ScrollArea>
     </div>
   )
-}
+})

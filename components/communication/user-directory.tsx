@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, memo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
+import { useUsers } from "@/hooks/use-users"
+import { useSession } from "next-auth/react"
 import { User } from "@/types"
 
 interface UserDirectoryProps {
@@ -22,31 +24,51 @@ interface UserDirectoryProps {
   className?: string
 }
 
-export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
+export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { createChannel, loading: channelLoading, selectChannel, mockUsers, mockCurrentUser } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel } = useCommunications()
+  const { users, loading: usersLoading } = useUsers()
+  const { data: session } = useSession()
 
   // Filter active users (exclude current user and inactive users, and clients)
-  const activeUsers = mockUsers.filter(user =>
-    user._id !== mockCurrentUser?._id
-    //  &&
-    // user.isClient === false
-  );
+  const activeUsers = useMemo(() => {
+    // Get users who already have DM channels with current user
+    const dmUserIds = new Set<string>()
+    channels.filter(channel => channel.type === 'dm').forEach(channel => {
+      const currentUserInChannel = channel.channel_members.some(p => p.mongo_member_id === (session?.user as any)?.id)
+      if (currentUserInChannel) {
+        channel.channel_members.forEach(p => {
+          if (p.mongo_member_id !== (session?.user as any)?.id) {
+            dmUserIds.add(p.mongo_member_id)
+          }
+        })
+      }
+    })
 
-  // Filter users based on search
-  const filteredUsers = activeUsers.filter(user => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      user.name?.toLowerCase().includes(query) ||
-      user.email?.toLowerCase().includes(query) ||
-      (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
+    return users.filter(user =>
+      user._id.toString() !== (session?.user as any)?.id &&
+      !dmUserIds.has(user._id.toString())
+      //  &&
+      // user.isClient === false
     )
-  })
+  }, [users, channels, (session?.user as any)?.id]);
+  console.log("activeUsers42",activeUsers);
+  // Filter users based on search
+  const filteredUsers = useMemo(() => {
+    return activeUsers.filter(user => {
+      if (!searchQuery) return true
+      const query = searchQuery.toLowerCase()
+      return (
+        user.name?.toLowerCase().includes(query) ||
+        user.email?.toLowerCase().includes(query) ||
+        (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
+      )
+    })
+  }, [activeUsers, searchQuery])
 
   const handleStartDM = async (user: User) => {
-    if (!mockCurrentUser || !mockCurrentUser._id) {
+    if (!(session?.user as any)?.id) {
       console.error('No current user found or user id missing')
       return
     }
@@ -55,7 +77,7 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       // Create DM channel
       const channel = await createChannel({
         type: 'dm',
-        participants: [mockCurrentUser._id, user._id as string],
+        channel_members: [(session?.user as any)?.id, user._id as string],
         is_private: true
       })
 
@@ -71,13 +93,6 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
   const getUserStatus = (user: User) => {
     // TODO: Implement online status checking
     return 'offline'
-  }
-
-  const getUserInitials = (user: User) => {
-    if (user.name) {
-      return user.name.split(' ').map(n => n[0]).join('').toUpperCase()
-    }
-    return user.email?.[0]?.toUpperCase() || 'U'
   }
 
   const getRoleColor = (role?: string | any) => {
@@ -109,7 +124,7 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search users..."
+            placeholder="Search users..."   
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -118,7 +133,7 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       </div>
 
       {/* User List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea>
         <div className="p-2">
           {filteredUsers.length === 0 ? (
             <div className="text-center py-8">
@@ -128,7 +143,8 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 max-h-[500px] overflow-y-auto pb-6">
+            {/* <div className="space-y-1"> */}
               {filteredUsers.map((user) => (
                 <div
                   key={user._id as string}
@@ -138,7 +154,15 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
                   <div className="relative">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={user.avatar} alt={user.name || user.email} />
-                      <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
+                      <AvatarFallback>{user.name
+                        ? (() => {
+                          const parts = user.name.trim().split(' ');
+                          if (parts.length === 1) {
+                            return parts[0][0].toUpperCase();
+                          }
+                          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                        })()
+                        : user.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
                     <div className={cn(
                       "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background",
@@ -189,4 +213,4 @@ export function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
       </div>
     </div>
   )
-}
+})

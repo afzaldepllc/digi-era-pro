@@ -47,8 +47,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import CustomModal from "@/components/ui/custom-modal";
-import GenericFilter, { FilterConfig } from "@/components/ui/generic-filter";
+import CustomModal from "@/components/shared/custom-modal";
+import GenericFilter, { FilterConfig } from "@/components/shared/generic-filter";
 import { createPhaseFormSchema, updatePhaseFormSchema, getPhaseStatusColor } from "@/lib/validations/phase";
 import type { CreatePhaseFormData, UpdatePhaseFormData } from "@/lib/validations/phase";
 import { useToast } from "@/hooks/use-toast";
@@ -57,8 +57,8 @@ import { useUsers } from "@/hooks/use-users";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { formatDistanceToNow, differenceInDays } from "date-fns";
 import type { IPhase } from "@/models/Phase";
-import RichTextEditor from "../ui/rich-text-editor";
-import HtmlTextRenderer from "../ui/html-text-renderer";
+import RichTextEditor from "../shared/rich-text-editor";
+import HtmlTextRenderer from "../shared/html-text-renderer";
 import {
   InlinePhaseStatusDropdown,
   InlinePhaseEndDateInput,

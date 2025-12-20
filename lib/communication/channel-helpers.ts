@@ -21,7 +21,7 @@ interface ChannelCreationParams {
   project_id?: string
   
   // For DM/group channels
-  participants?: string[]
+  channel_members?: string[]
   
   // For client support
   client_id?: string
@@ -36,7 +36,7 @@ export async function getDepartmentUsers(departmentId: string): Promise<string[]
   const users = await executeGenericDbQuery(async () => {
     return await User.find({ 
       department: departmentId,
-      isActive: true,
+      status: 'active',
       isDeleted: false
     }).select('_id').lean()
   })
@@ -66,7 +66,7 @@ export async function getCategoryUsers(category: DepartmentCategory): Promise<st
   const users = await executeGenericDbQuery(async () => {
     return await User.find({
       department: { $in: departmentIds },
-      isActive: true,
+      status: 'active',
       isDeleted: false
     }).select('_id').lean()
   })
@@ -98,7 +98,7 @@ export async function getMultiCategoryUsers(categories: DepartmentCategory[]): P
   const users = await executeGenericDbQuery(async () => {
     return await User.find({
       department: { $in: departmentIds },
-      isActive: true,
+      status: 'active',
       isDeleted: false
     }).select('_id').lean()
   })
@@ -111,43 +111,47 @@ export async function getMultiCategoryUsers(categories: DepartmentCategory[]): P
  */
 export async function getProjectCollaborators(projectId: string): Promise<string[]> {
   const Project = (await import('@/models/Project')).default
+  const Task = (await import('@/models/Task')).default
   
+  // Get project to add client
   const project: any = await executeGenericDbQuery(async () => {
     return await Project.findById(projectId)
-      .select('departmentTasks clientId')
+      .select('clientId')
       .lean()
   })
-  
-  if (!project) return []
   
   const collaborators = new Set<string>()
   
   // Add client if exists
-  if (project.clientId) {
+  if (project?.clientId) {
     collaborators.add(project.clientId.toString())
   }
   
-  // Add all assignees from department tasks
-  if (project.departmentTasks && Array.isArray(project.departmentTasks)) {
-    project.departmentTasks.forEach((dept: any) => {
-      if (dept.tasks && Array.isArray(dept.tasks)) {
-        dept.tasks.forEach((task: any) => {
-          if (task.assigneeId) {
-            collaborators.add(task.assigneeId.toString())
-          }
-        })
-      }
-    })
-  }
+  // Get all tasks for this project and collect assignees
+  const tasks = await executeGenericDbQuery(async () => {
+    return await Task.find({
+      projectId: projectId,
+      isDeleted: false
+    }).select('assigneeId').lean()
+  })
+  
+  // Add all unique assignees
+  tasks.forEach((task: any) => {
+    if (task.assigneeId) {
+      collaborators.add(task.assigneeId.toString())
+    }
+  })
   
   return Array.from(collaborators)
 }
 
 /**
- * Get support team users (users in support category)
+ * Get support team users (users in support and management categories)
  */
 export async function getSupportTeamUsers(): Promise<string[]> {
-  return getCategoryUsers('support')
+  const supportUsers = await getCategoryUsers('support')
+  const managementUsers = await getCategoryUsers('management')
+  return [...supportUsers, ...managementUsers]
 }
 
 /**
@@ -162,9 +166,9 @@ export async function getChannelMembers(params: ChannelCreationParams): Promise<
   switch (params.type) {
     case 'dm':
     case 'group':
-      // Direct participants
-      if (params.participants) {
-        params.participants.forEach(p => members.add(p))
+      // Direct channel_members
+      if (params.channel_members) {
+        params.channel_members.forEach(p => members.add(p))
       }
       break
       
@@ -201,7 +205,7 @@ export async function getChannelMembers(params: ChannelCreationParams): Promise<
       break
       
     case 'client-support':
-      // Client + support team
+      // Client + support and management team users
       if (params.client_id) {
         members.add(params.client_id)
         const supportTeam = await getSupportTeamUsers()

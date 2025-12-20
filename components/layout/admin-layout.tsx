@@ -16,7 +16,7 @@ export const AdminLayout = memo(function AdminLayout({ children }: AdminLayoutPr
   const pathname = usePathname()
 
   // Memoize route calculations to prevent recalculation on every render
-  const isCommunicationsRoute = useMemo(() => 
+  const isCommunicationsRoute = useMemo(() =>
     pathname?.startsWith("/communications") || pathname?.startsWith("/client-portal"),
     [pathname]
   )
@@ -62,11 +62,13 @@ export const AdminLayout = memo(function AdminLayout({ children }: AdminLayoutPr
               </RouteGuard>
             </div>
           </main>
-          <footer className="border-t bg-sidebar/50 p-4 shrink-0">
-            <div className="text-xs text-muted-foreground/60 text-center">
-              © {new Date().getFullYear()} DIGI ERA PRO CRM
-            </div>
-          </footer>
+          {isCommunicationsRoute ? null : (
+            <footer className="border-t bg-sidebar/50 p-4 shrink-0">
+              <div className="text-xs text-muted-foreground/60 text-center">
+                © {new Date().getFullYear()} DIGI ERA PRO CRM
+              </div>
+            </footer>
+          )}
         </div>
       </div>
     </ProfessionalAuthGuard>

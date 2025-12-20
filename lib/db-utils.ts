@@ -1,5 +1,4 @@
 import { prisma } from './prisma'
-import type { Channel, Message, ChannelMember, ReadReceipt, Reaction, Attachment } from '@prisma/client'
 
 // Channel operations
 export const channelOperations = {
@@ -12,7 +11,7 @@ export const channelOperations = {
     mongo_creator_id: string
     is_private?: boolean
   }) => {
-    return await prisma.channel.create({
+    return await prisma.channels.create({
       data: {
         type: data.type,
         name: data.name,
@@ -27,7 +26,7 @@ export const channelOperations = {
 
   // Get channels for a user
   getUserChannels: async (mongo_user_id: string) => {
-    return await prisma.channel.findMany({
+    return await prisma.channels.findMany({
       where: {
         channel_members: {
           some: {
@@ -48,7 +47,7 @@ export const channelOperations = {
 
   // Add member to channel
   addMember: async (channel_id: string, mongo_member_id: string, role: string = 'member') => {
-    return await prisma.channelMember.create({
+    return await prisma.channel_members.create({
       data: {
         channel_id,
         mongo_member_id,
@@ -70,7 +69,7 @@ export const messageOperations = {
     parent_message_id?: string // For replies
     mongo_mentioned_user_ids?: string[]
   }) => {
-    const message = await prisma.message.create({
+    const message = await prisma.messages.create({
       data: {
         channel_id: data.channel_id,
         mongo_sender_id: data.mongo_sender_id,
@@ -94,7 +93,7 @@ export const messageOperations = {
 
     // If this is a reply, increment parent's reply_count
     if (data.parent_message_id) {
-      await prisma.message.update({
+      await prisma.messages.update({
         where: { id: data.parent_message_id },
         data: { reply_count: { increment: 1 } },
       })
@@ -105,7 +104,7 @@ export const messageOperations = {
 
   // Update a message (edit)
   update: async (message_id: string, content: string) => {
-    return await prisma.message.update({
+    return await prisma.messages.update({
       where: { id: message_id },
       data: {
         content,
@@ -123,14 +122,14 @@ export const messageOperations = {
 
   // Delete a message
   delete: async (message_id: string) => {
-    const message = await prisma.message.findUnique({
+    const message = await prisma.messages.findUnique({
       where: { id: message_id },
       select: { parent_message_id: true },
     })
 
     // If this is a reply, decrement parent's reply_count
     if (message?.parent_message_id) {
-      await prisma.message.update({
+      await prisma.messages.update({
         where: { id: message.parent_message_id },
         data: { 
           reply_count: { 
@@ -142,14 +141,14 @@ export const messageOperations = {
       })
     }
 
-    return await prisma.message.delete({
+    return await prisma.messages.delete({
       where: { id: message_id },
     })
   },
 
   // Get messages for a channel with replies
   getChannelMessages: async (channel_id: string, limit: number = 50, offset: number = 0) => {
-    return await prisma.message.findMany({
+    return await prisma.messages.findMany({
       where: {
         channel_id,
         parent_message_id: null, // Only get top-level messages (not replies)
@@ -175,7 +174,7 @@ export const messageOperations = {
 
   // Get replies for a specific message
   getReplies: async (parent_message_id: string, limit: number = 50) => {
-    return await prisma.message.findMany({
+    return await prisma.messages.findMany({
       where: {
         parent_message_id,
       },
@@ -191,7 +190,7 @@ export const messageOperations = {
 
   // Mark message as read
   markAsRead: async (message_id: string, mongo_user_id: string) => {
-    return await prisma.readReceipt.upsert({
+    return await prisma.read_receipts.upsert({
       where: {
         message_id_mongo_user_id: {
           message_id,
@@ -212,7 +211,7 @@ export const messageOperations = {
 export const memberOperations = {
   // Update online status
   updateOnlineStatus: async (channel_id: string, mongo_member_id: string, is_online: boolean) => {
-    return await prisma.channelMember.updateMany({
+    return await prisma.channel_members.updateMany({
       where: {
         channel_id,
         mongo_member_id,
@@ -226,7 +225,7 @@ export const memberOperations = {
 
   // Get online members
   getOnlineMembers: async (channel_id: string) => {
-    return await prisma.channelMember.findMany({
+    return await prisma.channel_members.findMany({
       where: {
         channel_id,
         is_online: true,
@@ -259,45 +258,4 @@ export const dbUtils = {
       timestamp: new Date(),
     }
   },
-}
-
-// Helper function to enrich channels with MongoDB user data
-export async function enrichChannelWithUserData(channel: any, userModel: any) {
-  try {
-    // Get all unique member IDs
-    const memberIds = channel.channel_members?.map((m: any) => m.mongo_member_id) || []
-    
-    // Fetch user details from MongoDB
-    const users = await userModel.find({ _id: { $in: memberIds } }).lean()
-    
-    // Map users to participants format
-    const participants = users.map((user: any) => ({
-      mongo_member_id: user._id.toString(),
-      name: user.name || user.email,
-      email: user.email,
-      avatar: user.avatar,
-      isOnline: false, // Will be updated from channel_members
-      userType: user.isClient ? 'Client' : 'User',
-      role: typeof user.role === 'string' ? user.role : user.role?.name || 'User'
-    }))
-    
-    // Update online status from channel_members
-    channel.channel_members?.forEach((member: any) => {
-      const participant = participants.find((p: any) => p.mongo_member_id === member.mongo_member_id)
-      if (participant) {
-        participant.isOnline = member.is_online || false
-      }
-    })
-    
-    return {
-      ...channel,
-      participants
-    }
-  } catch (error) {
-    console.error('Error enriching channel with user data:', error)
-    return {
-      ...channel,
-      participants: []
-    }
-  }
 }
