@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface OnlineIndicatorProps {
   users: IParticipant[]
+  onlineUserIds?: string[] // Real-time online user IDs from Supabase presence
   maxVisible?: number
   showNames?: boolean
   size?: "sm" | "md" | "lg"
@@ -16,12 +17,20 @@ interface OnlineIndicatorProps {
 
 export function OnlineIndicator({
   users,
+  onlineUserIds = [],
   maxVisible = 5,
   showNames = false,
   size = "md",
   className
 }: OnlineIndicatorProps) {
-  const onlineUsers = users.filter(user => user.isOnline)
+  // Determine if user is online based on real-time onlineUserIds from Supabase
+  const isUserOnline = (user: IParticipant) => {
+    return onlineUserIds.length > 0 
+      ? onlineUserIds.includes(user.mongo_member_id) 
+      : user.isOnline
+  }
+
+  const onlineUsers = users.filter(isUserOnline)
   const visibleUsers = onlineUsers.slice(0, maxVisible)
   const remainingCount = onlineUsers.length - visibleUsers.length
 
@@ -29,6 +38,13 @@ export function OnlineIndicator({
     sm: "h-6 w-6",
     md: "h-8 w-8",
     lg: "h-10 w-10"
+  }
+
+  // WhatsApp-style ring size based on avatar size
+  const ringClasses = {
+    sm: "ring-2 ring-offset-1",
+    md: "ring-2 ring-offset-2",
+    lg: "ring-[3px] ring-offset-2"
   }
 
   const textSizeClasses = {
@@ -51,19 +67,25 @@ export function OnlineIndicator({
       <div className={cn("flex items-center gap-2", className)}>
         {/* Online indicator dot */}
         <div className="flex items-center gap-1">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className={cn("text-muted-foreground", textSizeClasses[size])}>
             {onlineUsers.length} online
           </span>
         </div>
 
-        {/* User avatars */}
+        {/* User avatars with WhatsApp-style green ring */}
         <div className="flex -space-x-2">
           {visibleUsers.map((user) => (
             <Tooltip key={user.mongo_member_id}>
               <TooltipTrigger>
                 <div className="relative">
-                  <Avatar className={cn(sizeClasses[size], "border-2 border-background")}>
+                  <Avatar className={cn(
+                    sizeClasses[size], 
+                    "border-2 border-background",
+                    // WhatsApp-style green ring for online users
+                    ringClasses[size],
+                    "ring-emerald-500 ring-offset-background"
+                  )}>
                     <AvatarImage src={user.avatar} alt={user.name} />
                     <AvatarFallback className={textSizeClasses[size]}>
                       {user.name
@@ -77,8 +99,8 @@ export function OnlineIndicator({
                         : ''}
                     </AvatarFallback>
                   </Avatar>
-                  {/* Online dot */}
-                  <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
+                  {/* Online dot indicator */}
+                  <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
                 </div>
               </TooltipTrigger>
               <TooltipContent>

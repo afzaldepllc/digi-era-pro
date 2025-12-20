@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { MessageList } from "@/components/communication/message-list"
 import { MessageInput } from "@/components/communication/message-input"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
+import { TypingIndicator } from "@/components/communication/typing-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
 import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 import { 
@@ -49,6 +50,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     error,
     typingUsers,
     onlineUsers,
+    onlineUserIds,
     isContextPanelVisible,
     sendMessage,
     markAsRead,
@@ -190,14 +192,19 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     if (selectedChannel.type === 'dm' && mockCurrentUser) {
       const otherParticipant = selectedChannel.channel_members.find(p => p.mongo_member_id !== mockCurrentUser._id)
       if (otherParticipant) {
-        const status = otherParticipant.isOnline ? 'Online' : 'Offline'
+        // Use real-time onlineUserIds for status
+        const isOnline = onlineUserIds.includes(otherParticipant.mongo_member_id)
+        const status = isOnline ? 'Online' : 'Offline'
         const role = otherParticipant.userRole ? ` • ${otherParticipant.userRole}` : ''
         return `${status}${role}`
       }
       return 'Direct Message'
     }
     
-    const activeMembers = selectedChannel.channel_members.filter(p => p.isOnline).length
+    // Use real-time onlineUserIds for active members count
+    const activeMembers = selectedChannel.channel_members.filter(p => 
+      onlineUserIds.includes(p.mongo_member_id)
+    ).length
     return `${selectedChannel.channel_members.length} members, ${activeMembers} online`
   }
 
@@ -254,8 +261,19 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 <div className="shrink-0">
                   <OnlineIndicator 
                     users={selectedChannel.channel_members as IParticipant[]} 
+                    onlineUserIds={onlineUserIds}
                     maxVisible={3}
                     size="sm"
+                  />
+                </div>
+              )}
+
+              {/* Typing indicator - real-time from Supabase */}
+              {channelId && typingUsers[channelId] && typingUsers[channelId].length > 0 && (
+                <div className="shrink-0 ml-2">
+                  <TypingIndicator
+                    typingUsers={typingUsers[channelId]}
+                    currentUserId={mockCurrentUser?._id}
                   />
                 </div>
               )}

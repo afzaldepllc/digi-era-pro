@@ -28,7 +28,7 @@ interface UserDirectoryProps {
 export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelSelect, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const { channels, createChannel, loading: channelLoading, selectChannel } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
 
@@ -94,8 +94,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
   }
 
   const getUserStatus = (user: User) => {
-    // TODO: Implement online status checking
-    return 'offline'
+    // Use real-time onlineUserIds from Supabase presence
+    return onlineUserIds.includes(user._id.toString()) ? 'online' : 'offline'
   }
 
   const getRoleColor = (role?: string | any) => {
@@ -151,7 +151,11 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                 >
                   {/* Avatar */}
                   <div className="relative">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className={cn(
+                      "h-10 w-10",
+                      // WhatsApp-style green ring for online users
+                      getUserStatus(user) === 'online' && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+                    )}>
                       <AvatarImage src={user.avatar} alt={user.name || user.email} />
                       <AvatarFallback>{user.name
                         ? (() => {
@@ -163,9 +167,10 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                         })()
                         : user.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
+                    {/* Online indicator dot */}
                     <div className={cn(
                       "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background",
-                      getUserStatus(user) === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                      getUserStatus(user) === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'
                     )} />
                   </div>
 

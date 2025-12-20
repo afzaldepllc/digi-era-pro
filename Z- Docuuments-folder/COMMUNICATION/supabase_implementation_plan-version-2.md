@@ -2451,4 +2451,7 @@ and we can mention "everyone" if so that all member have notification for alert
 3) the reply should be working well with preview of the reply message and when click on it than navigate to that message also like in the whatsapp using the best practices 
 4) the message edit should also be working well with edit fields 
 
-5) there should read icons, delivered icon and read icon and its completely realtime in the both side sender and reciver according to the professional approach
+5) there should be not sent icon, read icons, delivered icon and read icon and its completely realtime in the both side sender and reciver according to the professional approach
+
+
+makesure every things should be realtime and e=working well according to best practoces of the supabase and current flow of this project 

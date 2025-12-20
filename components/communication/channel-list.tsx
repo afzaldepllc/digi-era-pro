@@ -40,6 +40,7 @@ interface ChannelListProps {
   activeChannelId?: string | null
   onChannelSelect: (channelId: string) => void
   currentUserId: string
+  onlineUserIds?: string[] // Real-time online user IDs from Supabase
   showSearch?: boolean
   onCreateChannel?: () => void
   className?: string
@@ -50,6 +51,7 @@ export const ChannelList = memo(function ChannelList({
   activeChannelId,
   onChannelSelect,
   currentUserId,
+  onlineUserIds = [],
   showSearch = true,
   onCreateChannel,
   className
@@ -142,6 +144,13 @@ export const ChannelList = memo(function ChannelList({
     const displayName = getChannelDisplayName(channel)
     const subtitle = getChannelSubtitle(channel)
     const hasUnread = (channel.unreadCount || 0) > 0
+    
+    // Check if user is online using real-time onlineUserIds from Supabase
+    const isAvatarUserOnline = avatar ? (
+      onlineUserIds.length > 0 
+        ? onlineUserIds.includes(avatar.mongo_member_id)
+        : avatar.isOnline
+    ) : false
 
     console.log("channel  info 142",channel);
 
@@ -160,7 +169,11 @@ export const ChannelList = memo(function ChannelList({
         <div className="relative shrink-0">
           {avatar ? (
             <>
-              <Avatar className="h-10 w-10 transition-transform duration-200 group-hover:scale-110">
+              <Avatar className={cn(
+                "h-10 w-10 transition-transform duration-200 group-hover:scale-110",
+                // WhatsApp-style green ring for online users
+                isAvatarUserOnline && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+              )}>
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
                   {avatar.name ? (() => {
@@ -173,8 +186,8 @@ export const ChannelList = memo(function ChannelList({
                   : ''}
                 </AvatarFallback>
               </Avatar>
-              {/* Online indicator */}
-              {avatar.isOnline && (
+              {/* Online indicator dot */}
+              {isAvatarUserOnline && (
                 <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
               )}
             </>

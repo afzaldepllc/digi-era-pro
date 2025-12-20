@@ -21,6 +21,7 @@ interface CommunicationSidebarProps {
   channels: IChannel[]
   activeChannelId?: string | null
   currentUserId: string
+  onlineUserIds?: string[] // Real-time online user IDs from Supabase
   onChannelSelect: (channelId: string) => void
   onCreateChannel?: () => void
   loading?: boolean
@@ -31,6 +32,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
   channels,
   activeChannelId,
   currentUserId,
+  onlineUserIds = [],
   onChannelSelect,
   onCreateChannel,
   loading = false,
@@ -103,6 +105,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
                     activeChannelId={activeChannelId}
                     onChannelSelect={onChannelSelect}
                     currentUserId={currentUserId}
+                    onlineUserIds={onlineUserIds}
                     showSearch={false}
                     className="border-0 shadow-none"
                   />

@@ -68,6 +68,7 @@ export default function CommunicationsPage() {
     error,
     currentUser,
     onlineUsers,
+    onlineUserIds,
     unreadCount,
     hasChannels,
     fetchChannels,
@@ -191,6 +192,7 @@ export default function CommunicationsPage() {
                   activeChannelId={activeChannelId}
                   onChannelSelect={handleChannelSelect}
                   currentUserId={mockCurrentUser?._id || ''}
+                  onlineUserIds={onlineUserIds}
                   onCreateChannel={handleCreateChannel}
                   loading={loading}
                 />
@@ -255,6 +257,7 @@ export default function CommunicationsPage() {
             activeChannelId={activeChannelId}
             onChannelSelect={handleChannelSelect}
             currentUserId={mockCurrentUser?._id || ''}
+            onlineUserIds={onlineUserIds}
             onCreateChannel={handleCreateChannel}
             loading={loading}
           />
