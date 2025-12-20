@@ -427,9 +427,9 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             const text = editor.getText()
             const match = text.match(/@[\w-]*$/)
             
-            // Insert plain text mention (like WhatsApp/Slack style)
-            // The @username will be styled via CSS and tracked separately for notifications
-            const mentionText = `@${user.name} `
+            // Use a special format: [@Name](userId) - like markdown links
+            // This allows names with spaces and is easy to parse on display
+            const mentionText = `[@${user.name}] `
             
             if (match) {
                 // Delete the @query text and insert the mention

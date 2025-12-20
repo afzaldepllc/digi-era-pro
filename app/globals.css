@@ -391,13 +391,24 @@
     @apply bg-background text-foreground;
   }
 
-  /* Mention styling in messages */
+  /* Mention styling in messages and editor */
   .mention {
-    @apply bg-primary/10 text-primary px-1 rounded font-medium;
+    @apply bg-primary/10 text-primary px-1 py-0.5 rounded font-medium inline-block;
+    user-select: all; /* Select entire mention when clicked */
+  }
+  
+  /* Mention wrapper for TipTap node view */
+  .mention-wrapper {
+    @apply inline;
   }
   
   /* Mention in own messages (primary background) */
   .bg-primary .mention {
     @apply bg-primary-foreground/20 text-primary-foreground;
+  }
+  
+  /* Mention in editor (ProseMirror) */
+  .ProseMirror .mention {
+    @apply bg-primary/10 text-primary px-1 py-0.5 rounded font-medium;
   }
 }

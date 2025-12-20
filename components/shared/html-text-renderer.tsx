@@ -60,19 +60,26 @@ export function HtmlTextRenderer({
 
   // Helper function to highlight @mentions in content
   const highlightMentions = (html: string): string => {
-    // First, clean up any raw HTML that was escaped and stored as text
-    // This handles old messages where TipTap escaped the HTML spans
-    const cleanedHtml = html
-      .replace(/&lt;span class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/g, '$1')
-      .replace(/<span class="mention"[^>]*>(@\w+)<\/span>/g, '$1');
+    let processedHtml = html;
     
-    // Match @username patterns - only single words (no spaces)
-    // Examples: @everyone, @Mike, @Anna
-    const mentionPattern = /@(\w+)/g;
-    
-    return cleanedHtml.replace(mentionPattern, (match, name) => {
+    // Pattern 1: Handle bracketed mentions [@Name] (new format)
+    processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
       return `<span class="mention">@${name}</span>`;
     });
+    
+    // Pattern 2: Clean up escaped HTML mention spans from old messages
+    processedHtml = processedHtml
+      .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
+      .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
+    
+    // Pattern 3: Handle simple @mentions (single word) if no mention spans exist
+    if (!processedHtml.includes('class="mention"')) {
+      processedHtml = processedHtml.replace(/@(\w+)/g, (match, name) => {
+        return `<span class="mention">@${name}</span>`;
+      });
+    }
+    
+    return processedHtml;
   };
 
   // Helper function to sanitize HTML content
@@ -195,10 +202,14 @@ export function HtmlTextRenderer({
  */
 const cleanEscapedHtml = (html: string): string => {
   return html
+    // Convert bracketed mentions [@Name] to plain @Name for text extraction
+    .replace(/\[@([^\]]+)\]/g, '@$1')
+    // Remove escaped HTML mention spans with data-user-name: extract the name
+    .replace(/&lt;span[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '@$1')
     // Remove escaped HTML mention spans: &lt;span class="mention"...&gt;@Name&lt;/span&gt;
-    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/gi, '$1')
-    // Also handle regular HTML mention spans
-    .replace(/<span[^>]*class="mention"[^>]*>(@\w+)<\/span>/gi, '$1')
+    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '$1')
+    // Also handle regular HTML mention spans - extract text content
+    .replace(/<span[^>]*class="mention"[^>]*>(@[^<]+)<\/span>/gi, '$1')
     // Decode common HTML entities
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -238,16 +249,26 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
  * Utility function to highlight @mentions in text
  */
 export const highlightMentionsInHtml = (html: string): string => {
-  // First, clean up any raw HTML that was escaped and stored as text
-  const cleanedHtml = html
-    .replace(/&lt;span class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/g, '$1')
-    .replace(/<span class="mention"[^>]*>(@\w+)<\/span>/g, '$1');
+  let processedHtml = html;
   
-  // Match @username patterns - single words only
-  const mentionPattern = /@(\w+)/g;
-  return cleanedHtml.replace(mentionPattern, (match, name) => {
+  // Pattern 1: Handle bracketed mentions [@Name] (new format with spaces support)
+  processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
     return `<span class="mention">@${name}</span>`;
   });
+  
+  // Pattern 2: Clean up escaped HTML mention spans from old messages
+  processedHtml = processedHtml
+    .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
+    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
+  
+  // Pattern 3: Handle simple @mentions (single word) if no mention spans exist
+  if (!processedHtml.includes('class="mention"')) {
+    processedHtml = processedHtml.replace(/@(\w+)/g, (match, name) => {
+      return `<span class="mention">@${name}</span>`;
+    });
+  }
+  
+  return processedHtml;
 };
 
 /**
