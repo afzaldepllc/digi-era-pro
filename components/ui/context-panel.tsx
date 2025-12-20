@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,17 +17,31 @@ import {
   Bell,
   BellOff,
   Pin,
-  Archive
+  Archive,
+  Loader2,
+  Download,
+  Eye
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { IChannel, IParticipant } from "@/types/communication"
-import { format } from "date-fns"
+import { IChannel, IParticipant, IAttachment } from "@/types/communication"
+import { format, formatDistanceToNow } from "date-fns"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useChatAttachments } from "@/hooks/use-chat-attachments"
+import { 
+  getFileCategory, 
+  getFileIcon, 
+  getExtensionColor, 
+  formatFileSize 
+} from "@/components/communication/attachment-preview"
+
+interface AttachmentWithUploader extends IAttachment {
+  uploaded_by?: string
+}
 
 interface ContextPanelProps {
   channel?: IChannel
@@ -46,6 +60,48 @@ export function ContextPanel({
 }: ContextPanelProps) {
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(true)
   const [isPinned, setIsPinned] = useState(false)
+  const [attachments, setAttachments] = useState<AttachmentWithUploader[]>([])
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [showAllAttachments, setShowAllAttachments] = useState(false)
+  
+  const { fetchChannelAttachments, downloadAttachment, previewAttachment } = useChatAttachments()
+
+  // Fetch attachments when channel changes
+  useEffect(() => {
+    if (!channel?.id || !isVisible) {
+      setAttachments([])
+      return
+    }
+
+    const loadAttachments = async () => {
+      setAttachmentsLoading(true)
+      setAttachmentError(null)
+      
+      try {
+        const result = await fetchChannelAttachments({
+          channelId: channel.id,
+          limit: showAllAttachments ? 50 : 5
+        })
+        setAttachments(result.attachments)
+      } catch (error) {
+        console.error('Failed to load attachments:', error)
+        setAttachmentError('Failed to load files')
+      } finally {
+        setAttachmentsLoading(false)
+      }
+    }
+
+    loadAttachments()
+  }, [channel?.id, isVisible, showAllAttachments, fetchChannelAttachments])
+
+  const handleDownload = useCallback((attachment: IAttachment) => {
+    downloadAttachment(attachment)
+  }, [downloadAttachment])
+
+  const handlePreview = useCallback((attachment: IAttachment) => {
+    previewAttachment(attachment)
+  }, [previewAttachment])
 
   if (!isVisible || !channel) {
     return null
@@ -68,32 +124,81 @@ export function ContextPanel({
     deadline: '2025-12-31'
   } : null
 
-  const mockFiles = [
-    {
-      id: '1',
-      name: 'ui-designs-v2.pdf',
-      size: '2.4 MB',
-      uploadedBy: 'Sarah Wilson',
-      uploadedAt: new Date('2025-10-09T15:45:00Z'),
-      type: 'pdf'
-    },
-    {
-      id: '2',
-      name: 'project-requirements.docx',
-      size: '1.2 MB',
-      uploadedBy: 'Afzal Habib',
-      uploadedAt: new Date('2025-10-08T10:30:00Z'),
-      type: 'document'
-    },
-    {
-      id: '3',
-      name: 'screenshot-2025-10-07.png',
-      size: '845 KB',
-      uploadedBy: 'Talha',
-      uploadedAt: new Date('2025-10-07T14:20:00Z'),
-      type: 'image'
-    }
-  ]
+  // Render file item
+  const renderFileItem = (attachment: AttachmentWithUploader) => {
+    const category = getFileCategory(attachment.file_type, attachment.file_name)
+    const Icon = getFileIcon(category)
+    const colorClass = getExtensionColor(category)
+
+    return (
+      <div 
+        key={attachment.id} 
+        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer group transition-colors"
+      >
+        <div className={cn("h-8 w-8 rounded flex items-center justify-center shrink-0", colorClass)}>
+          <Icon className="h-4 w-4" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{attachment.file_name}</p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{formatFileSize(attachment.file_size)}</span>
+            {attachment.uploaded_by && (
+              <>
+                <span>•</span>
+                <span>{attachment.uploaded_by}</span>
+              </>
+            )}
+            {attachment.created_at && (
+              <>
+                <span>•</span>
+                <span>{format(new Date(attachment.created_at), 'MMM d')}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handlePreview(attachment)
+                }}
+              >
+                <Eye className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Preview</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDownload(attachment)
+                }}
+              >
+                <Download className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Download</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <TooltipProvider>
@@ -294,36 +399,54 @@ export function ContextPanel({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-muted-foreground" />
-                  <h4 className="font-medium">Shared Files</h4>
+                  <h4 className="font-medium">
+                    Shared Files
+                    {attachments.length > 0 && (
+                      <span className="text-muted-foreground font-normal ml-1">
+                        ({attachments.length})
+                      </span>
+                    )}
+                  </h4>
                 </div>
-                <Button variant="ghost" size="sm">
-                  View all
-                </Button>
+                {attachments.length > 3 && !showAllAttachments && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setShowAllAttachments(true)}
+                  >
+                    View all
+                  </Button>
+                )}
+                {showAllAttachments && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setShowAllAttachments(false)}
+                  >
+                    Show less
+                  </Button>
+                )}
               </div>
 
-              <div className="space-y-2">
-                {mockFiles.slice(0, 3).map((file) => (
-                  <div key={file.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
-                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{file.size}</span>
-                        <span>•</span>
-                        <span>{file.uploadedBy}</span>
-                        <span>•</span>
-                        <span>{format(new Date(file.uploadedAt), 'MMM d')}</span>
-                      </div>
-                    </div>
-
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
+              <div className="space-y-1">
+                {attachmentsLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading files...</span>
                   </div>
-                ))}
+                ) : attachmentError ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {attachmentError}
+                  </div>
+                ) : attachments.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    No files shared yet
+                  </div>
+                ) : (
+                  <>
+                    {(showAllAttachments ? attachments : attachments.slice(0, 3)).map(renderFileItem)}
+                  </>
+                )}
               </div>
             </div>
 

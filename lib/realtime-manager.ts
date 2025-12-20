@@ -21,6 +21,7 @@ export interface RealtimeEventHandlers {
   onReactionAdd?: (reaction: any) => void
   onReactionRemove?: (reactionId: string) => void
   onChannelUpdate?: (channel: any) => void
+  onAttachmentsAdded?: (data: { channelId: string; messageId?: string; attachments: any[] }) => void
   onMentionNotification?: (data: { 
     type: string
     message_id: string
@@ -317,6 +318,10 @@ export class RealtimeManager {
         .on('broadcast', { event: 'message_delivered' }, (payload) => {
           console.log('📨 Realtime: Message delivered', payload)
           this.eventHandlers.onMessageDelivered?.(payload.payload)
+        })
+        .on('broadcast', { event: 'attachments_added' }, (payload) => {
+          console.log('📎 Realtime: Attachments added', payload)
+          this.eventHandlers.onAttachmentsAdded?.(payload.payload)
         })
 
       rtChannel.subscribe((status, err) => {

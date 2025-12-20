@@ -609,6 +609,163 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
 
+  // Send message with file attachments
+  const sendMessageWithFiles = useCallback(async (
+    messageData: CreateMessageData,
+    files: File[],
+    onProgress?: (progress: number) => void
+  ) => {
+    const tempId = crypto.randomUUID()
+    try {
+      dispatch(setActionLoading(true))
+
+      // Get sender info from session for optimistic update
+      const senderName = sessionUser?.name || sessionUser?.email || 'Unknown User'
+      const senderEmail = sessionUser?.email || ''
+      const senderAvatar = sessionUser?.image || sessionUser?.avatar || ''
+      const senderRole = sessionUser?.role || 'User'
+
+      // Create optimistic message with placeholder attachments
+      const optimisticAttachments = files.map((file, index) => ({
+        id: `temp_${index}`,
+        message_id: tempId,
+        file_name: file.name,
+        file_url: URL.createObjectURL(file),
+        file_size: file.size,
+        file_type: file.type,
+        created_at: new Date().toISOString(),
+        isUploading: true
+      }))
+
+      const optimisticMessage = {
+        id: tempId,
+        channel_id: messageData.channel_id,
+        mongo_sender_id: sessionUserId!,
+        content: messageData.content,
+        content_type: files.length > 0 ? 'file' : (messageData.content_type || 'text'),
+        thread_id: messageData.thread_id,
+        parent_message_id: messageData.parent_message_id,
+        mongo_mentioned_user_ids: messageData.mongo_mentioned_user_ids || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        read_receipts: [],
+        reactions: [],
+        attachments: optimisticAttachments,
+        reply_count: 0,
+        is_edited: false,
+        isOptimistic: true,
+        sender_name: senderName,
+        sender_email: senderEmail,
+        sender_avatar: senderAvatar,
+        sender_role: senderRole,
+        sender: {
+          mongo_member_id: sessionUserId!,
+          name: senderName,
+          email: senderEmail,
+          avatar: senderAvatar,
+          role: senderRole,
+          userType: 'User' as 'User' | 'Client',
+          isOnline: true
+        }
+      }
+
+      // Add optimistic message to state
+      dispatch(addMessage({ channelId: messageData.channel_id, message: optimisticMessage }))
+
+      // Build form data
+      const formData = new FormData()
+      formData.append('channel_id', messageData.channel_id)
+      formData.append('content', messageData.content || '')
+      formData.append('content_type', messageData.content_type || 'text')
+      if (messageData.thread_id) {
+        formData.append('thread_id', messageData.thread_id)
+      }
+      if (messageData.parent_message_id) {
+        formData.append('parent_message_id', messageData.parent_message_id)
+      }
+      if (messageData.mongo_mentioned_user_ids?.length) {
+        formData.append('mongo_mentioned_user_ids', JSON.stringify(messageData.mongo_mentioned_user_ids))
+      }
+      files.forEach(file => {
+        formData.append('files', file)
+      })
+
+      // Upload via XHR for progress tracking
+      const response = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded / event.total) * 100)
+            onProgress?.(progress)
+          }
+        })
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            const response = JSON.parse(xhr.responseText)
+            if (response.success) {
+              resolve(response.data)
+            } else {
+              reject(new Error(response.error || 'Upload failed'))
+            }
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`))
+          }
+        })
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'))
+        })
+
+        xhr.open('POST', '/api/communication/messages/with-files')
+        xhr.send(formData)
+      })
+
+      // Update optimistic message with real data
+      if (response?.id) {
+        // Clean up object URLs
+        optimisticAttachments.forEach(att => {
+          if (att.file_url?.startsWith('blob:')) {
+            URL.revokeObjectURL(att.file_url)
+          }
+        })
+
+        dispatch(updateMessage({
+          channelId: messageData.channel_id,
+          messageId: tempId,
+          updates: { ...response, isOptimistic: false }
+        }))
+      }
+
+      toast({
+        title: files.length > 0 ? "Files sent" : "Message sent",
+        description: files.length > 0 
+          ? `${files.length} file(s) uploaded successfully`
+          : "Your message has been sent successfully",
+      })
+
+      return response
+    } catch (error) {
+      // Mark optimistic message as failed
+      dispatch(updateMessage({
+        channelId: messageData.channel_id,
+        messageId: tempId,
+        updates: { isFailed: true }
+      }))
+
+      dispatch(setError('Failed to send message with files'))
+      toast({
+        title: "Error",
+        description: "Failed to send message with files",
+        variant: "destructive"
+      })
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, sessionUserId, sessionUser, toast])
+
   // Update an existing message (for editing)
   const editMessage = useCallback(async (messageId: string, updates: { content?: string }) => {
     try {
@@ -881,6 +1038,7 @@ export function useCommunications() {
       dispatch(prependMessages({ channelId, messages: newMessages }))
     },
     sendMessage,
+    sendMessageWithFiles,
     updateMessage: editMessage,
     createChannel,
     markAsRead,

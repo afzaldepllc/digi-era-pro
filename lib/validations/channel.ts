@@ -96,12 +96,17 @@ export const channelIdSchema = z.object({
 // Message schemas
 export const baseMessageSchema = z.object({
   channel_id: z.string().uuid('Invalid channel ID'),
-  content: z.string().min(1, 'Message content is required').max(5000, 'Message too long'),
+  content: z.string().max(5000, 'Message too long').default(''),
   content_type: z.enum(['text', 'image', 'file', 'system']).default('text'),
   thread_id: z.string().uuid().optional(),
   parent_message_id: z.string().uuid().optional(),
   mongo_mentioned_user_ids: z.array(z.string()).default([]),
-})
+  // Attachment IDs (if files were uploaded separately first)
+  attachment_ids: z.array(z.string().uuid()).optional(),
+}).refine(
+  (data) => data.content.trim().length > 0 || (data.attachment_ids && data.attachment_ids.length > 0),
+  { message: 'Message must have content or at least one attachment' }
+)
 
 export const createMessageSchema = baseMessageSchema
 

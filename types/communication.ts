@@ -120,6 +120,7 @@ export interface CreateMessageData {
   content: string // Changed from 'message'
   content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
+  attachment_ids?: string[] // IDs of pre-uploaded attachments
   thread_id?: string // Changed from 'parentMessageId'
   parent_message_id?: string // For replies
   mongo_mentioned_user_ids?: string[] // Mentioned users

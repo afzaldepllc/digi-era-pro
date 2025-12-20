@@ -18,6 +18,7 @@ export interface MessageInputRef {
 interface MessageInputProps {
   channelId: string
   onSend: (data: CreateMessageData) => void
+  onSendWithFiles?: (data: CreateMessageData, files: File[], onProgress?: (progress: number) => void) => Promise<any>
   onEdit?: (messageId: string, data: CreateMessageData) => Promise<void>
   disabled?: boolean
   placeholder?: string
@@ -32,6 +33,7 @@ interface MessageInputProps {
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   channelId,
   onSend,
+  onSendWithFiles,
   onEdit,
   disabled = false,
   placeholder = "Type a message...",
@@ -45,6 +47,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   const [messageHtml, setMessageHtml] = useState("")
   const [messageText, setMessageText] = useState("")
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [replyTo, setReplyTo] = useState<ICommunication | null>(null)
   const [editMessage, setEditMessage] = useState<ICommunication | null>(null)
   
@@ -90,7 +93,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         channel_id: channelId,
         content: contentToSend,
         content_type: files.length > 0 ? 'file' : 'text',
-        attachments: files.length > 0 ? files.map(f => f.name) : undefined,
         mongo_mentioned_user_ids: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
         parent_message_id: replyToId
       }
@@ -98,8 +100,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
       if (editMessageId && onEdit) {
         // Handle edit
         await onEdit(editMessageId, messageData)
+      } else if (files.length > 0 && onSendWithFiles) {
+        // Handle new message with files
+        setIsUploading(true)
+        setUploadProgress(0)
+        try {
+          await onSendWithFiles(messageData, files, (progress) => {
+            setUploadProgress(progress)
+          })
+        } finally {
+          setIsUploading(false)
+          setUploadProgress(0)
+        }
       } else {
-        // Handle new message
+        // Handle new message without files
         await onSend(messageData)
       }
 
@@ -121,6 +135,22 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   return (
     <TooltipProvider>
       <div className={cn("border-t bg-card p-2", className)}>
+        {/* Upload progress indicator */}
+        {isUploading && (
+          <div className="mb-2 px-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Uploading files...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="h-1 bg-muted rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+        
         {/* Input area */}
         <div className="flex items-end gap-2">
           {/* Rich Text Editor */}
@@ -129,7 +159,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
               ref={editorRef}
               value={messageHtml}
               placeholder={placeholder}
-              disabled={disabled}
+              disabled={disabled || isUploading}
               maxLength={maxLength}
               onChange={(html, text) => {
                 setMessageHtml(html)

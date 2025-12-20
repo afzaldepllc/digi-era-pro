@@ -53,6 +53,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     onlineUserIds,
     isContextPanelVisible,
     sendMessage,
+    sendMessageWithFiles,
     updateMessage,
     markAsRead,
     setTyping,
@@ -680,6 +681,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               ref={messageInputRef}
               channelId={channelId}
               onSend={handleSendMessage}
+              onSendWithFiles={sendMessageWithFiles}
               onEdit={handleEditMessage}
               disabled={actionLoading}
               placeholder={`Message ${getChannelTitle()}...`}

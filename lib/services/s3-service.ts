@@ -51,6 +51,35 @@ export const S3_CONFIG = {
             'application/x-zip-compressed'
         ] as const,
         expiresIn: 3600 * 24 * 3 // 3 days for email attachments (within AWS limit)
+    },
+    CHAT_ATTACHMENTS: {
+        folder: 'chat-attachments',
+        maxSize: 25 * 1024 * 1024, // 25MB
+        allowedTypes: [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'text/plain',
+            'text/csv',
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/gif',
+            'image/svg+xml',
+            'application/zip',
+            'application/x-zip-compressed',
+            'video/mp4',
+            'video/webm',
+            'audio/mpeg',
+            'audio/mp3',
+            'audio/wav',
+            'audio/ogg'
+        ] as const,
+        expiresIn: 3600 * 24 * 7 // 7 days for chat attachments
     }
 } as const
 
@@ -206,6 +235,24 @@ export class S3Service {
         const command = new GetObjectCommand({
             Bucket: this.bucketName,
             Key: key
+        })
+
+        return getSignedUrl(this.s3Client, command, {
+            expiresIn: config.expiresIn
+        })
+    }
+
+    /**
+     * Get presigned URL for file download with Content-Disposition header
+     * This forces the browser to download the file instead of displaying it
+     */
+    static async getPresignedDownloadUrl(key: string, fileType: FileType, fileName: string): Promise<string> {
+        const config = S3_CONFIG[fileType]
+
+        const command = new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+            ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`
         })
 
         return getSignedUrl(this.s3Client, command, {

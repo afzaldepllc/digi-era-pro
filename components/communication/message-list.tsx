@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment } from "@/types/communication"
+import { AttachmentGrid } from "./attachment-preview"
 import { formatDistanceToNow, format } from "date-fns"
 import {
   DropdownMenu,
@@ -191,38 +192,12 @@ export function MessageList({
   // s3_bucket?: string
   // file_size?: number
   // file_type?: string
-  const renderAttachment = (attachment: IAttachment, index: number) => {
-    const fileName = attachment.file_name;
-    const isImage = attachment.file_type?.startsWith('image/')
-
+  const renderAttachments = (attachments: IAttachment[]) => {
+    if (!attachments || attachments.length === 0) return null
+    
     return (
-      <div key={attachment.id} className="mt-2">
-        {isImage ? (
-          <div className="relative max-w-xs">
-            <img
-              src={attachment.file_url}
-              alt={fileName}
-              className="rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90"
-              onClick={() => window.open(attachment.file_url, '_blank')}
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="absolute top-2 right-2 opacity-80 hover:opacity-100"
-              onClick={() => window.open(attachment.file_url, '_blank')}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50 max-w-xs">
-            <Download className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm truncate flex-1">{fileName}</span>
-            <Button variant="ghost" size="sm">
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
+      <div className="mt-2">
+        <AttachmentGrid attachments={attachments} />
       </div>
     )
   }
@@ -407,9 +382,9 @@ export function MessageList({
               />
 
             {/* Attachments */}
-            {message.attachments && message.attachments.map((attachment, index) =>
-              renderAttachment(attachment, index)
-            )}
+            {message.attachments && message.attachments.length > 0 && 
+              renderAttachments(message.attachments)
+            }
             </div>
 
           {/* Status and read receipts UI */}
