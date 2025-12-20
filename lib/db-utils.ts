@@ -68,6 +68,11 @@ export const messageOperations = {
     thread_id?: string
     parent_message_id?: string // For replies
     mongo_mentioned_user_ids?: string[]
+    // Denormalized sender fields for real-time performance
+    sender_name?: string
+    sender_email?: string
+    sender_avatar?: string
+    sender_role?: string
   }) => {
     const message = await prisma.messages.create({
       data: {
@@ -78,6 +83,11 @@ export const messageOperations = {
         thread_id: data.thread_id,
         parent_message_id: data.parent_message_id,
         mongo_mentioned_user_ids: data.mongo_mentioned_user_ids ?? [],
+        // Store denormalized sender data
+        sender_name: data.sender_name ?? 'Unknown User',
+        sender_email: data.sender_email ?? '',
+        sender_avatar: data.sender_avatar,
+        sender_role: data.sender_role ?? 'User',
       },
       include: {
         messages: true, // parent_message

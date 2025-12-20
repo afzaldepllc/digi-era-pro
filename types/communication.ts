@@ -17,7 +17,16 @@ export interface ICommunication {
   parent_message_id?: string // For replies
   attachments?: IAttachment[]
   read_receipts?: IReadReceipt[]
-  sender?: IParticipant // Enriched sender data
+  
+  // Denormalized sender fields (stored in Supabase for real-time performance)
+  sender_name: string
+  sender_email: string
+  sender_avatar?: string
+  sender_role: string
+  
+  // Enriched sender object (computed from denormalized fields)
+  sender?: IParticipant
+  
   // UI helper fields (not in schema)
   isOptimistic?: boolean // For optimistic updates
   isFailed?: boolean // For failed message sends

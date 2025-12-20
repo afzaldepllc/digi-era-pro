@@ -334,7 +334,13 @@ export function useCommunications() {
     try {
       dispatch(setActionLoading(true))
 
-      // Create optimistic message
+      // Get sender info from session for optimistic update
+      const senderName = sessionUser?.name || sessionUser?.email || 'Unknown User'
+      const senderEmail = sessionUser?.email || ''
+      const senderAvatar = sessionUser?.image || sessionUser?.avatar || ''
+      const senderRole = sessionUser?.role || 'User'
+
+      // Create optimistic message with denormalized sender fields
       const optimisticMessage = {
         id: tempId,
         channel_id: messageData.channel_id,
@@ -352,14 +358,20 @@ export function useCommunications() {
         reply_count: 0,
         is_edited: false,
         isOptimistic: true, // Flag to identify optimistic messages
+        // Denormalized sender fields (same as stored in Supabase)
+        sender_name: senderName,
+        sender_email: senderEmail,
+        sender_avatar: senderAvatar,
+        sender_role: senderRole,
+        // Computed sender object for UI compatibility
         sender: {
           mongo_member_id: sessionUserId!,
-          name: sessionUser?.name || sessionUser?.email || 'Unknown User',
-          email: sessionUser?.email || '',
-          avatar: sessionUser?.image || '',
-          role: sessionUser?.role || 'User',
+          name: senderName,
+          email: senderEmail,
+          avatar: senderAvatar,
+          role: senderRole,
           userType: 'User' as 'User' | 'Client',
-          isOnline: false
+          isOnline: true
         }
       }
 

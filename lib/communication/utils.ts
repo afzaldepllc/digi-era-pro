@@ -32,15 +32,51 @@ export function enrichChannelWithUserData(channel: any, users: any[]) {
   }
 }
 
-// Helper function to enrich messages with MongoDB user data
+/**
+ * Transform a message with denormalized sender fields to include sender object.
+ * This is the preferred method as it doesn't require MongoDB lookups.
+ * Used for messages that already have sender_name, sender_email etc fields.
+ */
+export function transformMessageWithSender(message: any) {
+  if (!message || typeof message !== 'object') {
+    console.error('Invalid message for transformation:', message)
+    return null
+  }
+
+  return {
+    ...message,
+    sender: {
+      mongo_member_id: message.mongo_sender_id,
+      name: message.sender_name || 'Unknown User',
+      email: message.sender_email || '',
+      avatar: message.sender_avatar || '',
+      role: message.sender_role || 'User',
+      userType: 'User' as const,
+      isOnline: false,
+    }
+  }
+}
+
+/**
+ * @deprecated Use transformMessageWithSender instead.
+ * This function requires MongoDB user data and should only be used for
+ * backward compatibility with messages that don't have denormalized sender fields.
+ * 
+ * For real-time performance, messages now store sender data directly in Supabase.
+ */
 export function enrichMessageWithUserData(message: any, users: any[]) {
   if (!message || typeof message !== 'object' || !message.mongo_sender_id) {
     console.error('Invalid message for enrichment:', message)
     return null
   }
   
+  // If message already has denormalized sender fields, use them (no MongoDB lookup)
+  if (message.sender_name) {
+    return transformMessageWithSender(message)
+  }
+  
   try {
-    // Create a map of users by _id for quick lookup
+    // Legacy fallback: Create a map of users by _id for quick lookup
     const userMap = new Map(users.map(user => [user._id.toString(), user]))
 
     // Find the sender user
