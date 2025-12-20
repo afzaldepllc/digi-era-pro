@@ -21,38 +21,25 @@ import { User } from "@/types"
 
 interface UserDirectoryProps {
   onStartDM?: (userId: string) => void
+  onChannelSelect?: (channelId: string) => void
   className?: string
 }
 
-export const UserDirectory = memo(function UserDirectory({ onStartDM, className }: UserDirectoryProps) {
+export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelSelect, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const { channels, createChannel, loading: channelLoading, selectChannel } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
 
-  // Filter active users (exclude current user and inactive users, and clients)
+  // Filter active users (exclude current user)
   const activeUsers = useMemo(() => {
-    // Get users who already have DM channels with current user
-    const dmUserIds = new Set<string>()
-    channels.filter(channel => channel.type === 'dm').forEach(channel => {
-      const currentUserInChannel = channel.channel_members.some(p => p.mongo_member_id === (session?.user as any)?.id)
-      if (currentUserInChannel) {
-        channel.channel_members.forEach(p => {
-          if (p.mongo_member_id !== (session?.user as any)?.id) {
-            dmUserIds.add(p.mongo_member_id)
-          }
-        })
-      }
-    })
-
     return users.filter(user =>
-      user._id.toString() !== (session?.user as any)?.id &&
-      !dmUserIds.has(user._id.toString())
+      user._id.toString() !== (session?.user as any)?.id
       //  &&
       // user.isClient === false
     )
-  }, [users, channels, (session?.user as any)?.id]);
+  }, [users, (session?.user as any)?.id]);
   console.log("activeUsers42",activeUsers);
   // Filter users based on search
   const filteredUsers = useMemo(() => {
@@ -74,16 +61,32 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
     }
 
     try {
-      // Create DM channel
-      const channel = await createChannel({
-        type: 'dm',
-        channel_members: [(session?.user as any)?.id, user._id as string],
-        is_private: true
+      // Check if DM channel already exists
+      const existingChannel = channels.find(channel => {
+        if (channel.type !== 'dm') return false
+        const memberIds = channel.channel_members.map(m => m.mongo_member_id)
+        return memberIds.includes((session?.user as any)?.id) && memberIds.includes(user._id.toString())
       })
 
-      if (channel) {
-        // Select the new channel
-        selectChannel(channel.id)
+      if (existingChannel) {
+        // Open existing channel
+        selectChannel(existingChannel.id)
+        if (onChannelSelect) {
+          onChannelSelect(existingChannel.id)
+        }
+      } else {
+        // Create new DM channel
+        const channel = await createChannel({
+          type: 'dm',
+          channel_members: [(session?.user as any)?.id, user._id as string],
+          is_private: true
+        })
+
+        if (channel && onChannelSelect) {
+          // Select the new channel
+          selectChannel(channel.id)
+          onChannelSelect(channel.id)
+        }
       }
     } catch (error) {
       console.error('Failed to create DM:', error)
@@ -115,11 +118,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
       <div className="p-4 border-b">
-        <div className="flex items-center gap-3 mb-4">
-          <Users className="h-5 w-5" />
-          <h3 className="font-semibold">Start a Conversation</h3>
-        </div>
-
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -148,7 +146,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
               {filteredUsers.map((user) => (
                 <div
                   key={user._id as string}
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors group"
+                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => !channelLoading && handleStartDM(user)}
                 >
                   {/* Avatar */}
                   <div className="relative">
@@ -183,17 +182,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
                       )}
                     </div>
                   </div>
-
-                  {/* Action Button */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleStartDM(user)}
-                    disabled={channelLoading}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
             </div>
@@ -204,11 +192,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, className 
       {/* Footer */}
       <div className="p-4 border-t bg-muted/30">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>{filteredUsers.length} active user{filteredUsers.length !== 1 ? 's' : ''}</span>
-          <div className="flex items-center gap-1">
-            <UserCheck className="h-3 w-3" />
-            <span>Start a conversation</span>
-          </div>
+          <span>{filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
     </div>

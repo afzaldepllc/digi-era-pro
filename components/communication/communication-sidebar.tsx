@@ -92,14 +92,14 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
                     <ChevronRight className="h-4 w-4 mr-2" />
                   )}
                   <Hash className="h-4 w-4 mr-2" />
-                  Channels ({channels.length})
+                  Channels ({channels.filter(c => c.type !== 'dm').length})
                 </Button>
               </div>
 
               {showChannels && (
                 <div className="mt-2">
                   <ChannelList
-                    channels={channels}
+                    channels={channels.filter(c => c.type !== 'dm')}
                     activeChannelId={activeChannelId}
                     onChannelSelect={onChannelSelect}
                     currentUserId={currentUserId}
@@ -112,7 +112,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
 
             <Separator />
 
-            {/* Users Section */}
+            {/* Direct Messages Section */}
             <div>
               <div className="px-2">
                 <Button
@@ -131,8 +131,22 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               </div>
 
               <div className={cn("mt-2", !showUsers && "hidden")}>
+                {/* Existing DM Channels */}
+                <div className="mb-2">
+                  <ChannelList
+                    channels={channels.filter(c => c.type === 'dm')}
+                    activeChannelId={activeChannelId}
+                    onChannelSelect={onChannelSelect}
+                    currentUserId={currentUserId}
+                    showSearch={false}
+                    className="border-0 shadow-none"
+                  />
+                </div>
+
+                {/* Users without DM channels */}
                 <UserDirectory
                   onStartDM={handleStartDM}
+                  onChannelSelect={onChannelSelect}
                   className="border-0 shadow-none"
                 />
               </div>
