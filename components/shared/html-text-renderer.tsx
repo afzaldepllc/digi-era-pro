@@ -63,12 +63,12 @@ export function HtmlTextRenderer({
     // First, clean up any raw HTML that was escaped and stored as text
     // This handles old messages where TipTap escaped the HTML spans
     const cleanedHtml = html
-      .replace(/&lt;span class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/g, '$1')
-      .replace(/<span class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/g, '$1');
+      .replace(/&lt;span class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/g, '$1')
+      .replace(/<span class="mention"[^>]*>(@\w+)<\/span>/g, '$1');
     
-    // Now match @username patterns and wrap them in styled spans
-    // Matches @word or @FirstName LastName (two words)
-    const mentionPattern = /@(\w+(?:\s+\w+)?)/g;
+    // Match @username patterns - only single words (no spaces)
+    // Examples: @everyone, @Mike, @Anna
+    const mentionPattern = /@(\w+)/g;
     
     return cleanedHtml.replace(mentionPattern, (match, name) => {
       return `<span class="mention">@${name}</span>`;
@@ -196,9 +196,9 @@ export function HtmlTextRenderer({
 const cleanEscapedHtml = (html: string): string => {
   return html
     // Remove escaped HTML mention spans: &lt;span class="mention"...&gt;@Name&lt;/span&gt;
-    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/gi, '$1')
+    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/gi, '$1')
     // Also handle regular HTML mention spans
-    .replace(/<span[^>]*class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/gi, '$1')
+    .replace(/<span[^>]*class="mention"[^>]*>(@\w+)<\/span>/gi, '$1')
     // Decode common HTML entities
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -240,11 +240,11 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
 export const highlightMentionsInHtml = (html: string): string => {
   // First, clean up any raw HTML that was escaped and stored as text
   const cleanedHtml = html
-    .replace(/&lt;span class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/g, '$1')
-    .replace(/<span class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/g, '$1');
+    .replace(/&lt;span class="mention"[^&]*&gt;(@\w+)&lt;\/span&gt;/g, '$1')
+    .replace(/<span class="mention"[^>]*>(@\w+)<\/span>/g, '$1');
   
-  // Match @username patterns and wrap them
-  const mentionPattern = /@(\w+(?:\s+\w+)?)/g;
+  // Match @username patterns - single words only
+  const mentionPattern = /@(\w+)/g;
   return cleanedHtml.replace(mentionPattern, (match, name) => {
     return `<span class="mention">@${name}</span>`;
   });
