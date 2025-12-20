@@ -13,6 +13,10 @@ interface FullscreenToggleProps {
    * CSS selector used to find layout elements to hide. Defaults target common header/sidebar/footer selectors.
    */
   selectors?: string;
+  /**
+   * Callback fired when fullscreen/layout state changes
+   */
+  onChange?: (isFullscreen: boolean) => void;
 }
 
 export interface FullscreenToggleRef {
@@ -23,6 +27,7 @@ const FullscreenToggle = forwardRef<FullscreenToggleRef, FullscreenToggleProps>(
   ({
     mode = 'fullscreen-hide-layout',
     selectors = 'header, footer, aside, [data-role="sidebar"], .sidebar, .header, .footer, .mainCollapserBtn',
+    onChange,
   }, ref) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isLayoutHidden, setIsLayoutHidden] = useState(false);
@@ -64,6 +69,7 @@ const FullscreenToggle = forwardRef<FullscreenToggleRef, FullscreenToggleProps>(
     const handler = () => {
       const fs = !!document.fullscreenElement;
       setIsFullscreen(fs);
+      onChange?.(fs);
 
       // Only auto-hide/restore for fullscreen-hide-layout mode
       if (mode === 'fullscreen-hide-layout') {
@@ -111,6 +117,7 @@ const FullscreenToggle = forwardRef<FullscreenToggleRef, FullscreenToggleProps>(
           }
         });
         setIsLayoutHidden(false);
+        onChange?.(false);
       } else {
         document.querySelectorAll(selectors).forEach((el) => {
           const element = el as HTMLElement;
@@ -122,6 +129,7 @@ const FullscreenToggle = forwardRef<FullscreenToggleRef, FullscreenToggleProps>(
           }
         });
         setIsLayoutHidden(true);
+        onChange?.(true);
       }
       return;
     }

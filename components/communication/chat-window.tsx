@@ -7,6 +7,7 @@ import { MessageList } from "@/components/communication/message-list"
 import { MessageInput } from "@/components/communication/message-input"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
+import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 import { 
   Info, 
   Phone, 
@@ -38,9 +39,8 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import FullscreenToggle from "../shared/FullscreenToggle"
 
-export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded }: ChatWindowProps) {
+export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded, fullscreenRef, onFullscreenChange }: ChatWindowProps) {
   const {
     selectedChannel,
     messages,
@@ -320,7 +320,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <FullscreenToggle mode="hide-layout" />
+              <FullscreenToggle mode="hide-layout" ref={fullscreenRef} onChange={onFullscreenChange} />
             </div>
           </div>
 

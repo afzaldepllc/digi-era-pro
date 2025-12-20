@@ -91,6 +91,7 @@ export default function CommunicationsPage() {
     }
   }, [activeChannelId, selectChannel])
   const fullscreenRef = useRef<FullscreenToggleRef>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Update URL when channel changes
   // useEffect(() => {
@@ -151,15 +152,15 @@ export default function CommunicationsPage() {
   const [chat_users, setChatUsers] = useState<any[]>(mockUsers)
   const [usersLoading, setUsersLoading] = useState(false)
 
-
+  console.log("fullscreenRef154", fullscreenRef);
   const handleMemberSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const options = Array.from(e.target.selectedOptions)
     setSelectedMembers(options.map(opt => opt.value))
   }
-
+  console.log("isFullscreen150", isFullscreen)
   return (
-    // <div className={`${fullscreenRef ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
-    <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}>
+    <div className={`${isFullscreen ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
+    {/* <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}> */}
       {/* Mobile header */}
       <div className="lg:hidden border-b bg-card p-4">
         <div className="flex items-center justify-between">
@@ -266,6 +267,8 @@ export default function CommunicationsPage() {
           {activeChannelId ? (
             <ChatWindow
               channelId={activeChannelId}
+              fullscreenRef={fullscreenRef}
+              onFullscreenChange={setIsFullscreen}
             />
           ) : (
             <div className="h-full flex items-center justify-center bg-muted/10">

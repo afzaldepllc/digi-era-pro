@@ -1,4 +1,5 @@
 // Communication Types - Updated for Supabase integration
+import { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 
 // Messages table interface
 export interface ICommunication {
@@ -134,6 +135,8 @@ export interface ChatWindowProps {
   className?: string
   onToggleSidebar?: () => void
   isSidebarExpanded?: boolean
+  fullscreenRef?: React.RefObject<FullscreenToggleRef | null>
+  onFullscreenChange?: (isFullscreen: boolean) => void
 }
 
 export interface MessageListProps {
