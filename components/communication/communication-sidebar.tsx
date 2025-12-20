@@ -131,19 +131,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               </div>
 
               <div className={cn("mt-2", !showUsers && "hidden")}>
-                {/* Existing DM Channels */}
-                <div className="mb-2">
-                  <ChannelList
-                    channels={channels.filter(c => c.type === 'dm')}
-                    activeChannelId={activeChannelId}
-                    onChannelSelect={onChannelSelect}
-                    currentUserId={currentUserId}
-                    showSearch={false}
-                    className="border-0 shadow-none"
-                  />
-                </div>
-
-                {/* Users without DM channels */}
+                {/* All Users - handles both existing DMs and new conversations */}
                 <UserDirectory
                   onStartDM={handleStartDM}
                   onChannelSelect={onChannelSelect}
