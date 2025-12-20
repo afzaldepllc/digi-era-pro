@@ -60,8 +60,17 @@ export async function GET(request: NextRequest) {
       offset: parseInt(searchParams.get('offset') || '0')
     }
 
+    console.log('[Search API] Raw query params:', {
+      channel_id: searchParams.get('channel_id'),
+      query: searchParams.get('query'),
+      limit: searchParams.get('limit'),
+      offset: searchParams.get('offset')
+    })
+
     // Validate
     const validatedParams = searchQuerySchema.parse(queryParams)
+    
+    console.log('[Search API] Validated params:', validatedParams)
 
     // Check if user is member of the channel
     const membership = await prisma.channel_members.findFirst({
@@ -74,6 +83,16 @@ export async function GET(request: NextRequest) {
     if (!membership) {
       return createErrorResponse('Access denied to this channel', 403)
     }
+
+    // First, let's get ALL messages for this channel to debug
+    const allMessages = await prisma.messages.findMany({
+      where: { channel_id: validatedParams.channel_id },
+      take: 10,
+      orderBy: { created_at: 'desc' },
+      select: { id: true, content: true }
+    })
+    console.log('[Search API] Sample messages in channel:', allMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 100) })))
+    console.log('[Search API] Searching for query:', JSON.stringify(validatedParams.query))
 
     // Search messages using PostgreSQL full-text search or ILIKE
     const messages = await prisma.messages.findMany({
@@ -92,6 +111,11 @@ export async function GET(request: NextRequest) {
         attachments: true
       }
     })
+    
+    console.log('[Search API] Found messages count:', messages.length)
+    if (messages.length > 0) {
+      console.log('[Search API] First match:', messages[0].content?.substring(0, 100))
+    }
 
     // Get total count for pagination
     const totalCount = await prisma.messages.count({
