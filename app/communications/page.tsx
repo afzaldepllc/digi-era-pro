@@ -158,7 +158,8 @@ export default function CommunicationsPage() {
   }
 
   return (
-    <div className={`${fullscreenRef ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
+    // <div className={`${fullscreenRef ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
+    <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}>
       {/* Mobile header */}
       <div className="lg:hidden border-b bg-card p-4">
         <div className="flex items-center justify-between">

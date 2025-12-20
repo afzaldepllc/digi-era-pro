@@ -366,9 +366,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
         </div>
 
         {/* Main content area */}
-        <div className="flex flex-1 min-h-100">
+        <div className="flex flex-1 min-h-0">
           {/* Messages area */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {/* Error display */}
             {error && (
               <Alert className="m-4 mb-0">
@@ -402,24 +402,23 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
             {/* Messages */}
             {!messagesLoading && mockCurrentUser && (
-              <div className="flex-1 min-h-0 h-full">
-                {(() => {
-                  const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
-                  const channelTypingUsers = (typingUsers as unknown as Record<string, ITypingIndicator[]>)[channelId] || []
-                  
-                  return (
-                    <MessageList
-                      messages={channelMessages}
-                      typingUsers={channelTypingUsers}
-                      currentUserId={mockCurrentUser._id}
-                      onMessageRead={handleMessageRead}
-                      onReply={handleReply}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                    />
-                  )
-                })()}
-              </div>
+              (() => {
+                const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
+                const channelTypingUsers = (typingUsers as unknown as Record<string, ITypingIndicator[]>)[channelId] || []
+                
+                return (
+                  <MessageList
+                    messages={channelMessages}
+                    typingUsers={channelTypingUsers}
+                    currentUserId={mockCurrentUser._id}
+                    onMessageRead={handleMessageRead}
+                    onReply={handleReply}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    className="flex-1 min-h-0"
+                  />
+                )
+              })()
             )}
 
             {/* Message input */}

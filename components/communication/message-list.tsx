@@ -314,9 +314,9 @@ export function MessageList({
 
   return (
     <TooltipProvider>
-      <div className={cn("flex flex-col h-full", className)}>
+      <>
         {/* Messages */}
-        <div className="overflow-y-auto overflow-x-hidden space-y-1 h-full max-h-[60vh] p-3">
+        <div className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-1 p-3", className)}>
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground h-full">
               <div className="text-center">
@@ -378,7 +378,7 @@ export function MessageList({
           {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>
-      </div>
+      </>
     </TooltipProvider>
   )
 }
