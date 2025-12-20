@@ -458,6 +458,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     className="flex-1 min-h-0"
+                    channel_members={selectedChannel?.channel_members || []}
                   />
                 )
               })()

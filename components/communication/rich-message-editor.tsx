@@ -427,9 +427,9 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             const text = editor.getText()
             const match = text.match(/@[\w-]*$/)
             
-            // Use a special format: [@Name](userId) - like markdown links
-            // This allows names with spaces and is easy to parse on display
-            const mentionText = `[@${user.name}] `
+            // Use Unicode zero-width space after mention to mark its boundary
+            // Format: @Name\u200B (zero-width space acts as invisible delimiter)
+            const mentionText = `@${user.name}\u200B `
             
             if (match) {
                 // Delete the @query text and insert the mention

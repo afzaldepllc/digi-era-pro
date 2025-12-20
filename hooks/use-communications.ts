@@ -9,6 +9,8 @@ import {
   setMessages,
   addMessage,
   updateMessage,
+  addMessageReadReceipt,
+  setMessageDelivered,
   setTyping,
   removeTyping,
   clearTypingForChannel,
@@ -178,6 +180,37 @@ export function useCommunications() {
     dispatch(removeTyping({ channelId: data.channelId, userId: data.userId }))
   }, [dispatch])
 
+  // Handle message read (real-time update from other users)
+  const onMessageRead = useCallback((data: { 
+    messageId: string; 
+    userId: string; 
+    channelId: string; 
+    readAt: string 
+  }) => {
+    console.log('👁️ Message read:', data)
+    // Don't process our own read receipts
+    if (data.userId === sessionUserId) return
+    
+    dispatch(addMessageReadReceipt({
+      channelId: data.channelId,
+      messageId: data.messageId,
+      userId: data.userId,
+      readAt: data.readAt
+    }))
+  }, [dispatch, sessionUserId])
+
+  // Handle message delivered (when server confirms message received)
+  const onMessageDelivered = useCallback((data: { 
+    messageId: string; 
+    channelId: string 
+  }) => {
+    console.log('📨 Message delivered:', data)
+    dispatch(setMessageDelivered({
+      channelId: data.channelId,
+      messageId: data.messageId
+    }))
+  }, [dispatch])
+
   // Handle presence sync (initial load and updates)
   const onPresenceSync = useCallback((presenceState: Record<string, any[]>) => {
     console.log('🌐 Presence sync:', Object.keys(presenceState))
@@ -322,6 +355,8 @@ export function useCommunications() {
       onNewMessage,
       onMessageUpdate,
       onMessageDelete,
+      onMessageRead,
+      onMessageDelivered,
       onUserJoined,
       onUserLeft,
       onUserOnline,
@@ -332,7 +367,7 @@ export function useCommunications() {
       onMentionNotification
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification])
 
   // Subscribe to notifications when user is logged in
   useEffect(() => {
@@ -624,10 +659,15 @@ export function useCommunications() {
         method: 'POST',
         body: JSON.stringify({ message_id: messageId, channel_id })
       })
+      
+      // Broadcast read receipt to other users in the channel
+      if (sessionUserId) {
+        await realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
+      }
     } catch (error) {
       console.error('Failed to mark message as read:', error)
     }
-  }, [])
+  }, [realtimeManager, sessionUserId])
 
   // ============================================
   // Optimized Typing Operations

@@ -9,6 +9,8 @@ export interface RealtimeEventHandlers {
   onNewMessage?: (message: any) => void
   onMessageUpdate?: (message: any) => void
   onMessageDelete?: (messageId: string) => void
+  onMessageRead?: (data: { messageId: string; userId: string; channelId: string; readAt: string }) => void
+  onMessageDelivered?: (data: { messageId: string; channelId: string }) => void
   onUserJoined?: (member: any) => void
   onUserLeft?: (memberId: string) => void
   onUserOnline?: (userId: string) => void
@@ -308,6 +310,14 @@ export class RealtimeManager {
           console.log('🔔 Realtime: Channel update', payload)
           this.eventHandlers.onChannelUpdate?.(payload.payload)
         })
+        .on('broadcast', { event: 'message_read' }, (payload) => {
+          console.log('👁️ Realtime: Message read', payload)
+          this.eventHandlers.onMessageRead?.(payload.payload)
+        })
+        .on('broadcast', { event: 'message_delivered' }, (payload) => {
+          console.log('📨 Realtime: Message delivered', payload)
+          this.eventHandlers.onMessageDelivered?.(payload.payload)
+        })
 
       rtChannel.subscribe((status, err) => {
         console.log(`🔌 RT Channel subscription status for ${channelId}:`, status)
@@ -529,6 +539,60 @@ export class RealtimeManager {
         type: 'broadcast',
         event: 'channel_update',
         payload: update
+      })
+    }
+  }
+
+  async broadcastMessageRead(channelId: string, messageId: string, userId: string): Promise<void> {
+    console.log('👁️ Broadcasting message read:', { channelId, messageId, userId })
+    
+    let rtChannel = this.rtChannels.get(channelId)
+    if (!rtChannel) {
+      try {
+        await this.subscribeToChannel(channelId)
+        rtChannel = this.rtChannels.get(channelId)
+      } catch (error) {
+        console.error('❌ Failed to subscribe for message read broadcast:', error)
+        return
+      }
+    }
+
+    if (rtChannel) {
+      rtChannel.send({
+        type: 'broadcast',
+        event: 'message_read',
+        payload: {
+          messageId,
+          userId,
+          channelId,
+          readAt: new Date().toISOString()
+        }
+      })
+    }
+  }
+
+  async broadcastMessageDelivered(channelId: string, messageId: string): Promise<void> {
+    console.log('📨 Broadcasting message delivered:', { channelId, messageId })
+    
+    let rtChannel = this.rtChannels.get(channelId)
+    if (!rtChannel) {
+      try {
+        await this.subscribeToChannel(channelId)
+        rtChannel = this.rtChannels.get(channelId)
+      } catch (error) {
+        console.error('❌ Failed to subscribe for message delivered broadcast:', error)
+        return
+      }
+    }
+
+    if (rtChannel) {
+      rtChannel.send({
+        type: 'broadcast',
+        event: 'message_delivered',
+        payload: {
+          messageId,
+          channelId
+        }
       })
     }
   }

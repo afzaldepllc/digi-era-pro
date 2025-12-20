@@ -177,6 +177,52 @@ const communicationSlice = createSlice({
       }
     },
     
+    // Add a read receipt to a message (real-time update)
+    addMessageReadReceipt: (state, action: PayloadAction<{ 
+      channelId: string; 
+      messageId: string; 
+      userId: string;
+      readAt: string;
+    }>) => {
+      const { channelId, messageId, userId, readAt } = action.payload
+      
+      if (state.messages[channelId]) {
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
+        if (messageIndex !== -1) {
+          const message = state.messages[channelId][messageIndex]
+          // Initialize read_receipts if not present
+          if (!message.read_receipts) {
+            message.read_receipts = []
+          }
+          // Check if receipt already exists for this user
+          const existingReceipt = message.read_receipts.find(r => r.mongo_user_id === userId)
+          if (!existingReceipt) {
+            message.read_receipts.push({
+              message_id: messageId,
+              mongo_user_id: userId,
+              read_at: readAt
+            })
+          }
+        }
+      }
+    },
+    
+    // Mark message as delivered (when receiver comes online or receives message)
+    setMessageDelivered: (state, action: PayloadAction<{ 
+      channelId: string; 
+      messageId: string;
+    }>) => {
+      const { channelId, messageId } = action.payload
+      
+      if (state.messages[channelId]) {
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
+        if (messageIndex !== -1) {
+          // Remove optimistic flag - message has been confirmed delivered
+          state.messages[channelId][messageIndex].isOptimistic = false
+        }
+      }
+    },
+    
     // ============================================
     // Typing Indicators (Optimized)
     // ============================================
@@ -448,6 +494,8 @@ export const {
   setMessages,
   addMessage,
   updateMessage,
+  addMessageReadReceipt,
+  setMessageDelivered,
   setTyping,
   removeTyping,
   clearTypingForChannel,

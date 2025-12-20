@@ -2518,9 +2518,9 @@ make sure every things should be working well without any error and every things
 # fixes 03
 
 
-1) make sure in the components\communication\user-directory.tsx those user for which the messages are most recent incomming to send should be top
+1) make sure in the components\communication\user-directory.tsx those user for which the messages are most recent incomming to send should be on  top
 
-2) is the messages-lists there should be proper pagination on scroll and proper cache and unified and simple ux loading for those messages load 
+2) in the messages-lists there should be proper pagination on scroll and proper cache and unified and simple ux loading for those messages load on pagination 
 
 3) this search should be fully working well with backend search and message navigation should also be working well 
  {/* Search input */}

@@ -62,7 +62,10 @@ export function HtmlTextRenderer({
   const highlightMentions = (html: string): string => {
     let processedHtml = html;
     
-    // Pattern 1: Handle bracketed mentions [@Name] (new format)
+    // Remove zero-width spaces used as delimiters
+    processedHtml = processedHtml.replace(/\u200B/g, '');
+    
+    // Pattern 1: Handle bracketed mentions [@Name] (legacy format)
     processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
       return `<span class="mention">@${name}</span>`;
     });
@@ -72,9 +75,11 @@ export function HtmlTextRenderer({
       .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
       .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
     
-    // Pattern 3: Handle simple @mentions (single word) if no mention spans exist
+    // Pattern 3: Handle @mentions with names (supports spaces via multi-word matching)
+    // Match @word or @Word Word (capitalized names)
     if (!processedHtml.includes('class="mention"')) {
-      processedHtml = processedHtml.replace(/@(\w+)/g, (match, name) => {
+      // Match @Name or @Name Name pattern (for two-word names)
+      processedHtml = processedHtml.replace(/@([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|\w+)/g, (match, name) => {
         return `<span class="mention">@${name}</span>`;
       });
     }
@@ -202,6 +207,8 @@ export function HtmlTextRenderer({
  */
 const cleanEscapedHtml = (html: string): string => {
   return html
+    // Remove zero-width spaces used as mention delimiters
+    .replace(/\u200B/g, '')
     // Convert bracketed mentions [@Name] to plain @Name for text extraction
     .replace(/\[@([^\]]+)\]/g, '@$1')
     // Remove escaped HTML mention spans with data-user-name: extract the name
@@ -249,9 +256,10 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
  * Utility function to highlight @mentions in text
  */
 export const highlightMentionsInHtml = (html: string): string => {
-  let processedHtml = html;
+  // First remove zero-width spaces
+  let processedHtml = html.replace(/\u200B/g, '');
   
-  // Pattern 1: Handle bracketed mentions [@Name] (new format with spaces support)
+  // Pattern 1: Handle bracketed mentions [@Name] (legacy format)
   processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
     return `<span class="mention">@${name}</span>`;
   });
@@ -261,10 +269,18 @@ export const highlightMentionsInHtml = (html: string): string => {
     .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
     .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
   
-  // Pattern 3: Handle simple @mentions (single word) if no mention spans exist
+  // Pattern 3: Handle @mentions - capture @word or @Multiple Words (capitalized words after @)
   if (!processedHtml.includes('class="mention"')) {
-    processedHtml = processedHtml.replace(/@(\w+)/g, (match, name) => {
+    // Match @followed by capitalized words (supports multi-word names like "Super Administrator")
+    processedHtml = processedHtml.replace(/@([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*)/g, (match, name) => {
       return `<span class="mention">@${name}</span>`;
+    });
+    // Also match @everyone, @here, etc. (lowercase special mentions)
+    processedHtml = processedHtml.replace(/@(everyone|here|channel)/gi, (match, name) => {
+      if (!processedHtml.includes(`class="mention">@${name}`)) {
+        return `<span class="mention">@${name}</span>`;
+      }
+      return match;
     });
   }
   

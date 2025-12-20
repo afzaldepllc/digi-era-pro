@@ -183,8 +183,19 @@ export function MessageList({
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
     const sender = message.sender
 
+    // Get read receipts from message's own read_receipts (for real-time updates) or from props (fallback)
+    const messageReceipts = message.read_receipts || []
+    const propReceipts = readReceipts.filter(r => r.message_id === message.id)
+    // Merge both sources, preferring message's own receipts
+    const allReceipts = [...messageReceipts]
+    propReceipts.forEach(pr => {
+      if (!allReceipts.some(r => r.mongo_user_id === pr.mongo_user_id)) {
+        allReceipts.push(pr)
+      }
+    })
+    
     // Find all read receipts for this message (excluding sender)
-    const receipts = readReceipts.filter(r => r.message_id === message.id && r.mongo_user_id !== message.mongo_sender_id)
+    const receipts = allReceipts.filter(r => r.mongo_user_id !== message.mongo_sender_id)
 
     // For current user, check if this message is read
     const isReadByCurrentUser = receipts.some(r => r.mongo_user_id === currentUserId)
