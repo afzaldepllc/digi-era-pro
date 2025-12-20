@@ -161,22 +161,104 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         }, [editor])
 
         const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
+            if (!editor) return
+            
+            // Enter without Shift - Send message
             if (e.key === "Enter" && !e.shiftKey) {
-                // If in a list, allow default behavior (create new list item)
-                if (editor?.isActive('bulletList') || editor?.isActive('orderedList')) {
-                    return;
-                }
                 e.preventDefault()
-                // send plain text
-                const text = editor?.getText() || ""
-                const success = await onSend?.("", text, attachments)
+                const text = editor.getText() || ""
+                const html = editor.getHTML() || ""
+                const success = await onSend?.(html, text, attachments)
                 if (success) {
-                    // clear
-                    editor?.commands.setContent('')
+                    editor.commands.setContent('')
                     setAttachments([])
                     setShowSuggestions(false)
                 }
                 return
+            }
+            
+            // Shift+Enter - New line or list item
+            if (e.key === "Enter" && e.shiftKey) {
+                const isInList = editor.isActive('bulletList') || editor.isActive('orderedList')
+                
+                if (isInList) {
+                    e.preventDefault()
+                    
+                    // Get current state
+                    const { state } = editor.view
+                    const { $from } = state.selection
+                    const currentNode = $from.parent
+                    
+                    // If in an empty list item, exit the list properly
+                    if (currentNode.type.name === 'listItem' && currentNode.textContent.trim() === '') {
+                        // Lift the list item and insert a proper paragraph to separate lists
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .insertContent({ type: 'paragraph' })
+                            .run()
+                        return
+                    }
+                    
+                    // Otherwise, split the list item to create a new one
+                    editor.chain().focus().splitListItem('listItem').run()
+                    return
+                }
+                
+                // Not in a list - insert a new paragraph (not hard break)
+                e.preventDefault()
+                editor.chain().focus().createParagraphNear().run()
+                return
+            }
+            
+            // Backspace handling in lists
+            if (e.key === "Backspace") {
+                const { state } = editor.view
+                const { $from, empty } = state.selection
+                
+                // Only handle backspace if selection is empty (cursor, not selection)
+                if (!empty) {
+                    return // Let default backspace handle text selection deletion
+                }
+                
+                const isInList = editor.isActive('bulletList') || editor.isActive('orderedList')
+                
+                if (isInList) {
+                    const currentNode = $from.parent
+                    
+                    // Check if we're at the very start of a list item
+                    const isAtStart = $from.parentOffset === 0
+                    
+                    // If at the start of an empty list item, lift it out of the list
+                    if (currentNode.type.name === 'listItem' && 
+                        currentNode.textContent.trim() === '' && 
+                        isAtStart) {
+                        e.preventDefault()
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .run()
+                        return
+                    }
+                    
+                    // If at the start of a non-empty list item, lift it (merge with previous)
+                    if (isAtStart && currentNode.textContent.trim() !== '') {
+                        // Check if there's a previous list item
+                        const indexBefore = $from.index($from.depth - 1)
+                        if (indexBefore > 0) {
+                            // Let default behavior handle merging with previous item
+                            return
+                        } else {
+                            // First item in list - lift it out
+                            e.preventDefault()
+                            editor.chain()
+                                .focus()
+                                .liftListItem('listItem')
+                                .run()
+                            return
+                        }
+                    }
+                }
             }
         }, [editor, onSend, attachments])
 
@@ -282,8 +364,6 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         <button onClick={() => editor?.chain().focus().toggleBlockquote().run()} className={`${editor?.isActive('blockquote') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title ="Blockquote">
                             <Quote className="h-4 w-4" />
                         </button>
-
-
 
                     </div>
                 )}

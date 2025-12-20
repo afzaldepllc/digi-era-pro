@@ -150,7 +150,7 @@ export function MessageInput({
 
         {/* Keyboard shortcut hint */}
         <div className="mt-1 text-xs text-muted-foreground">
-          Press Enter to send, Shift + Enter for new line
+          Press Enter to send, Shift + Enter for new line (or new list item)
         </div>
       </div>
     </TooltipProvider>
