@@ -62,10 +62,21 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     mockCurrentUser,
     sessionStatus,
     usersLoading,
-    selectChannel
+    selectChannel,
+    fetchOlderMessages,
+    prependMessagesToChannel,
+    searchMessages
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<ICommunication[]>([])
+  const [searchIndex, setSearchIndex] = useState(0)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchTotal, setSearchTotal] = useState(0)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageInputRef = useRef<MessageInputRef>(null)
   
   console.log('selectedChannel messages in ChatWindow66:', messages)
@@ -130,6 +141,180 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     // TODO: Implement delete functionality
     console.log('Delete message:', messageId)
   }
+
+  // Handle loading more (older) messages
+  const handleLoadMore = useCallback(async () => {
+    if (!channelId || isLoadingMore) return { messages: [], hasMore: false }
+    
+    const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
+    const offset = channelMessages.length
+    
+    setIsLoadingMore(true)
+    try {
+      const result = await fetchOlderMessages({
+        channel_id: channelId,
+        limit: 30,
+        offset
+      })
+      
+      if (result.messages.length > 0) {
+        prependMessagesToChannel(channelId, result.messages)
+      }
+      
+      setHasMoreMessages(result.hasMore)
+      return result
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [channelId, messages, isLoadingMore, fetchOlderMessages, prependMessagesToChannel])
+
+  // Reset hasMoreMessages when channel changes
+  useEffect(() => {
+    setHasMoreMessages(true)
+  }, [channelId])
+
+  // Search messages with debounce
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query)
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+    
+    if (!query.trim()) {
+      setSearchResults([])
+      setSearchTotal(0)
+      setSearchIndex(0)
+      return
+    }
+    
+    // Debounce search
+    searchTimeoutRef.current = setTimeout(async () => {
+      if (!channelId) return
+      
+      setIsSearching(true)
+      try {
+        const result = await searchMessages(channelId, query.trim(), 50, 0)
+        setSearchResults(result.messages)
+        setSearchTotal(result.total)
+        setSearchIndex(result.messages.length > 0 ? 1 : 0)
+        
+        // Navigate to first result
+        if (result.messages.length > 0) {
+          await navigateToSearchResult(result.messages[0])
+        }
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300)
+  }, [channelId, searchMessages])
+
+  // Navigate to a search result message - loads more messages if needed
+  const navigateToSearchResult = useCallback(async (message: ICommunication) => {
+    if (!channelId) return
+    
+    const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
+    
+    // Check if message is already loaded
+    const isLoaded = channelMessages.some(m => m.id === message.id)
+    
+    if (!isLoaded) {
+      // Message not loaded - we need to load all messages up to and including this one
+      // Find how many messages we need to load based on the message's position
+      // For now, load enough messages to include this search result
+      const messageDate = new Date(message.created_at)
+      const oldestLoadedMessage = channelMessages[0]
+      
+      if (oldestLoadedMessage) {
+        const oldestDate = new Date(oldestLoadedMessage.created_at)
+        
+        // If the search result is older than what we have loaded, load more
+        if (messageDate < oldestDate) {
+          // Keep loading until we have the message or can't load more
+          let offset = channelMessages.length
+          let hasMore = true
+          let attempts = 0
+          const maxAttempts = 10 // Prevent infinite loop
+          
+          while (hasMore && attempts < maxAttempts) {
+            const result = await fetchOlderMessages({
+              channel_id: channelId,
+              limit: 20,
+              offset
+            })
+            
+            if (result.messages.length > 0) {
+              prependMessagesToChannel(channelId, result.messages)
+              offset += result.messages.length
+              
+              // Check if we now have the message
+              if (result.messages.some((m: ICommunication) => m.id === message.id)) {
+                break
+              }
+            }
+            
+            hasMore = result.hasMore
+            attempts++
+          }
+          
+          // Wait a bit for React to render the new messages
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+    }
+    
+    // Now try to scroll to the message
+    scrollToSearchResult(message.id)
+  }, [channelId, messages, fetchOlderMessages, prependMessagesToChannel])
+
+  // Scroll to a search result message (visual only)
+  const scrollToSearchResult = useCallback((messageId: string) => {
+    // Try multiple times in case DOM hasn't updated yet
+    const attemptScroll = (attemptsLeft: number) => {
+      const element = document.querySelector(`[data-message-id="${messageId}"]`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // Highlight the message
+        element.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30')
+        setTimeout(() => {
+          element.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30')
+        }, 2000)
+      } else if (attemptsLeft > 0) {
+        // Retry after a short delay
+        setTimeout(() => attemptScroll(attemptsLeft - 1), 100)
+      }
+    }
+    attemptScroll(5)
+  }, [])
+
+  // Navigate to previous search result
+  const handleSearchPrev = useCallback(async () => {
+    if (searchResults.length === 0) return
+    const newIndex = searchIndex > 1 ? searchIndex - 1 : searchResults.length
+    setSearchIndex(newIndex)
+    await navigateToSearchResult(searchResults[newIndex - 1])
+  }, [searchResults, searchIndex, navigateToSearchResult])
+
+  // Navigate to next search result
+  const handleSearchNext = useCallback(async () => {
+    if (searchResults.length === 0) return
+    const newIndex = searchIndex < searchResults.length ? searchIndex + 1 : 1
+    setSearchIndex(newIndex)
+    await navigateToSearchResult(searchResults[newIndex - 1])
+  }, [searchResults, searchIndex, navigateToSearchResult])
+
+  // Clear search when closing
+  const handleCloseSearch = useCallback(() => {
+    setIsSearchVisible(false)
+    setSearchQuery("")
+    setSearchResults([])
+    setSearchTotal(0)
+    setSearchIndex(0)
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+  }, [])
 
   // Show loading state while initializing
   if (isInitializing) {
@@ -357,7 +542,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setIsSearchVisible(false)}
+                  onClick={handleCloseSearch}
                   className="h-8 w-8 p-0 hover:bg-muted shrink-0"
                 >
                   <X className="h-4 w-4" />
@@ -368,10 +553,25 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                     placeholder="Search messages..."
                     className="w-full pl-9 pr-3 py-2 text-sm bg-muted/30 hover:bg-muted/50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSearchNext()
+                      } else if (e.key === 'Escape') {
+                        handleCloseSearch()
+                      }
+                    }}
                   />
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Navigation arrows */}
@@ -380,7 +580,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     variant="ghost"
                     size="sm"
                     className="h-8 w-8 p-0 hover:bg-muted"
-                    disabled
+                    disabled={searchResults.length === 0}
+                    onClick={handleSearchPrev}
+                    title="Previous result (↑)"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -390,7 +592,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     variant="ghost"
                     size="sm"
                     className="h-8 w-8 p-0 hover:bg-muted"
-                    disabled
+                    disabled={searchResults.length === 0}
+                    onClick={handleSearchNext}
+                    title="Next result (↓)"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -400,7 +604,11 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
                 {/* Result counter */}
                 <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                  0 of 0
+                  {searchQuery.trim() ? (
+                    isSearching ? 'Searching...' : `${searchIndex} of ${searchTotal}`
+                  ) : (
+                    'Type to search'
+                  )}
                 </span>
               </div>
             </div>
@@ -457,6 +665,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     onReply={handleReply}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
+                    onLoadMore={handleLoadMore}
+                    hasMoreMessages={hasMoreMessages}
+                    isLoadingMore={isLoadingMore}
                     className="flex-1 min-h-0"
                     channel_members={selectedChannel?.channel_members || []}
                   />

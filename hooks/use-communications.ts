@@ -7,6 +7,7 @@ import {
   clearActiveChannel,
   setChannels,
   setMessages,
+  prependMessages,
   addMessage,
   updateMessage,
   addMessageReadReceipt,
@@ -430,14 +431,16 @@ export function useCommunications() {
     try {
       dispatch(setMessagesLoading(true))
       // Build query string
+      // TODO: Change back to 50 after testing pagination
+      const MESSAGE_LIMIT = 5 // params.limit || 50
       const queryParams = new URLSearchParams({
         channel_id: params.channel_id,
-        limit: (params.limit || 50).toString(),
+        limit: MESSAGE_LIMIT.toString(),
         offset: '0'
       })
       
       const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
-      dispatch(setMessages({ channelId: params.channel_id, messages: response }))
+      dispatch(setMessages({ channelId: params.channel_id, messages: response.data || response }))
 
       console.log('Fetched and enriched messages320:', response) 
       return response
@@ -454,6 +457,53 @@ export function useCommunications() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed toast to prevent infinite loop
+
+  // Fetch older messages (pagination - prepend to existing)
+  const fetchOlderMessages = useCallback(async (params: FetchMessagesParams & { offset: number }) => {
+    try {
+      // TODO: Change back to 30 after testing pagination
+      const OLDER_MESSAGE_LIMIT = 5 // params.limit || 30
+      const queryParams = new URLSearchParams({
+        channel_id: params.channel_id,
+        limit: OLDER_MESSAGE_LIMIT.toString(),
+        offset: params.offset.toString()
+      })
+      
+      const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
+      const olderMessages = response.data || response
+      
+      return {
+        messages: olderMessages,
+        hasMore: olderMessages.length === OLDER_MESSAGE_LIMIT
+      }
+    } catch (error) {
+      console.error('Failed to fetch older messages:', error)
+      return { messages: [], hasMore: false }
+    }
+  }, [])
+
+  // Search messages in a channel
+  const searchMessages = useCallback(async (channelId: string, query: string, limit = 20, offset = 0) => {
+    try {
+      const queryParams = new URLSearchParams({
+        channel_id: channelId,
+        query,
+        limit: limit.toString(),
+        offset: offset.toString()
+      })
+      
+      const response = await apiRequest(`/api/communication/messages/search?${queryParams.toString()}`)
+      
+      return {
+        messages: response.data || [],
+        total: response.meta?.total || 0,
+        hasMore: response.meta?.hasMore || false
+      }
+    } catch (error) {
+      console.error('Failed to search messages:', error)
+      return { messages: [], total: 0, hasMore: false }
+    }
+  }, [])
 
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
     const tempId = crypto.randomUUID()
@@ -825,6 +875,11 @@ export function useCommunications() {
 
     // Message operations
     fetchMessages,
+    fetchOlderMessages,
+    searchMessages,
+    prependMessagesToChannel: (channelId: string, newMessages: ICommunication[]) => {
+      dispatch(prependMessages({ channelId, messages: newMessages }))
+    },
     sendMessage,
     updateMessage: editMessage,
     createChannel,

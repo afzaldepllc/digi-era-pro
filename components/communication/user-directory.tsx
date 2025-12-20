@@ -40,10 +40,61 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       // user.isClient === false
     )
   }, [users, (session?.user as any)?.id]);
-  console.log("activeUsers42",activeUsers);
-  // Filter users based on search
+  
+  // Sort users by recent message activity
+  // Users with recent DM messages appear first
+  const sortedUsers = useMemo(() => {
+    const currentUserId = (session?.user as any)?.id
+    if (!currentUserId) return activeUsers
+    
+    // Create a map of userId -> last_message_at from DM channels
+    const userLastMessageMap = new Map<string, string>()
+    
+    channels.forEach(channel => {
+      if (channel.type === 'dm' && channel.last_message_at) {
+        // Find the other user in this DM
+        const otherMember = channel.channel_members.find(
+          m => m.mongo_member_id !== currentUserId
+        )
+        if (otherMember) {
+          const existingTime = userLastMessageMap.get(otherMember.mongo_member_id)
+          // Keep the most recent message time
+          if (!existingTime || new Date(channel.last_message_at) > new Date(existingTime)) {
+            userLastMessageMap.set(otherMember.mongo_member_id, channel.last_message_at)
+          }
+        }
+      }
+    })
+    
+    // Sort users: those with recent messages first, then by online status, then alphabetically
+    return [...activeUsers].sort((a, b) => {
+      const aTime = userLastMessageMap.get(a._id.toString())
+      const bTime = userLastMessageMap.get(b._id.toString())
+      
+      // Both have messages - sort by most recent
+      if (aTime && bTime) {
+        return new Date(bTime).getTime() - new Date(aTime).getTime()
+      }
+      
+      // Only one has messages - that one goes first
+      if (aTime && !bTime) return -1
+      if (!aTime && bTime) return 1
+      
+      // Neither has messages - sort by online status, then name
+      const aOnline = onlineUserIds.includes(a._id.toString())
+      const bOnline = onlineUserIds.includes(b._id.toString())
+      
+      if (aOnline && !bOnline) return -1
+      if (!aOnline && bOnline) return 1
+      
+      // Both same status - sort alphabetically
+      return (a.name || a.email || '').localeCompare(b.name || b.email || '')
+    })
+  }, [activeUsers, channels, onlineUserIds, (session?.user as any)?.id])
+
+  // Filter users based on search (using sorted users)
   const filteredUsers = useMemo(() => {
-    return activeUsers.filter(user => {
+    return sortedUsers.filter(user => {
       if (!searchQuery) return true
       const query = searchQuery.toLowerCase()
       return (
@@ -52,7 +103,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
         (typeof user.role === 'string' && user.role.toLowerCase().includes(query))
       )
     })
-  }, [activeUsers, searchQuery])
+  }, [sortedUsers, searchQuery])
 
   const handleStartDM = async (user: User) => {
     if (!(session?.user as any)?.id) {

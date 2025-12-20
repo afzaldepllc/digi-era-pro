@@ -463,6 +463,18 @@ const communicationSlice = createSlice({
       state.messages[channelId] = messages
     },
     
+    // Prepend older messages (for pagination)
+    prependMessages: (state, action: PayloadAction<{ channelId: string; messages: ICommunication[] }>) => {
+      const { channelId, messages } = action.payload
+      if (!state.messages[channelId]) {
+        state.messages[channelId] = []
+      }
+      // Filter out any duplicates and prepend older messages
+      const existingIds = new Set(state.messages[channelId].map(m => m.id))
+      const newMessages = messages.filter(m => !existingIds.has(m.id))
+      state.messages[channelId] = [...newMessages, ...state.messages[channelId]]
+    },
+    
     // Loading state setters
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload
@@ -492,6 +504,7 @@ export const {
   clearActiveChannel,
   setChannels,
   setMessages,
+  prependMessages,
   addMessage,
   updateMessage,
   addMessageReadReceipt,

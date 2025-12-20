@@ -14,7 +14,8 @@ import {
   Trash2,
   Edit,
   Clock,
-  CornerDownRight
+  CornerDownRight,
+  Loader2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment } from "@/types/communication"
@@ -44,6 +45,9 @@ interface MessageListProps {
   onEdit?: (message: ICommunication) => void
   onDelete?: (messageId: string) => void
   onScrollToMessage?: (messageId: string) => void
+  onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
+  hasMoreMessages?: boolean
+  isLoadingMore?: boolean
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
   channel_members?: IParticipant[] // For showing who read
@@ -58,19 +62,62 @@ export function MessageList({
   onEdit,
   onDelete,
   onScrollToMessage,
+  onLoadMore,
+  hasMoreMessages = true,
+  isLoadingMore = false,
   className,
   readReceipts = [],
   channel_members = []
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const prevScrollHeightRef = useRef<number>(0)
+  const isInitialLoadRef = useRef(true)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom only for new messages (not when loading older ones)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+    if (isInitialLoadRef.current) {
+      // Initial load - scroll to bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      isInitialLoadRef.current = false
+    } else if (!loadingMore) {
+      // New message arrived - scroll to bottom smoothly
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages.length, loadingMore])
+
+  // Maintain scroll position when loading older messages
+  useEffect(() => {
+    if (loadingMore && messagesContainerRef.current && prevScrollHeightRef.current > 0) {
+      const newScrollHeight = messagesContainerRef.current.scrollHeight
+      const scrollDiff = newScrollHeight - prevScrollHeightRef.current
+      messagesContainerRef.current.scrollTop += scrollDiff
+    }
+  }, [messages, loadingMore])
+
+  // Infinite scroll - load more when scrolling to top
+  const handleScroll = useCallback(async () => {
+    const container = messagesContainerRef.current
+    if (!container || loadingMore || !hasMoreMessages || !onLoadMore) return
+
+    // Trigger load more when scrolled near top (within 100px)
+    if (container.scrollTop < 100) {
+      setLoadingMore(true)
+      prevScrollHeightRef.current = container.scrollHeight
+      
+      try {
+        const result = await onLoadMore()
+        // hasMoreMessages will be updated by parent
+      } finally {
+        setLoadingMore(false)
+      }
+    }
+  }, [loadingMore, hasMoreMessages, onLoadMore])
 
   // Intersection Observer for read receipts
   useEffect(() => {
@@ -418,7 +465,35 @@ export function MessageList({
     <TooltipProvider>
       <>
         {/* Messages */}
-        <div className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-1 p-3", className)}>
+        <div 
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-1 p-3", className)}
+        >
+          {/* Load more indicator at top */}
+          {hasMoreMessages && messages.length > 0 && (
+            <div 
+              ref={loadMoreTriggerRef}
+              className="flex justify-center py-2"
+            >
+              {loadingMore || isLoadingMore ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Loading older messages...</span>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onLoadMore?.()}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Load older messages
+                </Button>
+              )}
+            </div>
+          )}
+
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground h-full">
               <div className="text-center">
