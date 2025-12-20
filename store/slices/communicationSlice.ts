@@ -224,6 +224,78 @@ const communicationSlice = createSlice({
     },
     
     // ============================================
+    // Reactions
+    // ============================================
+    
+    addReactionToMessage: (state, action: PayloadAction<{
+      channelId: string;
+      messageId: string;
+      reaction: {
+        id: string;
+        mongo_user_id: string;
+        user_name?: string;
+        emoji: string;
+        created_at: string;
+      };
+    }>) => {
+      const { channelId, messageId, reaction } = action.payload
+      
+      if (state.messages[channelId]) {
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
+        if (messageIndex !== -1) {
+          const message = state.messages[channelId][messageIndex]
+          // Initialize reactions if not present
+          if (!message.reactions) {
+            message.reactions = []
+          }
+          // Check if this reaction already exists (same user + same emoji)
+          const existingReaction = message.reactions.find(
+            r => r.mongo_user_id === reaction.mongo_user_id && r.emoji === reaction.emoji
+          )
+          if (!existingReaction) {
+            message.reactions.push({
+              id: reaction.id,
+              message_id: messageId,
+              channel_id: channelId,
+              mongo_user_id: reaction.mongo_user_id,
+              user_name: reaction.user_name,
+              emoji: reaction.emoji,
+              created_at: reaction.created_at
+            })
+          }
+        }
+      }
+    },
+    
+    removeReactionFromMessage: (state, action: PayloadAction<{
+      channelId: string;
+      messageId: string;
+      reactionId?: string;
+      mongo_user_id?: string;
+      emoji?: string;
+    }>) => {
+      const { channelId, messageId, reactionId, mongo_user_id, emoji } = action.payload
+      
+      if (state.messages[channelId]) {
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
+        if (messageIndex !== -1) {
+          const message = state.messages[channelId][messageIndex]
+          if (message.reactions) {
+            if (reactionId) {
+              // Remove by reaction ID
+              message.reactions = message.reactions.filter(r => r.id !== reactionId)
+            } else if (mongo_user_id && emoji) {
+              // Remove by user ID + emoji
+              message.reactions = message.reactions.filter(
+                r => !(r.mongo_user_id === mongo_user_id && r.emoji === emoji)
+              )
+            }
+          }
+        }
+      }
+    },
+    
+    // ============================================
     // Typing Indicators (Optimized)
     // ============================================
     
@@ -532,6 +604,8 @@ export const {
   addNotification,
   clearNotifications,
   setChannelsInitialized,
+  addReactionToMessage,
+  removeReactionFromMessage,
   resetState
 } = communicationSlice.actions
 

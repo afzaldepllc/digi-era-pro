@@ -1,22 +1,48 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Search, X } from "lucide-react"
+import { Search, X, Smile } from "lucide-react"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
-// Comprehensive emoji data organized by category (Slack-inspired)
-const EMOJI_DATA = {
+// ============================================
+// Emoji Data (Single Source of Truth)
+// ============================================
+
+export const EMOJI_CATEGORIES = {
+  "Frequently Used": [
+    "👍", "❤️", "😂", "😮", "😢", "🔥", "👏", "🎉", "✅", "👀", "💯", "🙏",
+    "😊", "💪", "🤔", "😍", "🥳", "👌", "🤝", "💡"
+  ],
   "Smileys & People": [
     "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍", "🤩",
     "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔", "🤐",
     "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "😮‍💨", "🤥", "😌", "😔", "😪", "🤤", "😴", "😷",
     "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸", "😎", "🤓", "🧐",
     "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨", "😰", "😥", "😢", "😭",
-    "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️",
+    "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️"
+  ],
+  "Gestures": [
     "👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆",
-    "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🤝", "🙏"
+    "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✍️",
+    "💪", "🦾", "🦿", "🦵", "🦶", "👂", "🦻", "👃", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👁️", "👅"
+  ],
+  "Hearts & Love": [
+    "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖",
+    "💘", "💝", "💟", "♥️", "❤️‍🔥", "❤️‍🩹", "🫀", "💋", "💌", "💐", "🌹", "🥀", "💍", "💎", "👫", "💏"
   ],
   "Nature & Animals": [
     "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻‍❄️", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵",
@@ -51,14 +77,10 @@ const EMOJI_DATA = {
     "📝", "💼", "📁", "📂", "🗂️", "📅", "📆", "🗒️", "🗓️", "📇", "📈", "📉", "📊", "📋", "📌", "📍"
   ],
   "Symbols": [
-    "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖",
-    "💘", "💝", "💟", "☮️", "✝️", "☪️", "🕉️", "☸️", "✡️", "🔯", "🕎", "☯️", "☦️", "🛐", "⛎", "♈",
-    "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓", "🆔", "⚛️", "🉑", "☢️", "☣️",
-    "📴", "📳", "🈶", "🈚", "🈸", "🈺", "🈷️", "✴️", "🆚", "💮", "🉐", "㊙️", "㊗️", "🈴", "🈵", "🈹",
-    "🈲", "🅰️", "🅱️", "🆎", "🆑", "🅾️", "🆘", "❌", "⭕", "🛑", "⛔", "📛", "🚫", "💯", "💢", "♨️",
-    "🚷", "🚯", "🚳", "🚱", "🔞", "📵", "🚭", "❗", "❕", "❓", "❔", "‼️", "⁉️", "🔅", "🔆", "〽️",
-    "⚠️", "🚸", "🔱", "⚜️", "🔰", "♻️", "✅", "🈯", "💹", "❇️", "✳️", "❎", "🌐", "💠", "Ⓜ️", "🌀",
-    "💤", "🏧", "🚾", "♿", "🅿️", "🛗", "🈳", "🈂️", "🛂", "🛃", "🛄", "🛅", "🚹", "🚺", "🚼", "⚧"
+    "🔥", "✨", "⭐", "🌟", "💫", "💥", "💢", "💦", "💨", "🎉", "🎊", "🎈", "🎁", "🏆", "🥇", "🥈",
+    "❌", "⭕", "🛑", "⛔", "📛", "🚫", "💯", "💢", "♨️", "🚷", "🚯", "🚳", "🚱", "🔞", "📵", "🚭",
+    "❗", "❕", "❓", "❔", "‼️", "⁉️", "🔅", "🔆", "〽️", "⚠️", "🚸", "🔱", "⚜️", "🔰", "♻️", "✅",
+    "🈯", "💹", "❇️", "✳️", "❎", "🌐", "💠", "Ⓜ️", "🌀", "💤", "🏧", "🚾", "♿", "🅿️", "🛗", "🈳"
   ],
   "Flags": [
     "🏳️", "🏴", "🏁", "🚩", "🏳️‍🌈", "🏳️‍⚧️", "🏴‍☠️", "🇦🇫", "🇦🇱", "🇩🇿", "🇦🇸", "🇦🇩", "🇦🇴", "🇦🇮", "🇦🇶", "🇦🇬",
@@ -68,18 +90,277 @@ const EMOJI_DATA = {
   ]
 }
 
-// Frequently used emojis
-const FREQUENT_EMOJIS = ["👍", "😊", "😂", "❤️", "🎉", "🔥", "👏", "💯", "✅", "👀", "🙏", "💪"]
+// Quick reaction emojis (for message reactions)
+export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "👏", "🎉"]
+
+// Category icons for tabs
+const CATEGORY_ICONS: Record<string, string> = {
+  "Frequently Used": "⏰",
+  "Smileys & People": "😊",
+  "Gestures": "👋",
+  "Hearts & Love": "❤️",
+  "Nature & Animals": "🐶",
+  "Food & Drink": "🍕",
+  "Activities": "⚽",
+  "Objects": "💡",
+  "Symbols": "✨",
+  "Flags": "🏳️"
+}
+
+// ============================================
+// Shared Emoji Grid Component
+// ============================================
+
+interface EmojiGridProps {
+  emojis: string[]
+  onSelect: (emoji: string) => void
+  columns?: number
+  size?: "sm" | "md" | "lg"
+}
+
+const EmojiGrid = memo(function EmojiGrid({ 
+  emojis, 
+  onSelect, 
+  columns = 8,
+  size = "md" 
+}: EmojiGridProps) {
+  const sizeClasses = {
+    sm: "h-6 w-6 text-sm",
+    md: "h-8 w-8 text-lg",
+    lg: "h-10 w-10 text-xl"
+  }
+
+  return (
+    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      {emojis.map((emoji, idx) => (
+        <Button
+          key={`${emoji}-${idx}`}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "p-0 hover:bg-muted hover:scale-110 transition-transform rounded",
+            sizeClasses[size]
+          )}
+          onClick={() => onSelect(emoji)}
+        >
+          {emoji}
+        </Button>
+      ))}
+    </div>
+  )
+})
+
+// ============================================
+// Main Emoji Picker Component (Popover-based)
+// ============================================
 
 interface EmojiPickerProps {
+  onSelect: (emoji: string) => void
+  onClose?: () => void
+  className?: string
+  triggerClassName?: string
+  triggerIcon?: React.ReactNode
+  showTrigger?: boolean
+  showQuickAccess?: boolean
+  align?: "start" | "center" | "end"
+  side?: "top" | "right" | "bottom" | "left"
+  disabled?: boolean
+}
+
+export const EmojiPicker = memo(function EmojiPicker({
+  onSelect,
+  onClose,
+  className,
+  triggerClassName,
+  triggerIcon,
+  showTrigger = true,
+  showQuickAccess = true,
+  align = "start",
+  side = "top",
+  disabled = false
+}: EmojiPickerProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeCategory, setActiveCategory] = useState("Frequently Used")
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Filter emojis based on search
+  const filteredEmojis = useMemo(() => {
+    if (!searchQuery.trim()) return null
+    
+    const allEmojis: string[] = []
+    Object.values(EMOJI_CATEGORIES).forEach(emojis => {
+      emojis.forEach(emoji => {
+        if (!allEmojis.includes(emoji)) {
+          allEmojis.push(emoji)
+        }
+      })
+    })
+    
+    // Return all emojis when searching (in production, use emoji keywords for real search)
+    return allEmojis.slice(0, 60)
+  }, [searchQuery])
+
+  const handleSelect = useCallback((emoji: string) => {
+    onSelect(emoji)
+    setIsOpen(false)
+    setSearchQuery("")
+    onClose?.()
+  }, [onSelect, onClose])
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      setSearchQuery("")
+      onClose?.()
+    }
+  }, [onClose])
+
+  // Focus search on open
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus()
+      }, 100)
+    }
+  }, [isOpen])
+
+  const categories = Object.keys(EMOJI_CATEGORIES)
+
+  const pickerContent = (
+    <div className="w-80">
+      {/* Quick access bar */}
+      {showQuickAccess && (
+        <div className="flex items-center gap-1 p-2 border-b">
+          {QUICK_REACTIONS.map(emoji => (
+            <Button
+              key={emoji}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 text-lg hover:bg-muted hover:scale-110 transition-transform"
+              onClick={() => handleSelect(emoji)}
+            >
+              {emoji}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="p-2 border-b">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            placeholder="Search emoji..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 pl-8 pr-8 text-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Category tabs */}
+      {!searchQuery && (
+        <TooltipProvider>
+          <div className="flex items-center gap-0.5 p-1 border-b overflow-x-auto scrollbar-hide">
+            {categories.map(category => (
+              <Tooltip key={category}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={activeCategory === category ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-7 w-7 p-0 text-base flex-shrink-0"
+                    onClick={() => setActiveCategory(category)}
+                  >
+                    {CATEGORY_ICONS[category] || "📁"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  {category}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
+      )}
+
+      {/* Emoji grid */}
+      <ScrollArea className="h-52">
+        <div className="p-2">
+          {searchQuery ? (
+            filteredEmojis && filteredEmojis.length > 0 ? (
+              <EmojiGrid emojis={filteredEmojis} onSelect={handleSelect} />
+            ) : (
+              <p className="text-center text-sm text-muted-foreground py-8">
+                No emojis found
+              </p>
+            )
+          ) : (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                {activeCategory}
+              </p>
+              <EmojiGrid 
+                emojis={EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES] || []} 
+                onSelect={handleSelect} 
+              />
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+
+  if (!showTrigger) {
+    return <div className={className}>{pickerContent}</div>
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-8 w-8 p-0 hover:bg-muted", triggerClassName)}
+          disabled={disabled}
+        >
+          {triggerIcon || <Smile className="h-4 w-4 text-muted-foreground" />}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className={cn("w-80 p-0", className)} 
+        align={align}
+        side={side}
+        sideOffset={5}
+      >
+        {pickerContent}
+      </PopoverContent>
+    </Popover>
+  )
+})
+
+// ============================================
+// Inline Emoji Picker (Non-popover, for embedding)
+// ============================================
+
+interface InlineEmojiPickerProps {
   onSelect: (emoji: string) => void
   onClose: () => void
   className?: string
 }
 
-export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) {
+export function InlineEmojiPicker({ onSelect, onClose, className }: InlineEmojiPickerProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeCategory, setActiveCategory] = useState<string>("Smileys & People")
+  const [activeCategory, setActiveCategory] = useState("Frequently Used")
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -112,19 +393,16 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
   const filteredEmojis = useMemo(() => {
     if (!searchQuery.trim()) return null
     
-    const query = searchQuery.toLowerCase()
-    const results: string[] = []
-    
-    Object.values(EMOJI_DATA).forEach(emojis => {
+    const allEmojis: string[] = []
+    Object.values(EMOJI_CATEGORIES).forEach(emojis => {
       emojis.forEach(emoji => {
-        if (results.length < 50 && !results.includes(emoji)) {
-          results.push(emoji)
+        if (!allEmojis.includes(emoji)) {
+          allEmojis.push(emoji)
         }
       })
     })
     
-    // Simple search - return all emojis when searching (in real app, would use emoji keywords)
-    return results.slice(0, 50)
+    return allEmojis.slice(0, 50)
   }, [searchQuery])
 
   const handleEmojiClick = (emoji: string) => {
@@ -132,7 +410,7 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
     onClose()
   }
 
-  const categories = Object.keys(EMOJI_DATA)
+  const categories = Object.keys(EMOJI_CATEGORIES)
 
   return (
     <div
@@ -187,7 +465,6 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
       {/* Emoji grid */}
       <ScrollArea className="h-64 p-2">
         {searchQuery ? (
-          // Search results
           <div>
             {filteredEmojis && filteredEmojis.length > 0 ? (
               <div className="grid grid-cols-8 gap-1">
@@ -208,7 +485,6 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
             )}
           </div>
         ) : (
-          // Category view
           <div>
             {/* Frequently used */}
             <div className="mb-3">
@@ -216,7 +492,7 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
                 Frequently Used
               </p>
               <div className="grid grid-cols-8 gap-1">
-                {FREQUENT_EMOJIS.map((emoji, idx) => (
+                {EMOJI_CATEGORIES["Frequently Used"].slice(0, 16).map((emoji, idx) => (
                   <button
                     key={`freq-${idx}`}
                     onClick={() => handleEmojiClick(emoji)}
@@ -229,25 +505,144 @@ export function EmojiPicker({ onSelect, onClose, className }: EmojiPickerProps) 
             </div>
 
             {/* Active category */}
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
-                {activeCategory}
-              </p>
-              <div className="grid grid-cols-8 gap-1">
-                {EMOJI_DATA[activeCategory as keyof typeof EMOJI_DATA]?.map((emoji, idx) => (
-                  <button
-                    key={`${activeCategory}-${idx}`}
-                    onClick={() => handleEmojiClick(emoji)}
-                    className="p-1.5 text-xl hover:bg-muted rounded transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
+            {activeCategory !== "Frequently Used" && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
+                  {activeCategory}
+                </p>
+                <div className="grid grid-cols-8 gap-1">
+                  {EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES]?.map((emoji, idx) => (
+                    <button
+                      key={`${activeCategory}-${idx}`}
+                      onClick={() => handleEmojiClick(emoji)}
+                      className="p-1.5 text-xl hover:bg-muted rounded transition-colors"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </ScrollArea>
     </div>
   )
 }
+
+// ============================================
+// Quick Reaction Bar (for message hover)
+// ============================================
+
+interface QuickReactionBarProps {
+  onSelect: (emoji: string) => void
+  className?: string
+}
+
+export const QuickReactionBar = memo(function QuickReactionBar({
+  onSelect,
+  className
+}: QuickReactionBarProps) {
+  return (
+    <div className={cn(
+      "flex items-center gap-0.5 bg-background border rounded-full px-1 py-0.5 shadow-md",
+      className
+    )}>
+      {QUICK_REACTIONS.slice(0, 6).map(emoji => (
+        <Button
+          key={emoji}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-sm hover:bg-muted hover:scale-125 transition-transform rounded-full"
+          onClick={() => onSelect(emoji)}
+        >
+          {emoji}
+        </Button>
+      ))}
+      <EmojiPicker
+        onSelect={onSelect}
+        showQuickAccess={false}
+        triggerClassName="h-6 w-6 rounded-full"
+        side="top"
+        align="end"
+      />
+    </div>
+  )
+})
+
+// ============================================
+// Message Reactions Display
+// ============================================
+
+interface IGroupedReaction {
+  emoji: string
+  count: number
+  users: { id?: string; mongo_user_id: string; name?: string }[]
+  hasCurrentUserReacted: boolean
+}
+
+interface MessageReactionsProps {
+  reactions: IGroupedReaction[]
+  onReactionClick: (emoji: string) => void
+  className?: string
+  currentUserId?: string
+}
+
+export const MessageReactions = memo(function MessageReactions({
+  reactions,
+  onReactionClick,
+  className,
+  currentUserId
+}: MessageReactionsProps) {
+  if (!reactions || reactions.length === 0) return null
+
+  return (
+    <TooltipProvider>
+      <div className={cn("flex flex-wrap gap-1 mt-1", className)}>
+        {reactions.map(reaction => (
+          <Tooltip key={reaction.emoji}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-6 px-1.5 py-0 text-xs gap-1 rounded-full border",
+                  reaction.hasCurrentUserReacted
+                    ? "bg-primary/10 border-primary/30 hover:bg-primary/20"
+                    : "bg-muted/50 hover:bg-muted"
+                )}
+                onClick={() => onReactionClick(reaction.emoji)}
+              >
+                <span className="text-sm">{reaction.emoji}</span>
+                <span className={cn(
+                  "font-medium",
+                  reaction.hasCurrentUserReacted ? "text-primary" : "text-muted-foreground"
+                )}>
+                  {reaction.count}
+                </span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <div className="text-xs">
+                {reaction.users.slice(0, 10).map(u => u.name || 'Someone').join(', ')}
+                {reaction.users.length > 10 && ` and ${reaction.users.length - 10} more`}
+                {' reacted with '}{reaction.emoji}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+        
+        {/* Add reaction button */}
+        <EmojiPicker
+          onSelect={onReactionClick}
+          showQuickAccess={false}
+          triggerClassName="h-6 w-6 rounded-full border bg-muted/30 hover:bg-muted"
+          side="top"
+        />
+      </div>
+    </TooltipProvider>
+  )
+})
+
+// Default export
+export default EmojiPicker

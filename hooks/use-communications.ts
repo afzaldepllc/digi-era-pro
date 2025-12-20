@@ -12,6 +12,8 @@ import {
   updateMessage,
   addMessageReadReceipt,
   setMessageDelivered,
+  addReactionToMessage,
+  removeReactionFromMessage,
   setTyping,
   removeTyping,
   clearTypingForChannel,
@@ -249,6 +251,54 @@ export function useCommunications() {
     })
   }, [dispatch, toast])
 
+  // Handle reaction added (real-time)
+  const onReactionAdd = useCallback((data: {
+    id: string;
+    message_id: string;
+    channel_id: string;
+    mongo_user_id: string;
+    user_name?: string;
+    emoji: string;
+    created_at: string;
+  }) => {
+    console.log('👍 Reaction added:', data)
+    // Skip reactions from self (already handled optimistically)
+    if (data.mongo_user_id === sessionUserId) return
+    
+    dispatch(addReactionToMessage({
+      channelId: data.channel_id,
+      messageId: data.message_id,
+      reaction: {
+        id: data.id,
+        mongo_user_id: data.mongo_user_id,
+        user_name: data.user_name,
+        emoji: data.emoji,
+        created_at: data.created_at
+      }
+    }))
+  }, [dispatch, sessionUserId])
+
+  // Handle reaction removed (real-time)
+  const onReactionRemove = useCallback((data: {
+    id: string;
+    message_id: string;
+    channel_id: string;
+    mongo_user_id: string;
+    emoji: string;
+  }) => {
+    console.log('👎 Reaction removed:', data)
+    // Skip reactions from self (already handled optimistically)
+    if (data.mongo_user_id === sessionUserId) return
+    
+    dispatch(removeReactionFromMessage({
+      channelId: data.channel_id,
+      messageId: data.message_id,
+      reactionId: data.id,
+      mongo_user_id: data.mongo_user_id,
+      emoji: data.emoji
+    }))
+  }, [dispatch, sessionUserId])
+
   // ============================================
   // Initialization Effects
   // ============================================
@@ -365,10 +415,12 @@ export function useCommunications() {
       onTypingStart,
       onTypingStop,
       onPresenceSync,
-      onMentionNotification
+      onMentionNotification,
+      onReactionAdd,
+      onReactionRemove
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove])
 
   // Subscribe to notifications when user is logged in
   useEffect(() => {
@@ -877,6 +929,99 @@ export function useCommunications() {
   }, [realtimeManager, sessionUserId])
 
   // ============================================
+  // Reaction Operations
+  // ============================================
+
+  /**
+   * Toggle a reaction on a message.
+   * If the user already reacted with this emoji, it will be removed.
+   * Otherwise, it will be added.
+   */
+  const toggleReaction = useCallback(async (messageId: string, channelId: string, emoji: string) => {
+    if (!sessionUserId) return
+
+    try {
+      // Check if user already reacted with this emoji
+      const channelMessages = messages[channelId] || []
+      const message = channelMessages.find(m => m.id === messageId)
+      const existingReaction = message?.reactions?.find(
+        r => r.mongo_user_id === sessionUserId && r.emoji === emoji
+      )
+
+      if (existingReaction) {
+        // Optimistically remove the reaction
+        dispatch(removeReactionFromMessage({
+          channelId,
+          messageId,
+          reactionId: existingReaction.id,
+          mongo_user_id: sessionUserId,
+          emoji
+        }))
+      } else {
+        // Optimistically add the reaction
+        const tempReactionId = crypto.randomUUID()
+        dispatch(addReactionToMessage({
+          channelId,
+          messageId,
+          reaction: {
+            id: tempReactionId,
+            mongo_user_id: sessionUserId,
+            user_name: sessionUserName,
+            emoji,
+            created_at: new Date().toISOString()
+          }
+        }))
+      }
+
+      // Send to API (toggle behavior handled on server)
+      // apiRequest returns the data directly on success, or throws on error
+      const result = await apiRequest('/api/communication/reactions', {
+        method: 'POST',
+        body: JSON.stringify({
+          message_id: messageId,
+          channel_id: channelId,
+          emoji
+        })
+      }, false) // Don't show error toast, we handle it ourselves
+
+      console.log('✅ Reaction toggled:', result)
+    } catch (error: any) {
+      console.error('Failed to toggle reaction:', error)
+      
+      // Check if user already reacted with this emoji (for reverting)
+      const channelMessages = messages[channelId] || []
+      const message = channelMessages.find(m => m.id === messageId)
+      const existingReaction = message?.reactions?.find(
+        r => r.mongo_user_id === sessionUserId && r.emoji === emoji
+      )
+      
+      // Revert optimistic update on error
+      if (existingReaction) {
+        // We had removed it, re-add it
+        dispatch(addReactionToMessage({
+          channelId,
+          messageId,
+          reaction: existingReaction
+        }))
+      } else {
+        // We had added it, remove it
+        dispatch(removeReactionFromMessage({
+          channelId,
+          messageId,
+          mongo_user_id: sessionUserId,
+          emoji
+        }))
+      }
+      
+      toast({
+        title: "Error",
+        description: error?.error || "Failed to add reaction",
+        variant: "destructive"
+      })
+    }
+  }, [dispatch, messages, sessionUserId, sessionUserName, toast])
+
+  // ============================================
   // Optimized Typing Operations
   // ============================================
   
@@ -1042,6 +1187,9 @@ export function useCommunications() {
     updateMessage: editMessage,
     createChannel,
     markAsRead,
+
+    // Reaction operations
+    toggleReaction,
 
     // Real-time operations
     setTyping: setUserTyping,

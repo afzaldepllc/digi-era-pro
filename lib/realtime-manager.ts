@@ -323,6 +323,14 @@ export class RealtimeManager {
           console.log('📎 Realtime: Attachments added', payload)
           this.eventHandlers.onAttachmentsAdded?.(payload.payload)
         })
+        .on('broadcast', { event: 'reaction_added' }, (payload) => {
+          console.log('👍 Realtime: Reaction added', payload)
+          this.eventHandlers.onReactionAdd?.(payload.payload)
+        })
+        .on('broadcast', { event: 'reaction_removed' }, (payload) => {
+          console.log('👎 Realtime: Reaction removed', payload)
+          this.eventHandlers.onReactionRemove?.(payload.payload)
+        })
 
       rtChannel.subscribe((status, err) => {
         console.log(`🔌 RT Channel subscription status for ${channelId}:`, status)

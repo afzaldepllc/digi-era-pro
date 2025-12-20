@@ -15,11 +15,13 @@ import {
   Edit,
   Clock,
   CornerDownRight,
-  Loader2
+  Loader2,
+  Smile
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ICommunication, ITypingIndicator, IParticipant, IAttachment } from "@/types/communication"
+import { ICommunication, ITypingIndicator, IParticipant, IAttachment, IGroupedReaction } from "@/types/communication"
 import { AttachmentGrid } from "./attachment-preview"
+import { QuickReactionBar, MessageReactions } from "./reaction-picker"
 import { formatDistanceToNow, format } from "date-fns"
 import {
   DropdownMenu,
@@ -45,6 +47,7 @@ interface MessageListProps {
   onReply?: (message: ICommunication) => void
   onEdit?: (message: ICommunication) => void
   onDelete?: (messageId: string) => void
+  onReaction?: (messageId: string, channelId: string, emoji: string) => void
   onScrollToMessage?: (messageId: string) => void
   onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
   hasMoreMessages?: boolean
@@ -62,6 +65,7 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  onReaction,
   onScrollToMessage,
   onLoadMore,
   hasMoreMessages = true,
@@ -200,6 +204,35 @@ export function MessageList({
         <AttachmentGrid attachments={attachments} />
       </div>
     )
+  }
+
+  // Helper to group reactions by emoji for display
+  const groupReactions = (reactions: ICommunication['reactions']): IGroupedReaction[] => {
+    if (!reactions || reactions.length === 0) return []
+    
+    const grouped: Record<string, IGroupedReaction> = {}
+    
+    reactions.forEach(reaction => {
+      if (!grouped[reaction.emoji]) {
+        grouped[reaction.emoji] = {
+          emoji: reaction.emoji,
+          count: 0,
+          users: [],
+          hasCurrentUserReacted: false
+        }
+      }
+      grouped[reaction.emoji].count++
+      grouped[reaction.emoji].users.push({
+        id: reaction.id,
+        mongo_user_id: reaction.mongo_user_id,
+        name: reaction.user_name
+      })
+      if (reaction.mongo_user_id === currentUserId) {
+        grouped[reaction.emoji].hasCurrentUserReacted = true
+      }
+    })
+    
+    return Object.values(grouped)
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
@@ -348,7 +381,7 @@ export function MessageList({
 
           {/* Message text */}
             <div className={cn(
-            "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto overflow-hidden",
+            "relative bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto overflow-visible",
             isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
             )}>
               {/* Reply preview */}
@@ -385,7 +418,29 @@ export function MessageList({
             {message.attachments && message.attachments.length > 0 && 
               renderAttachments(message.attachments)
             }
+            
+            {/* Quick reaction bar (visible on hover) */}
+            {onReaction && (
+              <div className={cn(
+                "absolute -top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10",
+                isOwn ? "left-0" : "right-0"
+              )}>
+                <QuickReactionBar
+                  onSelect={(emoji) => onReaction(message.id, message.channel_id, emoji)}
+                />
+              </div>
+            )}
             </div>
+
+          {/* Message reactions */}
+          {message.reactions && message.reactions.length > 0 && (
+            <MessageReactions
+              reactions={groupReactions(message.reactions)}
+              onReactionClick={(emoji) => onReaction?.(message.id, message.channel_id, emoji)}
+              currentUserId={currentUserId}
+              className={isOwn ? "justify-end" : "justify-start"}
+            />
+          )}
 
           {/* Status and read receipts UI */}
           <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>

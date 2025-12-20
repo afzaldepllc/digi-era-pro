@@ -22,7 +22,7 @@ import OrderedList from '@tiptap/extension-ordered-list'
 import ListItem from '@tiptap/extension-list-item'
 
 import HardBreak from '@tiptap/extension-hard-break'
-import { EmojiPicker } from './emoji-picker'
+import { InlineEmojiPicker } from './emoji-picker'
 import { MentionPicker } from './mention-picker'
 import { ICommunication, IChannelMember } from '@/types/communication'
 
@@ -653,7 +653,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             </button>
 
                             {showEmojiPicker && (
-                                <EmojiPicker
+                                <InlineEmojiPicker
                                     onSelect={insertEmoji}
                                     onClose={() => setShowEmojiPicker(false)}
                                 />

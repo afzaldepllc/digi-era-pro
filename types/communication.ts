@@ -17,6 +17,7 @@ export interface ICommunication {
   parent_message_id?: string // For replies
   attachments?: IAttachment[]
   read_receipts?: IReadReceipt[]
+  reactions?: IReaction[] // Message reactions
   
   // Denormalized sender fields (stored in Supabase for real-time performance)
   sender_name: string
@@ -214,9 +215,19 @@ export interface ChannelApiResponse {
 export interface IReaction {
   id: string
   message_id: string
+  channel_id: string
   mongo_user_id: string
-  reaction_type: string
+  user_name?: string
+  emoji: string
   created_at: string
+}
+
+// Grouped reactions for display
+export interface IGroupedReaction {
+  emoji: string
+  count: number
+  users: { id: string; mongo_user_id: string; name?: string }[]
+  hasCurrentUserReacted: boolean
 }
 
 export interface IAttachment {

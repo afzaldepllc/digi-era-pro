@@ -66,7 +66,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     selectChannel,
     fetchOlderMessages,
     prependMessagesToChannel,
-    searchMessages
+    searchMessages,
+    toggleReaction
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
@@ -142,6 +143,12 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     // TODO: Implement delete functionality
     console.log('Delete message:', messageId)
   }
+
+  // Handle reaction toggle on a message
+  const handleReaction = useCallback((messageId: string, emoji: string) => {
+    if (!channelId) return
+    toggleReaction(messageId, channelId, emoji)
+  }, [channelId, toggleReaction])
 
   // Handle loading more (older) messages
   const handleLoadMore = useCallback(async () => {
@@ -666,6 +673,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     onReply={handleReply}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
+                    onReaction={handleReaction}
                     onLoadMore={handleLoadMore}
                     hasMoreMessages={hasMoreMessages}
                     isLoadingMore={isLoadingMore}
