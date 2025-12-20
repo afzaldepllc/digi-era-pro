@@ -2435,6 +2435,10 @@ along with we can
 
 now make sure to implement these things properly with the realtime 
 
+use these docs to understand the main flow of this project and than make sure to impelement the requisted things  Z- Docuuments-folder\COMMUNICATION\supabase_implementation_plan-version-2.md
+D:\digi-era-pro\Z- Docuuments-folder\COMMUNICATION\SUPABASE_CHAT_COMPREHENSIVE_IMPLEMENTATION_PLAN-version-3.md
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_SYSTEM_README-WITH-SUPABASE-FINAL-VERSION-4.md
+
 1) in the groups we can mention anyone from the channel_members using this button 
 {/* Mention button */}
                         <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
@@ -2454,4 +2458,4 @@ and we can mention "everyone" if so that all member have notification for alert
 5) there should be not sent icon, read icons, delivered icon and read icon and its completely realtime in the both side sender and reciver according to the professional approach
 
 
-makesure every things should be realtime and e=working well according to best practoces of the supabase and current flow of this project 
+makesure every things should be realtime and working well according to best practoces of the supabase and current flow of this project and ui should be slim like in the slack
