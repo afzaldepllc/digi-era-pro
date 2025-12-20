@@ -205,7 +205,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-background overflow-hidden", className)}>
         {/* Header */}
-        <div className="border-b bg-card px-4 py-2">
+        <div className="border-b bg-card px-4 py-2 relative">
           <div className="flex items-center justify-between">
             {/* Channel info */}
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -324,16 +324,16 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
             </div>
           </div>
 
-          {/* Search bar (when visible) */}
+          {/* Search bar (when visible) - Positioned absolutely to overlay */}
           {isSearchVisible && (
-            <div className="bg-muted/30 px-4 py-3 border-b">
-              <div className="flex items-center gap-2">
+            <div className="absolute inset-0 bg-card border-b z-50 px-4 py-2 flex items-center animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2 w-full">
                 {/* Back/Close button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setIsSearchVisible(false)}
-                  className="h-8 w-8 p-0 hover:bg-muted"
+                  className="h-8 w-8 p-0 hover:bg-muted shrink-0"
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -344,13 +344,13 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   <input
                     type="text"
                     placeholder="Search messages..."
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-background/60 hover:bg-background border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-muted/30 hover:bg-muted/50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     autoFocus
                   />
                 </div>
 
-                {/* Navigation arrows (for future search results navigation) */}
-                <div className="flex items-center gap-1">
+                {/* Navigation arrows */}
+                <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -374,7 +374,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 </div>
 
                 {/* Result counter */}
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                   0 of 0
                 </span>
               </div>
