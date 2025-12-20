@@ -93,6 +93,7 @@ model reactions {
   message_id    String   @db.Uuid
   channel_id    String   @db.Uuid
   mongo_user_id String
+  user_name     String   @default("Unknown")  // Denormalized for fast display
   emoji         String
   created_at    DateTime @default(now()) @db.Timestamptz(6)
   channels      channels @relation(fields: [channel_id], references: [id], onDelete: Cascade)

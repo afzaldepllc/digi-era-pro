@@ -99,18 +99,25 @@ export async function POST(request: NextRequest) {
         where: { id: existingReaction.id }
       })
 
-      // Broadcast reaction removed
-      await supabaseAdmin.channel(`rt_${channel_id}`).send({
-        type: 'broadcast',
-        event: 'reaction_removed',
-        payload: {
-          id: existingReaction.id,
-          message_id,
-          channel_id,
-          mongo_user_id: userId,
-          emoji
-        }
-      })
+      // Broadcast reaction removed (non-blocking)
+      try {
+        const channel = supabaseAdmin.channel(`rt_${channel_id}`)
+        await channel.send({
+          type: 'broadcast',
+          event: 'reaction_removed',
+          payload: {
+            id: existingReaction.id,
+            message_id,
+            channel_id,
+            mongo_user_id: userId,
+            emoji
+          }
+        })
+        console.log('📡 Reaction removed broadcasted to channel:', channel_id)
+      } catch (broadcastError) {
+        console.error('Failed to broadcast reaction removal:', broadcastError)
+        // Don't fail the request if broadcast fails
+      }
 
       return NextResponse.json({
         success: true,
@@ -121,32 +128,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Add new reaction
+    // Get user info for storing (denormalized)
+    const userName = (session.user as any)?.name || 'Unknown'
+    
     const newReaction = await prisma.reactions.create({
       data: {
         message_id,
         channel_id,
         mongo_user_id: userId,
+        user_name: userName,
         emoji
       }
     })
 
-    // Get user info for broadcast
-    const userName = (session.user as any)?.name || 'Unknown'
-
-    // Broadcast reaction added
-    await supabaseAdmin.channel(`rt_${channel_id}`).send({
-      type: 'broadcast',
-      event: 'reaction_added',
-      payload: {
-        id: newReaction.id,
-        message_id,
-        channel_id,
-        mongo_user_id: userId,
-        user_name: userName,
-        emoji,
-        created_at: newReaction.created_at.toISOString()
-      }
-    })
+    // Broadcast reaction added (non-blocking)
+    try {
+      const channel = supabaseAdmin.channel(`rt_${channel_id}`)
+      await channel.send({
+        type: 'broadcast',
+        event: 'reaction_added',
+        payload: {
+          id: newReaction.id,
+          message_id,
+          channel_id,
+          mongo_user_id: userId,
+          user_name: userName,
+          emoji,
+          created_at: newReaction.created_at.toISOString()
+        }
+      })
+      console.log('📡 Reaction added broadcasted to channel:', channel_id)
+    } catch (broadcastError) {
+      console.error('Failed to broadcast reaction addition:', broadcastError)
+      // Don't fail the request if broadcast fails
+    }
 
     return NextResponse.json({
       success: true,
@@ -157,7 +172,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error: unknown) {
     console.error('Error adding reaction:', error)
-    return createErrorResponse('Failed to add reaction', 500)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorDetails = error instanceof Error ? error.stack : String(error)
+    return createErrorResponse('Failed to add reaction', 500, { message: errorMessage, details: errorDetails })
   }
 }
 
@@ -211,18 +228,25 @@ export async function DELETE(request: NextRequest) {
       where: { id: reaction.id }
     })
 
-    // Broadcast reaction removed
-    await supabaseAdmin.channel(`rt_${reaction.channel_id}`).send({
-      type: 'broadcast',
-      event: 'reaction_removed',
-      payload: {
-        id: reaction.id,
-        message_id: reaction.message_id,
-        channel_id: reaction.channel_id,
-        mongo_user_id: userId,
-        emoji: reaction.emoji
-      }
-    })
+    // Broadcast reaction removed (non-blocking)
+    try {
+      const channel = supabaseAdmin.channel(`rt_${reaction.channel_id}`)
+      await channel.send({
+        type: 'broadcast',
+        event: 'reaction_removed',
+        payload: {
+          id: reaction.id,
+          message_id: reaction.message_id,
+          channel_id: reaction.channel_id,
+          mongo_user_id: userId,
+          emoji: reaction.emoji
+        }
+      })
+      console.log('📡 Reaction removed broadcasted to channel:', reaction.channel_id)
+    } catch (broadcastError) {
+      console.error('Failed to broadcast reaction removal:', broadcastError)
+      // Don't fail the request if broadcast fails
+    }
 
     return NextResponse.json({
       success: true,
@@ -272,20 +296,21 @@ export async function GET(request: NextRequest) {
           message_id: reaction.message_id,
           emoji: reaction.emoji,
           count: 0,
-          users: [] as { id: string; mongo_user_id: string }[],
+          users: [] as { id: string; mongo_user_id: string; name: string }[],
           hasCurrentUserReacted: false
         }
       }
       acc[key].count++
       acc[key].users.push({
         id: reaction.id,
-        mongo_user_id: reaction.mongo_user_id
+        mongo_user_id: reaction.mongo_user_id,
+        name: reaction.user_name
       })
       if (reaction.mongo_user_id === session.user.id) {
         acc[key].hasCurrentUserReacted = true
       }
       return acc
-    }, {} as Record<string, { message_id: string; emoji: string; count: number; users: { id: string; mongo_user_id: string }[]; hasCurrentUserReacted: boolean }>)
+    }, {} as Record<string, { message_id: string; emoji: string; count: number; users: { id: string; mongo_user_id: string; name: string }[]; hasCurrentUserReacted: boolean }>)
 
     return NextResponse.json({
       success: true,
