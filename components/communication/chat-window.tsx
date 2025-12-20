@@ -263,32 +263,6 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
             {/* Actions */}
             <div className="flex items-center gap-1 ml-4">
-              {/* Call buttons for DM */}
-              {selectedChannel.type === 'dm' && (
-                <>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Phone className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Voice call</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Video className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Video call</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </>
-              )}
 
               {/* Search toggle */}
               <Tooltip>
@@ -352,14 +326,57 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
           {/* Search bar (when visible) */}
           {isSearchVisible && (
-            <div className="mt-3 pt-3 border-t">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search in this conversation..."
-                  className="w-full pl-10 pr-4 py-2 border rounded-md bg-background"
-                />
+            <div className="bg-muted/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                {/* Back/Close button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsSearchVisible(false)}
+                  className="h-8 w-8 p-0 hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+
+                {/* Search input */}
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search messages..."
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-background/60 hover:bg-background border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Navigation arrows (for future search results navigation) */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-muted"
+                    disabled
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-muted"
+                    disabled
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </Button>
+                </div>
+
+                {/* Result counter */}
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  0 of 0
+                </span>
               </div>
             </div>
           )}
