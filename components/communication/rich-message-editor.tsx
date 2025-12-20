@@ -197,23 +197,25 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 if (isInList && isInListItem) {
                     // In a list item
                     if (isEmptyNode) {
-                        // Empty list item - exit the list completely with TWO paragraph breaks
-                        // This ensures proper separation between different list types
-                        try {
+                        // Empty list item - exit completely with strong separation
+                        // Use paragraph + content to force structural break
+                        const { view } = editor
+                        const { state } = view
+                        const { tr } = state
+                        
+                        // First lift the list item
+                        editor.chain().focus().liftListItem('listItem').run()
+                        
+                        // Then insert separation content - paragraph with non-breaking space, then empty paragraph
+                        // The non-breaking space acts as a barrier preventing list merge
+                        setTimeout(() => {
                             editor.chain()
                                 .focus()
-                                .liftListItem('listItem')
-                                .command(({ tr, state }) => {
-                                    // Insert two paragraphs to create strong separation
-                                    const { $from } = state.selection
-                                    tr.insert($from.pos, state.schema.nodes.paragraph.create())
-                                    return true
-                                })
+                                .insertContent('<p>&nbsp;</p>')
+                                .insertContent('<p><br /></p>')
+                                .focus('end')
                                 .run()
-                        } catch (err) {
-                            // Fallback if command fails
-                            editor.chain().focus().liftListItem('listItem').run()
-                        }
+                        }, 0)
                     } else {
                         // Non-empty list item - create a new list item in the same list
                         editor.chain()
@@ -294,23 +296,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             if (editor.isActive('orderedList')) {
                 // Check if we're in a list item
                 if (currentNode.type.name === 'listItem') {
-                    // Exit the ordered list with proper separation, then start bullet list
-                    try {
+                    // Exit the ordered list with strong separation, then start bullet list
+                    editor.chain()
+                        .focus()
+                        .liftListItem('listItem')
+                        .run()
+                    
+                    // Insert separator with delay to ensure proper list separation
+                    setTimeout(() => {
                         editor.chain()
                             .focus()
-                            .liftListItem('listItem')
-                            .command(({ tr, state }) => {
-                                const { $from } = state.selection
-                                // Insert paragraph as separator
-                                tr.insert($from.pos, state.schema.nodes.paragraph.create())
-                                return true
-                            })
+                            .insertContent('<p>&nbsp;</p>')
+                            .insertContent('<p><br /></p>')
                             .toggleBulletList()
                             .run()
-                    } catch (err) {
-                        // Fallback
-                        editor.chain().focus().toggleBulletList().run()
-                    }
+                    }, 0)
                 } else {
                     editor.chain().focus().toggleBulletList().run()
                 }
@@ -331,23 +331,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             if (editor.isActive('bulletList')) {
                 // Check if we're in a list item
                 if (currentNode.type.name === 'listItem') {
-                    // Exit the bullet list with proper separation, then start ordered list
-                    try {
+                    // Exit the bullet list with strong separation, then start ordered list
+                    editor.chain()
+                        .focus()
+                        .liftListItem('listItem')
+                        .run()
+                    
+                    // Insert separator with delay to ensure proper list separation
+                    setTimeout(() => {
                         editor.chain()
                             .focus()
-                            .liftListItem('listItem')
-                            .command(({ tr, state }) => {
-                                const { $from } = state.selection
-                                // Insert paragraph as separator
-                                tr.insert($from.pos, state.schema.nodes.paragraph.create())
-                                return true
-                            })
+                            .insertContent('<p>&nbsp;</p>')
+                            .insertContent('<p><br /></p>')
                             .toggleOrderedList()
                             .run()
-                    } catch (err) {
-                        // Fallback
-                        editor.chain().focus().toggleOrderedList().run()
-                    }
+                    }, 0)
                 } else {
                     editor.chain().focus().toggleOrderedList().run()
                 }
@@ -485,8 +483,8 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         data-placeholder={placeholder}
                         onKeyDown={handleKeyDown}
                         className={cn(
-                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md break-words",
-                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:break-words [&_.ProseMirror]:whitespace-pre-wrap",
+                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md overflow-hidden",
+                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-all [&_.ProseMirror]:max-w-full",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
@@ -495,13 +493,16 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             // List styling
                             "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:ml-6 [&_.ProseMirror_ul]:my-2",
                             "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:ml-6 [&_.ProseMirror_ol]:my-2",
-                            "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-words",
+                            "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-all [&_.ProseMirror_li]:max-w-full",
                             "[&_.ProseMirror_ul_ul]:list-[circle] [&_.ProseMirror_ul_ul_ul]:list-[square]",
-                            "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic",
-                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-words",
-                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-words",
+                            "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic [&_.ProseMirror_blockquote]:break-all",
+                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-all",
+                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-all",
+                            "[&_.ProseMirror_p]:break-all [&_.ProseMirror_p]:max-w-full",
+                            "[&_.ProseMirror_*]:max-w-full",
                             disabled && 'opacity-50 cursor-not-allowed'
                         )}
+                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                     />
 
                     {/* Mention suggestions dropdown */}
@@ -560,7 +561,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                                     ))}
                                 </div>
                             )}
-                        </div>
+                        </div>  
 
                     </div>
 
