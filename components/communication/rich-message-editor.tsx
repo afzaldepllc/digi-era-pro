@@ -170,9 +170,28 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             const isInBulletList = editor.isActive('bulletList')
             const isInOrderedList = editor.isActive('orderedList')
             const isInList = isInBulletList || isInOrderedList
-            const isInListItem = currentNode.type.name === 'listItem'
+            
+            // Check if we're in a list item by traversing up the node hierarchy
+            // The cursor is usually in a paragraph inside a listItem, not directly in listItem
+            let isInListItem = false
+            let listItemDepth = -1
+            for (let d = $from.depth; d > 0; d--) {
+                if ($from.node(d).type.name === 'listItem') {
+                    isInListItem = true
+                    listItemDepth = d
+                    break
+                }
+            }
+            
             const isAtStart = $from.parentOffset === 0
             const isEmptyNode = currentNode.textContent.trim() === ''
+            
+            // Check if entire list item content is empty (not just current paragraph)
+            let isListItemEmpty = false
+            if (isInListItem && listItemDepth > 0) {
+                const listItemNode = $from.node(listItemDepth)
+                isListItemEmpty = listItemNode.textContent.trim() === ''
+            }
             
             // ==================== ENTER KEY (WITHOUT SHIFT) ====================
             // Send message - primary action
@@ -196,26 +215,12 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 
                 if (isInList && isInListItem) {
                     // In a list item
-                    if (isEmptyNode) {
-                        // Empty list item - exit completely with strong separation
-                        // Use paragraph + content to force structural break
-                        const { view } = editor
-                        const { state } = view
-                        const { tr } = state
-                        
-                        // First lift the list item
-                        editor.chain().focus().liftListItem('listItem').run()
-                        
-                        // Then insert separation content - paragraph with non-breaking space, then empty paragraph
-                        // The non-breaking space acts as a barrier preventing list merge
-                        setTimeout(() => {
-                            editor.chain()
-                                .focus()
-                                .insertContent('<p>&nbsp;</p>')
-                                .insertContent('<p><br /></p>')
-                                .focus('end')
-                                .run()
-                        }, 0)
+                    if (isListItemEmpty) {
+                        // Empty list item - exit the list
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .run()
                     } else {
                         // Non-empty list item - create a new list item in the same list
                         editor.chain()
@@ -240,31 +245,63 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     return // Let default handle text selection deletion
                 }
                 
-                if (isInList && isInListItem) {
-                    // In a list item
-                    if (isAtStart) {
-                        // At the start of list item
-                        if (isEmptyNode) {
-                            // Empty list item at start - lift it out
-                            e.preventDefault()
+                if (isInList && isInListItem && isAtStart && listItemDepth > 0) {
+                    const listNode = $from.node(listItemDepth - 1)
+                    const listItemIndex = $from.index(listItemDepth - 1)
+                    const totalListItems = listNode.childCount
+                    
+                    if (isListItemEmpty) {
+                        e.preventDefault()
+                        
+                        if (totalListItems === 1) {
+                            // Only one empty item in list - remove entire list and create paragraph
+                            editor.chain()
+                                .focus()
+                                .liftListItem('listItem')
+                                .run()
+                        } else if (listItemIndex === totalListItems - 1) {
+                            // Last item in list and it's empty - delete this item and position after list
+                            // Use deleteNode to remove just this list item
+                            const listItemPos = $from.before(listItemDepth)
+                            editor.chain()
+                                .focus()
+                                .command(({ tr, dispatch }) => {
+                                    if (dispatch) {
+                                        const listItemNode = $from.node(listItemDepth)
+                                        tr.delete(listItemPos, listItemPos + listItemNode.nodeSize)
+                                    }
+                                    return true
+                                })
+                                .run()
+                        } else if (listItemIndex === 0) {
+                            // First item but there are more items - just lift this item out
                             editor.chain()
                                 .focus()
                                 .liftListItem('listItem')
                                 .run()
                         } else {
-                            // Non-empty list item at start
-                            const indexBefore = $from.index($from.depth - 1)
-                            if (indexBefore === 0) {
-                                // First item in list - lift it out
-                                e.preventDefault()
-                                editor.chain()
-                                    .focus()
-                                    .liftListItem('listItem')
-                                    .run()
-                            }
-                            // Otherwise let default behavior merge with previous item
+                            // Middle empty item - delete it and stay in list
+                            const listItemPos = $from.before(listItemDepth)
+                            editor.chain()
+                                .focus()
+                                .command(({ tr, dispatch }) => {
+                                    if (dispatch) {
+                                        const listItemNode = $from.node(listItemDepth)
+                                        tr.delete(listItemPos, listItemPos + listItemNode.nodeSize)
+                                    }
+                                    return true
+                                })
+                                .run()
                         }
+                    } else if (listItemIndex === 0) {
+                        // First item with content - lift it out of list
+                        e.preventDefault()
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .run()
                     }
+                    // Otherwise let default behavior merge with previous item
                 }
                 return
             }
@@ -284,38 +321,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             }
         }, [editor, onSend, attachments])
         
-        // Enhanced list toggle handlers that handle list type switching
+        // Enhanced list toggle handlers that handle list type switching properly
         const toggleBulletList = useCallback(() => {
             if (!editor) return
             
-            const { state } = editor.view
-            const { $from } = state.selection
-            const currentNode = $from.parent
-            
-            // If currently in an ordered list, properly exit and switch
+            // If currently in an ordered list, convert to bullet list (not exit and create new)
             if (editor.isActive('orderedList')) {
-                // Check if we're in a list item
-                if (currentNode.type.name === 'listItem') {
-                    // Exit the ordered list with strong separation, then start bullet list
-                    editor.chain()
-                        .focus()
-                        .liftListItem('listItem')
-                        .run()
-                    
-                    // Insert separator with delay to ensure proper list separation
-                    setTimeout(() => {
-                        editor.chain()
-                            .focus()
-                            .insertContent('<p>&nbsp;</p>')
-                            .insertContent('<p><br /></p>')
-                            .toggleBulletList()
-                            .run()
-                    }, 0)
-                } else {
-                    editor.chain().focus().toggleBulletList().run()
-                }
+                // First toggle off ordered list, then toggle on bullet list
+                // This converts the list in place
+                editor.chain()
+                    .focus()
+                    .toggleOrderedList()
+                    .toggleBulletList()
+                    .run()
             } else {
-                // Just toggle normally
+                // Just toggle bullet list normally (turn on or off)
                 editor.chain().focus().toggleBulletList().run()
             }
         }, [editor])
@@ -323,34 +343,17 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const toggleOrderedList = useCallback(() => {
             if (!editor) return
             
-            const { state } = editor.view
-            const { $from } = state.selection
-            const currentNode = $from.parent
-            
-            // If currently in a bullet list, properly exit and switch
+            // If currently in a bullet list, convert to ordered list (not exit and create new)
             if (editor.isActive('bulletList')) {
-                // Check if we're in a list item
-                if (currentNode.type.name === 'listItem') {
-                    // Exit the bullet list with strong separation, then start ordered list
-                    editor.chain()
-                        .focus()
-                        .liftListItem('listItem')
-                        .run()
-                    
-                    // Insert separator with delay to ensure proper list separation
-                    setTimeout(() => {
-                        editor.chain()
-                            .focus()
-                            .insertContent('<p>&nbsp;</p>')
-                            .insertContent('<p><br /></p>')
-                            .toggleOrderedList()
-                            .run()
-                    }, 0)
-                } else {
-                    editor.chain().focus().toggleOrderedList().run()
-                }
+                // First toggle off bullet list, then toggle on ordered list
+                // This converts the list in place
+                editor.chain()
+                    .focus()
+                    .toggleBulletList()
+                    .toggleOrderedList()
+                    .run()
             } else {
-                // Just toggle normally
+                // Just toggle ordered list normally (turn on or off)
                 editor.chain().focus().toggleOrderedList().run()
             }
         }, [editor])
@@ -483,7 +486,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         data-placeholder={placeholder}
                         onKeyDown={handleKeyDown}
                         className={cn(
-                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md overflow-hidden",
+                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
                             "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-all [&_.ProseMirror]:max-w-full",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
