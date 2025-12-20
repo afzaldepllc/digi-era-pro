@@ -58,6 +58,23 @@ export function HtmlTextRenderer({
     return truncateText(plainText, maxChars);
   };
 
+  // Helper function to highlight @mentions in content
+  const highlightMentions = (html: string): string => {
+    // First, clean up any raw HTML that was escaped and stored as text
+    // This handles old messages where TipTap escaped the HTML spans
+    const cleanedHtml = html
+      .replace(/&lt;span class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/g, '$1')
+      .replace(/<span class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/g, '$1');
+    
+    // Now match @username patterns and wrap them in styled spans
+    // Matches @word or @FirstName LastName (two words)
+    const mentionPattern = /@(\w+(?:\s+\w+)?)/g;
+    
+    return cleanedHtml.replace(mentionPattern, (match, name) => {
+      return `<span class="mention">@${name}</span>`;
+    });
+  };
+
   // Helper function to sanitize HTML content
   const sanitizeHtml = (html: string): string => {
     // Basic sanitization - you might want to use a library like DOMPurify in production
@@ -84,7 +101,8 @@ export function HtmlTextRenderer({
       }
     });
     
-    return tempDiv.innerHTML;
+    // Highlight @mentions after sanitization
+    return highlightMentions(tempDiv.innerHTML);
   };
 
   // Process the content
@@ -173,19 +191,39 @@ export function HtmlTextRenderer({
 }
 
 /**
+ * Clean up escaped HTML entities and old mention spans from content
+ */
+const cleanEscapedHtml = (html: string): string => {
+  return html
+    // Remove escaped HTML mention spans: &lt;span class="mention"...&gt;@Name&lt;/span&gt;
+    .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/gi, '$1')
+    // Also handle regular HTML mention spans
+    .replace(/<span[^>]*class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/gi, '$1')
+    // Decode common HTML entities
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+};
+
+/**
  * Utility function to extract plain text from HTML content
  * Can be used outside of React components
  */
 export const extractTextFromHtml = (html: string, maxLength?: number): string => {
+  // First clean up any escaped HTML entities
+  const cleanedHtml = cleanEscapedHtml(html);
+  
   if (typeof window === 'undefined') {
     // Server-side fallback - basic HTML tag removal
-    const text = html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const text = cleanedHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     return maxLength ? text.substring(0, maxLength) + (text.length > maxLength ? '...' : '') : text;
   }
 
   // Client-side - proper HTML parsing
   const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
+  tempDiv.innerHTML = cleanedHtml;
   let text = tempDiv.textContent || tempDiv.innerText || '';
   text = text.replace(/\s+/g, ' ').trim();
   
@@ -194,6 +232,22 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
   }
   
   return text;
+};
+
+/**
+ * Utility function to highlight @mentions in text
+ */
+export const highlightMentionsInHtml = (html: string): string => {
+  // First, clean up any raw HTML that was escaped and stored as text
+  const cleanedHtml = html
+    .replace(/&lt;span class="mention"[^&]*&gt;(@\w+(?:\s+\w+)?)&lt;\/span&gt;/g, '$1')
+    .replace(/<span class="mention"[^>]*>(@\w+(?:\s+\w+)?)<\/span>/g, '$1');
+  
+  // Match @username patterns and wrap them
+  const mentionPattern = /@(\w+(?:\s+\w+)?)/g;
+  return cleanedHtml.replace(mentionPattern, (match, name) => {
+    return `<span class="mention">@${name}</span>`;
+  });
 };
 
 /**
@@ -215,7 +269,8 @@ export const sanitizeAndRenderHtml = (html: string): string => {
     elements.forEach(el => el.remove());
   });
   
-  return tempDiv.innerHTML;
+  // Highlight @mentions
+  return highlightMentionsInHtml(tempDiv.innerHTML);
 };
 
 export default HtmlTextRenderer;

@@ -426,16 +426,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             // Remove the partial @query text first
             const text = editor.getText()
             const match = text.match(/@[\w-]*$/)
+            
+            // Insert plain text mention (like WhatsApp/Slack style)
+            // The @username will be styled via CSS and tracked separately for notifications
+            const mentionText = `@${user.name} `
+            
             if (match) {
-                // Delete the @query text
+                // Delete the @query text and insert the mention
                 const from = editor.state.selection.from - match[0].length
                 editor.chain()
                     .focus()
                     .deleteRange({ from, to: editor.state.selection.from })
-                    .insertContent(`<span class="mention" data-user-id="${user.id}">@${user.name}</span> `)
+                    .insertContent(mentionText)
                     .run()
             } else {
-                editor.commands.insertContent(`<span class="mention" data-user-id="${user.id}">@${user.name}</span> `)
+                editor.commands.insertContent(mentionText)
             }
             
             // Track mentioned user

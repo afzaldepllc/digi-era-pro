@@ -2431,7 +2431,7 @@ along with we can
 
 
 
-
+# fixed-01
 
 now make sure to implement these things properly with the realtime 
 
@@ -2462,7 +2462,7 @@ makesure every things should be realtime and working well according to best prac
 
 
 
-
+# fixes 02
 
 
 now make sure to implement these things properly with the realtime 
@@ -2515,7 +2515,7 @@ but every things should be unified and realtime and working well without any err
 make sure every things should be working well without any error and every things should be realtime 
 
 
-
+# fixes 03
 
 
 1) make sure in the components\communication\user-directory.tsx those user for which the messages are most recent incomming to send should be top

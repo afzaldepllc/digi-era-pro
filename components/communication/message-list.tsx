@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/tooltip"
 
 import { IReadReceipt } from "@/types/communication"
-import HtmlTextRenderer from "../shared/html-text-renderer"
+import HtmlTextRenderer, { extractTextFromHtml } from "../shared/html-text-renderer"
 
 interface MessageListProps {
   messages: ICommunication[]
@@ -333,8 +333,7 @@ export function MessageList({
                       {parentMessage.sender?.name || parentMessage.sender_name}
                     </p>
                     <p className={cn("truncate opacity-70", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
-                      {parentMessage.content.replace(/<[^>]*>/g, '').slice(0, 60)}
-                      {parentMessage.content.length > 60 ? '...' : ''}
+                      {extractTextFromHtml(parentMessage.content, 60)}
                     </p>
                   </div>
                 </button>
