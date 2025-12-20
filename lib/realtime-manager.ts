@@ -19,6 +19,15 @@ export interface RealtimeEventHandlers {
   onReactionAdd?: (reaction: any) => void
   onReactionRemove?: (reactionId: string) => void
   onChannelUpdate?: (channel: any) => void
+  onMentionNotification?: (data: { 
+    type: string
+    message_id: string
+    channel_id: string
+    sender_name: string
+    sender_avatar?: string
+    content_preview: string
+    created_at: string
+  }) => void
 }
 
 export interface PresenceState {
@@ -167,6 +176,52 @@ export class RealtimeManager {
   getPresenceState(): Record<string, any[]> {
     if (!this.presenceChannel) return {}
     return this.presenceChannel.presenceState()
+  }
+
+  // ============================================
+  // User Notification Channel (for @mentions)
+  // ============================================
+  
+  private notificationChannel: RealtimeChannel | null = null
+
+  async subscribeToNotifications(userId: string): Promise<void> {
+    if (this.notificationChannel) {
+      console.log('🔔 Already subscribed to notifications')
+      return
+    }
+
+    console.log('🔔 Subscribing to notifications for user:', userId)
+
+    return new Promise((resolve, reject) => {
+      this.notificationChannel = supabase.channel(`notifications_${userId}`)
+
+      this.notificationChannel
+        .on('broadcast', { event: 'mention_notification' }, (payload) => {
+          console.log('📬 Received mention notification:', payload.payload)
+          this.eventHandlers.onMentionNotification?.(payload.payload)
+        })
+
+      this.notificationChannel.subscribe((status, err) => {
+        if (err) {
+          console.error('❌ Notification subscription error:', err)
+          reject(err)
+          return
+        }
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Notification channel subscribed')
+          resolve()
+        }
+      })
+    })
+  }
+
+  async unsubscribeFromNotifications(): Promise<void> {
+    if (this.notificationChannel) {
+      await supabase.removeChannel(this.notificationChannel)
+      this.notificationChannel = null
+      console.log('🔔 Unsubscribed from notifications')
+    }
   }
 
   isUserOnline(userId: string): boolean {

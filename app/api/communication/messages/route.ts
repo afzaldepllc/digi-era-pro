@@ -255,6 +255,34 @@ export async function POST(request: NextRequest) {
         payload: messageWithSender
       })
       console.log('📡 Message broadcasted to channel:', validatedData.channel_id)
+
+      // Broadcast mention notifications to mentioned users
+      if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
+        const mentionNotification = {
+          type: 'mention',
+          message_id: message.id,
+          channel_id: validatedData.channel_id,
+          sender_name: senderName,
+          sender_avatar: senderAvatar,
+          content_preview: validatedData.content.replace(/<[^>]*>/g, '').slice(0, 100),
+          created_at: message.created_at
+        }
+
+        // Broadcast to each mentioned user's personal notification channel
+        for (const mentionedUserId of validatedData.mongo_mentioned_user_ids) {
+          try {
+            const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
+            await userChannel.send({
+              type: 'broadcast',
+              event: 'mention_notification',
+              payload: mentionNotification
+            })
+            console.log('📬 Mention notification sent to user:', mentionedUserId)
+          } catch (notifError) {
+            console.error('Failed to send mention notification to:', mentionedUserId, notifError)
+          }
+        }
+      }
     } catch (broadcastError) {
       console.error('❌ Failed to broadcast message:', broadcastError)
       // Don't fail the request if broadcast fails

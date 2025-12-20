@@ -1,21 +1,24 @@
 "use client"
 
-import { useState, useRef, ChangeEvent } from "react"
-import { Button } from "@/components/ui/button"
+import { useState, useRef, useImperativeHandle, forwardRef } from "react"
 import { cn } from "@/lib/utils"
-import { CreateMessageData } from "@/types/communication"
+import { CreateMessageData, ICommunication, IChannelMember } from "@/types/communication"
 import { useToast } from "@/hooks/use-toast"
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip"
 import RichMessageEditor, { RichMessageEditorRef } from "./rich-message-editor"
+
+export interface MessageInputRef {
+  setReplyTo: (message: ICommunication | null) => void
+  setEditMessage: (message: ICommunication | null) => void
+  focus: () => void
+}
 
 interface MessageInputProps {
   channelId: string
   onSend: (data: CreateMessageData) => void
+  onEdit?: (messageId: string, data: CreateMessageData) => Promise<void>
   disabled?: boolean
   placeholder?: string
   allowAttachments?: boolean
@@ -23,29 +26,60 @@ interface MessageInputProps {
   className?: string
   onTyping?: () => void
   onStopTyping?: () => void
+  channelMembers?: IChannelMember[]
 }
 
-export function MessageInput({
+export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   channelId,
   onSend,
+  onEdit,
   disabled = false,
   placeholder = "Type a message...",
   allowAttachments = true,
   maxLength = 5000,
   className,
   onTyping,
-  onStopTyping
-}: MessageInputProps) {
+  onStopTyping,
+  channelMembers = []
+}, ref) => {
   const [messageHtml, setMessageHtml] = useState("")
   const [messageText, setMessageText] = useState("")
   const [isUploading, setIsUploading] = useState(false)
+  const [replyTo, setReplyTo] = useState<ICommunication | null>(null)
+  const [editMessage, setEditMessage] = useState<ICommunication | null>(null)
   
   const editorRef = useRef<RichMessageEditorRef | null>(null)
   
   const { toast } = useToast()
 
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    setReplyTo: (message: ICommunication | null) => {
+      setReplyTo(message)
+      setEditMessage(null)
+      editorRef.current?.focus()
+    },
+    setEditMessage: (message: ICommunication | null) => {
+      setEditMessage(message)
+      setReplyTo(null)
+      if (message) {
+        editorRef.current?.setEditMessage(message)
+      }
+    },
+    focus: () => {
+      editorRef.current?.focus()
+    }
+  }))
+
   // Handler the editor will call when it wants to send a message
-  const handleSendFromEditor = async (html: string, text: string, files: File[]) => {
+  const handleSendFromEditor = async (
+    html: string, 
+    text: string, 
+    files: File[],
+    mentionedUserIds: string[] = [],
+    replyToId?: string,
+    editMessageId?: string
+  ) => {
     if ((!text || text.trim().length === 0) && files.length === 0) return false
     if (disabled || isUploading) return false
 
@@ -56,77 +90,39 @@ export function MessageInput({
         channel_id: channelId,
         content: contentToSend,
         content_type: files.length > 0 ? 'file' : 'text',
-        attachments: files.length > 0 ? files.map(f => f.name) : undefined
+        attachments: files.length > 0 ? files.map(f => f.name) : undefined,
+        mongo_mentioned_user_ids: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+        parent_message_id: replyToId
       }
 
-      await onSend(messageData)
+      if (editMessageId && onEdit) {
+        // Handle edit
+        await onEdit(editMessageId, messageData)
+      } else {
+        // Handle new message
+        await onSend(messageData)
+      }
+
+      // Clear state
+      setReplyTo(null)
+      setEditMessage(null)
 
       return true
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to send message",
+        description: editMessageId ? "Failed to update message" : "Failed to send message",
         variant: "destructive"
       })
       return false
     }
   }
 
-  // const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-  //   const files = Array.from(e.target.files || [])
-    
-  //   // Validate file types and sizes
-  //   const validFiles = files.filter(file => {
-  //     if (file.size > 10 * 1024 * 1024) { // 10MB limit
-  //       toast({
-  //         title: "File too large",
-  //         description: `${file.name} is larger than 10MB`,
-  //         variant: "destructive"
-  //       })
-  //       return false
-  //     }
-  //     return true
-  //   })
-    
-  //   if (validFiles.length + attachments.length > 5) {
-  //     toast({
-  //       title: "Too many files",
-  //       description: "You can only attach up to 5 files",
-  //       variant: "destructive"
-  //     })
-  //     return
-  //   }
-    
-  //   setAttachments(prev => [...prev, ...validFiles])
-    
-  //   // Clear input
-  //   if (fileInputRef.current) {
-  //     fileInputRef.current.value = ""
-  //   }
-  // }
-
-  // const removeAttachment = (index: number) => {
-  //   setAttachments(prev => prev.filter((_, i) => i !== index))
-  // }
-
-  // const getFileIcon = (file: File) => {
-  //   if (file.type.startsWith('image/')) {
-  //     return <Image className="h-4 w-4" />
-  //   }
-  //   return <FileText className="h-4 w-4" />
-  // }
-
-  // const canSend = ((messageText && messageText.trim().length > 0) || attachments.length > 0) && !disabled && !isUploading
-
   return (
     <TooltipProvider>
       <div className={cn("border-t bg-card p-2", className)}>
-
-
         {/* Input area */}
         <div className="flex items-end gap-2">
-
-
           {/* Rich Text Editor */}
           <div className="flex-1">
             <RichMessageEditor
@@ -142,10 +138,13 @@ export function MessageInput({
               onTyping={onTyping}
               onStopTyping={onStopTyping}
               onSend={handleSendFromEditor}
+              channelMembers={channelMembers}
+              replyTo={replyTo}
+              editMessage={editMessage}
+              onCancelReply={() => setReplyTo(null)}
+              onCancelEdit={() => setEditMessage(null)}
             />
           </div>
-
-          {/* Send is handled inside RichMessageEditor now */}
         </div>
 
         {/* Keyboard shortcut hint */}
@@ -155,4 +154,6 @@ export function MessageInput({
       </div>
     </TooltipProvider>
   )
-}
+})
+
+MessageInput.displayName = 'MessageInput'

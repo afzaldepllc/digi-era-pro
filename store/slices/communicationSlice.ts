@@ -54,9 +54,14 @@ interface CommunicationState {
   unreadCount: number
   notifications: Array<{
     id: string
+    type: 'message' | 'mention'
+    title?: string
     channelId: string
-    message: ICommunication
+    message?: ICommunication
+    messageId?: string
+    preview?: string
     timestamp: Date
+    read: boolean
   }>
 }
 
@@ -357,12 +362,26 @@ const communicationSlice = createSlice({
     },
     
     // Notifications
-    addNotification: (state, action: PayloadAction<{ channelId: string; message: ICommunication }>) => {
+    addNotification: (state, action: PayloadAction<{ 
+      id: string
+      type: 'message' | 'mention'
+      title?: string
+      channelId: string
+      message?: ICommunication
+      messageId?: string
+      preview?: string
+      read?: boolean
+    }>) => {
       state.notifications.push({
-        id: Date.now().toString(),
+        id: action.payload.id,
+        type: action.payload.type,
+        title: action.payload.title,
         channelId: action.payload.channelId,
         message: action.payload.message,
-        timestamp: new Date()
+        messageId: action.payload.messageId,
+        preview: action.payload.preview,
+        timestamp: new Date(),
+        read: action.payload.read ?? false
       })
     },
     

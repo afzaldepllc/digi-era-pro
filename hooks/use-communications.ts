@@ -185,6 +185,36 @@ export function useCommunications() {
     dispatch(setOnlineUserIds(onlineIds))
   }, [dispatch])
 
+  // Handle mention notifications
+  const onMentionNotification = useCallback((data: {
+    type: string
+    message_id: string
+    channel_id: string
+    sender_name: string
+    sender_avatar?: string
+    content_preview: string
+    created_at: string
+  }) => {
+    console.log('📬 Mention notification received:', data)
+    
+    // Add notification to store
+    dispatch(addNotification({
+      id: `mention_${data.message_id}`,
+      type: 'mention',
+      title: `${data.sender_name} mentioned you`,
+      channelId: data.channel_id,
+      messageId: data.message_id,
+      preview: data.content_preview,
+      read: false
+    }))
+
+    // Show toast notification
+    toast({
+      title: `@${data.sender_name} mentioned you`,
+      description: data.content_preview.slice(0, 60) + (data.content_preview.length > 60 ? '...' : ''),
+    })
+  }, [dispatch, toast])
+
   // ============================================
   // Initialization Effects
   // ============================================
@@ -298,10 +328,24 @@ export function useCommunications() {
       onUserOffline,
       onTypingStart,
       onTypingStop,
-      onPresenceSync
+      onPresenceSync,
+      onMentionNotification
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification])
+
+  // Subscribe to notifications when user is logged in
+  useEffect(() => {
+    if (sessionUserId) {
+      realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
+        console.error('Failed to subscribe to notifications:', err)
+      })
+    }
+    
+    return () => {
+      realtimeManager.unsubscribeFromNotifications()
+    }
+  }, [sessionUserId, realtimeManager])
 
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
@@ -479,6 +523,69 @@ export function useCommunications() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
+
+  // Update an existing message (for editing)
+  const editMessage = useCallback(async (messageId: string, updates: { content?: string }) => {
+    try {
+      dispatch(setActionLoading(true))
+
+      // Find the message to get channel_id
+      let channelId = ''
+      for (const [chId, msgs] of Object.entries(messages)) {
+        const msg = msgs.find((m: ICommunication) => m.id === messageId)
+        if (msg) {
+          channelId = chId
+          break
+        }
+      }
+
+      if (!channelId) {
+        throw new Error('Message not found')
+      }
+
+      // Optimistically update the message
+      dispatch(updateMessage({
+        channelId,
+        messageId,
+        updates: {
+          ...updates,
+          is_edited: true,
+          edited_at: new Date().toISOString()
+        }
+      }))
+
+      // Send to API
+      const response = await apiRequest(`/api/communication/messages/${messageId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      })
+
+      if (response?.id) {
+        dispatch(updateMessage({
+          channelId,
+          messageId,
+          updates: response
+        }))
+      }
+
+      toast({
+        title: "Message updated",
+        description: "Your message has been edited",
+      })
+
+      return response
+    } catch (error) {
+      dispatch(setError('Failed to update message'))
+      toast({
+        title: "Error",
+        description: "Failed to update message",
+        variant: "destructive"
+      })
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, messages, toast])
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -679,6 +786,7 @@ export function useCommunications() {
     // Message operations
     fetchMessages,
     sendMessage,
+    updateMessage: editMessage,
     createChannel,
     markAsRead,
 

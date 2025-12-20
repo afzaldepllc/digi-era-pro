@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MessageList } from "@/components/communication/message-list"
-import { MessageInput } from "@/components/communication/message-input"
+import { MessageInput, MessageInputRef } from "@/components/communication/message-input"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { TypingIndicator } from "@/components/communication/typing-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
@@ -53,6 +53,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     onlineUserIds,
     isContextPanelVisible,
     sendMessage,
+    updateMessage,
     markAsRead,
     setTyping,
     removeTyping,
@@ -65,6 +66,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  const messageInputRef = useRef<MessageInputRef>(null)
+  
   console.log('selectedChannel messages in ChatWindow66:', messages)
   // Auto-select channel if channelId is provided and no channel is selected
   useEffect(() => {
@@ -109,15 +112,19 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     markAsRead(messageId, channelId)
   }
 
-  const handleReply = (message: ICommunication) => {
-    // TODO: Implement reply functionality
-    console.log('Reply to:', message)
-  }
+  const handleReply = useCallback((message: ICommunication) => {
+    messageInputRef.current?.setReplyTo(message)
+  }, [])
 
-  const handleEdit = (message: ICommunication) => {
-    // TODO: Implement edit functionality
-    console.log('Edit message:', message)
-  }
+  const handleEdit = useCallback((message: ICommunication) => {
+    messageInputRef.current?.setEditMessage(message)
+  }, [])
+
+  const handleEditMessage = useCallback(async (messageId: string, data: CreateMessageData) => {
+    if (updateMessage) {
+      await updateMessage(messageId, { content: data.content })
+    }
+  }, [updateMessage])
 
   const handleDelete = (messageId: string) => {
     // TODO: Implement delete functionality
@@ -458,13 +465,16 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
             {/* Message input */}
             <MessageInput
+              ref={messageInputRef}
               channelId={channelId}
               onSend={handleSendMessage}
+              onEdit={handleEditMessage}
               disabled={actionLoading}
               placeholder={`Message ${getChannelTitle()}...`}
               allowAttachments={true}
               onTyping={handleTyping}
               onStopTyping={handleStopTyping}
+              channelMembers={selectedChannel?.channel_members || []}
             />
           </div>
 

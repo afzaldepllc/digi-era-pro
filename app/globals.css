@@ -390,4 +390,14 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Mention styling in messages */
+  .mention {
+    @apply bg-primary/10 text-primary px-1 rounded font-medium;
+  }
+  
+  /* Mention in own messages (primary background) */
+  .bg-primary .mention {
+    @apply bg-primary-foreground/20 text-primary-foreground;
+  }
 }

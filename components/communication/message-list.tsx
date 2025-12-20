@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,9 @@ import {
   Reply,
   MoreVertical,
   Trash2,
-  Edit
+  Edit,
+  Clock,
+  CornerDownRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment } from "@/types/communication"
@@ -41,6 +43,7 @@ interface MessageListProps {
   onReply?: (message: ICommunication) => void
   onEdit?: (message: ICommunication) => void
   onDelete?: (messageId: string) => void
+  onScrollToMessage?: (messageId: string) => void
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
   channel_members?: IParticipant[] // For showing who read
@@ -54,12 +57,14 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  onScrollToMessage,
   className,
   readReceipts = [],
   channel_members = []
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const observerRef = useRef<IntersectionObserver | null>(null)
 
   // Auto-scroll to bottom when new messages arrive
@@ -99,6 +104,26 @@ export function MessageList({
 
     return () => observerRef.current?.disconnect()
   }, [messages, currentUserId, onMessageRead, visibleMessages])
+
+  // Scroll to a specific message (for reply navigation)
+  const scrollToMessage = useCallback((messageId: string) => {
+    const element = messageRefs.current.get(messageId)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Highlight briefly
+      element.classList.add('bg-primary/10')
+      setTimeout(() => {
+        element.classList.remove('bg-primary/10')
+      }, 2000)
+    }
+    onScrollToMessage?.(messageId)
+  }, [onScrollToMessage])
+
+  // Find parent message for reply preview
+  const getParentMessage = useCallback((parentId?: string): ICommunication | undefined => {
+    if (!parentId) return undefined
+    return messages.find(m => m.id === parentId)
+  }, [messages])
   const formatMessageTime = (date: Date) => {
     const now = new Date()
     const messageDate = new Date(date)
@@ -168,14 +193,48 @@ export function MessageList({
     const readers = channel_members.filter(p =>
       receipts.some(r => r.mongo_user_id === p.mongo_member_id)
     )
+    
+    // Get parent message for reply preview
+    const parentMessage = getParentMessage(message.parent_message_id)
+
+    // Message status
+    const getStatusIcon = () => {
+      if (message.isOptimistic) {
+        // Message is being sent
+        return <Clock className="h-3 w-3 text-muted-foreground animate-pulse" />
+      }
+      if (message.isFailed) {
+        // Message failed to send
+        return (
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="text-destructive text-xs">!</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Failed to send. Click to retry.</p>
+            </TooltipContent>
+          </Tooltip>
+        )
+      }
+      if (readers.length > 0) {
+        // Message has been read by at least one person
+        return <CheckCheck className="h-3 w-3 text-primary" />
+      }
+      // Message sent but not read yet
+      return <Check className="h-3 w-3 text-muted-foreground" />
+    }
+
     console.log('sender170', sender)
     console.log('readers171', readers)
 
     return (
       <div
         data-message-id={message.id}
+        ref={(el) => {
+          if (el) messageRefs.current.set(message.id, el)
+        }}
         className={cn(
-          "flex gap-2 px-3 py-1 group",
+          "flex gap-2 px-3 py-1 group transition-colors duration-500",
           isOwn && "flex-row-reverse"
         )}
       >
@@ -259,7 +318,28 @@ export function MessageList({
             "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto overflow-hidden",
             isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
             )}>
-              {/* {message.content} */}
+              {/* Reply preview */}
+              {parentMessage && (
+                <button
+                  onClick={() => scrollToMessage(parentMessage.id)}
+                  className={cn(
+                    "flex items-start gap-2 mb-2 p-2 rounded text-xs w-full text-left transition-colors",
+                    isOwn ? "bg-primary-foreground/10 hover:bg-primary-foreground/20" : "bg-muted/50 hover:bg-muted"
+                  )}
+                >
+                  <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("font-medium truncate", isOwn ? "text-primary-foreground" : "text-foreground")}>
+                      {parentMessage.sender?.name || parentMessage.sender_name}
+                    </p>
+                    <p className={cn("truncate opacity-70", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
+                      {parentMessage.content.replace(/<[^>]*>/g, '').slice(0, 60)}
+                      {parentMessage.content.length > 60 ? '...' : ''}
+                    </p>
+                  </div>
+                </button>
+              )}
+              
               <HtmlTextRenderer
               content={message.content}
               fallbackText="No description"
@@ -275,35 +355,40 @@ export function MessageList({
             )}
             </div>
 
-          {/* Read receipts UI */}
+          {/* Status and read receipts UI */}
           <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>
             {isOwn && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger>
-                    {readers.length > 0 ? (
-                      <CheckCheck className="h-3 w-3 text-primary" />
-                    ) : (
-                      <Check className="h-3 w-3" />
-                    )}
+                  <TooltipTrigger className="flex items-center">
+                    {getStatusIcon()}
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{readers.length > 0 ? `Read by ${readers.length}` : 'Sent'}</p>
-                    {readers.length > 0 && (
-                      <div className="flex flex-col gap-1 mt-1">
-                        {readers.map(r => (
-                          <span key={`reader-${r.mongo_member_id}`} className="flex items-center gap-1">
-                            {r.name}
-                            {/* Optionally show time: */}
-                            {(() => {
-                              const receipt = receipts.find(rr => rr.mongo_user_id === r.mongo_member_id)
-                              return receipt ? (
-                                <span className="ml-1 text-muted-foreground">{format(new Date(receipt.read_at), 'PPpp')}</span>
-                              ) : null
-                            })()}
-                          </span>
-                        ))}
+                    {message.isOptimistic ? (
+                      <p>Sending...</p>
+                    ) : message.isFailed ? (
+                      <p>Failed to send</p>
+                    ) : readers.length > 0 ? (
+                      <div>
+                        <p className="font-medium">Read by {readers.length}</p>
+                        <div className="flex flex-col gap-1 mt-1 max-h-32 overflow-y-auto">
+                          {readers.map(r => {
+                            const receipt = receipts.find(rr => rr.mongo_user_id === r.mongo_member_id)
+                            return (
+                              <span key={`reader-${r.mongo_member_id}`} className="flex items-center gap-1 text-xs">
+                                <span>{r.name}</span>
+                                {receipt && (
+                                  <span className="text-muted-foreground ml-1">
+                                    {format(new Date(receipt.read_at), 'HH:mm')}
+                                  </span>
+                                )}
+                              </span>
+                            )
+                          })}
+                        </div>
                       </div>
+                    ) : (
+                      <p>Sent</p>
                     )}
                   </TooltipContent>
                 </Tooltip>

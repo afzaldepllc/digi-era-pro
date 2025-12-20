@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote } from "lucide-react"
+import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote, Reply } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEditor, EditorContent } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
@@ -22,9 +22,14 @@ import OrderedList from '@tiptap/extension-ordered-list'
 import ListItem from '@tiptap/extension-list-item'
 
 import HardBreak from '@tiptap/extension-hard-break'
+import { EmojiPicker } from './emoji-picker'
+import { MentionPicker } from './mention-picker'
+import { ICommunication, IChannelMember } from '@/types/communication'
 
 export interface RichMessageEditorRef {
     focus: () => void
+    setReplyTo: (message: ICommunication | null) => void
+    setEditMessage: (message: ICommunication | null) => void
 }
 
 interface RichMessageEditorProps {
@@ -36,12 +41,17 @@ interface RichMessageEditorProps {
     onTyping?: () => void
     onStopTyping?: () => void
     // Called when editor requests a send. Should resolve true on success.
-    onSend?: (html: string, text: string, files: File[]) => Promise<boolean>
+    onSend?: (html: string, text: string, files: File[], mentionedUserIds: string[], replyToId?: string, editMessageId?: string) => Promise<boolean>
     className?: string
+    channelMembers?: IChannelMember[] // For @mentions
+    replyTo?: ICommunication | null // Reply to message
+    editMessage?: ICommunication | null // Message to edit
+    onCancelReply?: () => void
+    onCancelEdit?: () => void
 }
 
 const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProps>(
-    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, className }, ref) => {
+    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, className, channelMembers = [], replyTo, editMessage, onCancelReply, onCancelEdit }, ref) => {
         const contentRef = useRef<HTMLDivElement | null>(null)
         const textareaRef = useRef<HTMLTextAreaElement | null>(null)
         const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -51,14 +61,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const [attachments, setAttachments] = useState<File[]>([])
         const [showToolbar, setShowToolbar] = useState(true)
 
-        const [users, setUsers] = useState<Array<{ id: string; name: string; email?: string }>>([])
-        const [showSuggestions, setShowSuggestions] = useState(false)
+        // Mention state
+        const [showMentionPicker, setShowMentionPicker] = useState(false)
         const [mentionQuery, setMentionQuery] = useState("")
-        const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string }>>([])
+        const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([])
 
+        // Emoji picker state
         const [showEmojiPicker, setShowEmojiPicker] = useState(false)
         const emojiPickerRef = useRef<HTMLDivElement | null>(null)
-        const EMOJIS = ['😀', '😄', '😊', '😂', '👍', '🎉', '🔥', '❤️', '😮', '😢', '🤝', '🙌', '😎', '🤔']
+
+        // Reply/Edit state (managed internally or via props)
+        const [internalReplyTo, setInternalReplyTo] = useState<ICommunication | null>(null)
+        const [internalEditMessage, setInternalEditMessage] = useState<ICommunication | null>(null)
+        
+        const activeReplyTo = replyTo !== undefined ? replyTo : internalReplyTo
+        const activeEditMessage = editMessage !== undefined ? editMessage : internalEditMessage
 
         const editor = useEditor({
             extensions: [
@@ -95,19 +112,24 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 onChange?.(html, text)
                 triggerTyping()
 
-                // mention detection (last token starting with @)
+                // Mention detection (last token starting with @)
                 const m = text.match(/@([\w-]*)$/)
                 if (m) {
                     setMentionQuery(m[1])
-                    setShowSuggestions(true)
-                    const q = m[1].toLowerCase()
-                    setSuggestions(users.filter(u => u.name.toLowerCase().includes(q)).slice(0, 6))
+                    setShowMentionPicker(true)
                 } else {
-                    setShowSuggestions(false)
+                    setShowMentionPicker(false)
                     setMentionQuery("")
                 }
             },
         })
+
+        // Set editor content when editing a message
+        useEffect(() => {
+            if (editor && activeEditMessage) {
+                editor.commands.setContent(activeEditMessage.content || '')
+            }
+        }, [editor, activeEditMessage])
 
         // Update editor content when value prop changes
         useEffect(() => {
@@ -118,6 +140,19 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
 
         useImperativeHandle(ref, () => ({
             focus: () => {
+                editor?.commands.focus()
+            },
+            setReplyTo: (message: ICommunication | null) => {
+                setInternalReplyTo(message)
+                setInternalEditMessage(null)
+                editor?.commands.focus()
+            },
+            setEditMessage: (message: ICommunication | null) => {
+                setInternalEditMessage(message)
+                setInternalReplyTo(null)
+                if (message) {
+                    editor?.commands.setContent(message.content || '')
+                }
                 editor?.commands.focus()
             }
         }))
@@ -133,26 +168,6 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 typingTimerRef.current = null
             }, 2000)
         }, [disabled, onTyping, onStopTyping])
-
-        // Fetch simple user list for mentions (best-effort)
-        useEffect(() => {
-            let mounted = true
-                ; (async () => {
-                    try {
-                        const res = await fetch('/api/users?limit=50')
-                        const data = await res.json()
-                        if (!mounted) return
-                        if (Array.isArray(data)) {
-                            setUsers(data.map((u: any) => ({ id: u._id || u.id || u.id_str || u.id, name: u.name || u.username || u.email })))
-                        } else if (data?.users) {
-                            setUsers(data.users.map((u: any) => ({ id: u._id || u.id || u.id_str || u.id, name: u.name || u.username || u.email })))
-                        }
-                    } catch (e) {
-                        // ignore
-                    }
-                })()
-            return () => { mounted = false }
-        }, [])
 
         const addLink = useCallback(() => {
             const url = window.prompt("Enter URL")
@@ -199,11 +214,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 e.preventDefault()
                 const text = editor.getText() || ""
                 const html = editor.getHTML() || ""
-                const success = await onSend?.(html, text, attachments)
+                const success = await onSend?.(
+                    html, 
+                    text, 
+                    attachments, 
+                    mentionedUserIds,
+                    activeReplyTo?.id,
+                    activeEditMessage?.id
+                )
                 if (success) {
                     editor.commands.setContent('')
                     setAttachments([])
-                    setShowSuggestions(false)
+                    setShowMentionPicker(false)
+                    setMentionedUserIds([])
+                    setInternalReplyTo(null)
+                    setInternalEditMessage(null)
                 }
                 return
             }
@@ -319,7 +344,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 }
                 return
             }
-        }, [editor, onSend, attachments])
+        }, [editor, onSend, attachments, mentionedUserIds, activeReplyTo, activeEditMessage])
         
         // Enhanced list toggle handlers that handle list type switching properly
         const toggleBulletList = useCallback(() => {
@@ -395,10 +420,35 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             setAttachments(prev => prev.filter((_, i) => i !== index))
         }, [])
 
-        const insertMentionAtCaret = useCallback((name: string) => {
-            editor?.commands.insertContent('@' + name + ' ')
-            setShowSuggestions(false)
-        }, [editor])
+        const insertMentionAtCaret = useCallback((user: { id: string; name: string }) => {
+            if (!editor) return
+            
+            // Remove the partial @query text first
+            const text = editor.getText()
+            const match = text.match(/@[\w-]*$/)
+            if (match) {
+                // Delete the @query text
+                const from = editor.state.selection.from - match[0].length
+                editor.chain()
+                    .focus()
+                    .deleteRange({ from, to: editor.state.selection.from })
+                    .insertContent(`<span class="mention" data-user-id="${user.id}">@${user.name}</span> `)
+                    .run()
+            } else {
+                editor.commands.insertContent(`<span class="mention" data-user-id="${user.id}">@${user.name}</span> `)
+            }
+            
+            // Track mentioned user
+            if (user.id !== 'everyone') {
+                setMentionedUserIds(prev => [...new Set([...prev, user.id])])
+            } else {
+                // For @everyone, add all channel members
+                const allMemberIds = channelMembers.map(m => m.mongo_member_id)
+                setMentionedUserIds(prev => [...new Set([...prev, ...allMemberIds])])
+            }
+            
+            setShowMentionPicker(false)
+        }, [editor, channelMembers])
 
         // Emoji insertion
         const insertEmoji = useCallback((emoji: string) => {
@@ -420,15 +470,62 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             return () => document.removeEventListener('click', onDocClick)
         }, [showEmojiPicker])
 
-        const openMentionSuggestions = useCallback(() => {
-            setShowSuggestions(true)
+        const openMentionPicker = useCallback(() => {
+            setShowMentionPicker(true)
             setMentionQuery('')
-            setSuggestions(users.slice(0, 6))
             editor?.commands.focus()
-        }, [users, editor])
+        }, [editor])
+
+        // Cancel reply/edit handlers
+        const handleCancelReply = useCallback(() => {
+            setInternalReplyTo(null)
+            onCancelReply?.()
+        }, [onCancelReply])
+
+        const handleCancelEdit = useCallback(() => {
+            setInternalEditMessage(null)
+            editor?.commands.setContent('')
+            onCancelEdit?.()
+        }, [onCancelEdit, editor])
 
         return (
             <div className={cn("rich-message-editor border rounded-md bg-background", className)}>
+
+                {/* Reply Preview */}
+                {activeReplyTo && (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+                        <Reply className="h-4 w-4 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground">
+                                Replying to <span className="font-medium text-foreground">{activeReplyTo.sender?.name || activeReplyTo.sender_name}</span>
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                                {activeReplyTo.content.replace(/<[^>]*>/g, '').slice(0, 50)}
+                                {activeReplyTo.content.length > 50 ? '...' : ''}
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleCancelReply}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Edit Preview */}
+                {activeEditMessage && (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-primary/5">
+                        <span className="text-xs font-medium text-primary">Editing message</span>
+                        <div className="flex-1" />
+                        <button
+                            onClick={handleCancelEdit}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
 
                 {/* topbar for text editing options */}
                 {showToolbar && (
@@ -483,7 +580,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 <div className="relative">
                     <EditorContent
                         editor={editor}
-                        data-placeholder={placeholder}
+                        data-placeholder={activeEditMessage ? "Edit your message..." : placeholder}
                         onKeyDown={handleKeyDown}
                         className={cn(
                             "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
@@ -503,24 +600,23 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-all",
                             "[&_.ProseMirror_p]:break-all [&_.ProseMirror_p]:max-w-full",
                             "[&_.ProseMirror_*]:max-w-full",
+                            // Mention styling
+                            "[&_.ProseMirror_.mention]:bg-primary/10 [&_.ProseMirror_.mention]:text-primary [&_.ProseMirror_.mention]:px-1 [&_.ProseMirror_.mention]:rounded [&_.ProseMirror_.mention]:font-medium",
                             disabled && 'opacity-50 cursor-not-allowed'
                         )}
                         style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                     />
 
-                    {/* Mention suggestions dropdown */}
-                    {showSuggestions && suggestions.length > 0 && (
-                        <div className="absolute z-40 left-2 top-full mt-1 w-56 bg-card border rounded shadow">
-                            {suggestions.map(s => (
-                                <div
-                                    key={s.id}
-                                    className="px-3 py-2 hover:bg-accent/10 cursor-pointer"
-                                    onMouseDown={(e) => { e.preventDefault(); insertMentionAtCaret(s.name) }}
-                                >
-                                    {s.name}
-                                </div>
-                            ))}
-                        </div>
+                    {/* Mention picker dropdown */}
+                    {showMentionPicker && channelMembers.length > 0 && (
+                        <MentionPicker
+                            users={channelMembers}
+                            searchQuery={mentionQuery}
+                            onSelect={(user) => insertMentionAtCaret(user)}
+                            onClose={() => setShowMentionPicker(false)}
+                            showEveryone={true}
+                            className="left-2 bottom-full mb-1"
+                        />
                     )}
                 </div>
 
@@ -541,28 +637,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         </button>
 
                         {/* Mention button */}
-                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
+                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
                             <AtSign className="h-4 w-4" />
                         </button>
-                        {/* Emoji picker (bottom) */}
+                        
+                        {/* Emoji picker */}
                         <div className="relative" ref={emojiPickerRef}>
                             <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
                                 <Smile className="h-4 w-4" />
                             </button>
 
                             {showEmojiPicker && (
-                                <div className="absolute bottom-full mb-2 left-0 w-44 p-2 bg-card border rounded shadow grid grid-cols-6 gap-1">
-                                    {EMOJIS.map(e => (
-                                        <button
-                                            key={e}
-                                            className="p-1 text-lg hover:bg-accent/10 rounded"
-                                            onMouseDown={(evt) => { evt.preventDefault(); insertEmoji(e) }}
-                                            aria-label={`Insert ${e}`}
-                                        >
-                                            {e}
-                                        </button>
-                                    ))}
-                                </div>
+                                <EmojiPicker
+                                    onSelect={insertEmoji}
+                                    onClose={() => setShowEmojiPicker(false)}
+                                />
                             )}
                         </div>  
 
@@ -572,19 +661,31 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         <div>
                             {(editor?.getText() || '').length}/{maxLength}
                         </div>
-                        {/* Send button inside editor */}
+                        {/* Send/Update button */}
                         <button
                             className="border-0 p-2 transition-colors duration-150 hover:text-primary [&>svg]:transition-all [&>svg]:duration-150 hover:[&>svg]:rotate-45 hover:[&>svg]:text-primary hover:[&>svg]:scale-110"
                             onClick={async () => {
                                 const html = editor?.getHTML() || ''
                                 const text = editor?.getText() || ''
-                                const success = await onSend?.(html, text, attachments)
+                                const success = await onSend?.(
+                                    html, 
+                                    text, 
+                                    attachments,
+                                    mentionedUserIds,
+                                    activeReplyTo?.id,
+                                    activeEditMessage?.id
+                                )
                                 if (success) {
                                     editor?.commands.setContent('')
                                     setAttachments([])
-                                    setShowSuggestions(false)
+                                    setShowMentionPicker(false)
+                                    setMentionedUserIds([])
+                                    setInternalReplyTo(null)
+                                    setInternalEditMessage(null)
                                 }
-                            }} title="Send message">
+                            }} 
+                            title={activeEditMessage ? "Update message" : "Send message"}
+                        >
                             <Send className="h-4 w-4 text-primary" />
                         </button>
                     </div>
