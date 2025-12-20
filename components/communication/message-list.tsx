@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/tooltip"
 
 import { IReadReceipt } from "@/types/communication"
+import HtmlTextRenderer from "../shared/html-text-renderer"
 
 interface MessageListProps {
   messages: ICommunication[]
@@ -254,19 +255,25 @@ export function MessageList({
           </div>
 
           {/* Message text */}
-          <div className={cn(
-            "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-fit",
+            <div className={cn(
+            "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto",
             isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
-          )}>
-            <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">
-              {message.content}
-            </p>
+            )}>
+              {/* {message.content} */}
+              <HtmlTextRenderer
+              content={message.content}
+              fallbackText="No description"
+              showFallback={true}
+              renderAsHtml={true}
+              className="text-sm whitespace-pre-wrap break-words break-all overflow-wrap-anywhere"
+              truncateHtml={false}
+              />
 
             {/* Attachments */}
             {message.attachments && message.attachments.map((attachment, index) =>
               renderAttachment(attachment, index)
             )}
-          </div>
+            </div>
 
           {/* Read receipts UI */}
           <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>

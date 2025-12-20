@@ -33,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import HtmlTextRenderer from "../shared/html-text-renderer"
 
 interface ChannelListProps {
   channels: IChannel[]
@@ -209,12 +210,19 @@ export const ChannelList = memo(function ChannelList({
             {/* Subtitle or last message */}
             <div className="flex-1 min-w-0">
               {channel.last_message ? (
-                <p className={cn(
-                  "text-sm truncate leading-tight transition-colors",
-                  hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
-                )}>
-                  {channel.last_message.content}
-                </p>
+                // <p className={cn(
+                //   "text-sm truncate leading-tight transition-colors",
+                //   hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
+                // )}>
+                   <HtmlTextRenderer
+                        content={channel.last_message.content}
+                        fallbackText="No description"
+                        showFallback={true}
+                        renderAsHtml={true}
+                        className="line-clamp-1"
+                        truncateHtml={true}
+                      />
+                // </p>
               ) : (
                 <p className="text-sm text-muted-foreground/60 font-medium">
                   {subtitle}

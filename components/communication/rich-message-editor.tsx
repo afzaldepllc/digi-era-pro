@@ -163,7 +163,19 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
             if (!editor) return
             
-            // Enter without Shift - Send message
+            // Get editor state for analysis
+            const { state } = editor.view
+            const { $from, empty: isSelectionEmpty } = state.selection
+            const currentNode = $from.parent
+            const isInBulletList = editor.isActive('bulletList')
+            const isInOrderedList = editor.isActive('orderedList')
+            const isInList = isInBulletList || isInOrderedList
+            const isInListItem = currentNode.type.name === 'listItem'
+            const isAtStart = $from.parentOffset === 0
+            const isEmptyNode = currentNode.textContent.trim() === ''
+            
+            // ==================== ENTER KEY (WITHOUT SHIFT) ====================
+            // Send message - primary action
             if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
                 const text = editor.getText() || ""
@@ -177,90 +189,173 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 return
             }
             
-            // Shift+Enter - New line or list item
+            // ==================== SHIFT+ENTER ====================
+            // New line or new list item
             if (e.key === "Enter" && e.shiftKey) {
-                const isInList = editor.isActive('bulletList') || editor.isActive('orderedList')
+                e.preventDefault()
                 
-                if (isInList) {
-                    e.preventDefault()
-                    
-                    // Get current state
-                    const { state } = editor.view
-                    const { $from } = state.selection
-                    const currentNode = $from.parent
-                    
-                    // If in an empty list item, exit the list properly
-                    if (currentNode.type.name === 'listItem' && currentNode.textContent.trim() === '') {
-                        // Lift the list item and insert a proper paragraph to separate lists
+                if (isInList && isInListItem) {
+                    // In a list item
+                    if (isEmptyNode) {
+                        // Empty list item - exit the list completely with TWO paragraph breaks
+                        // This ensures proper separation between different list types
+                        try {
+                            editor.chain()
+                                .focus()
+                                .liftListItem('listItem')
+                                .command(({ tr, state }) => {
+                                    // Insert two paragraphs to create strong separation
+                                    const { $from } = state.selection
+                                    tr.insert($from.pos, state.schema.nodes.paragraph.create())
+                                    return true
+                                })
+                                .run()
+                        } catch (err) {
+                            // Fallback if command fails
+                            editor.chain().focus().liftListItem('listItem').run()
+                        }
+                    } else {
+                        // Non-empty list item - create a new list item in the same list
                         editor.chain()
                             .focus()
-                            .liftListItem('listItem')
-                            .insertContent({ type: 'paragraph' })
+                            .splitListItem('listItem')
                             .run()
-                        return
                     }
-                    
-                    // Otherwise, split the list item to create a new one
-                    editor.chain().focus().splitListItem('listItem').run()
-                    return
+                } else {
+                    // Not in a list - insert line break
+                    editor.chain()
+                        .focus()
+                        .setHardBreak()
+                        .run()
                 }
-                
-                // Not in a list - insert a new paragraph (not hard break)
-                e.preventDefault()
-                editor.chain().focus().createParagraphNear().run()
                 return
             }
             
-            // Backspace handling in lists
+            // ==================== BACKSPACE KEY ====================
             if (e.key === "Backspace") {
-                const { state } = editor.view
-                const { $from, empty } = state.selection
-                
-                // Only handle backspace if selection is empty (cursor, not selection)
-                if (!empty) {
-                    return // Let default backspace handle text selection deletion
+                // Only handle when cursor (no text selection)
+                if (!isSelectionEmpty) {
+                    return // Let default handle text selection deletion
                 }
                 
-                const isInList = editor.isActive('bulletList') || editor.isActive('orderedList')
-                
-                if (isInList) {
-                    const currentNode = $from.parent
-                    
-                    // Check if we're at the very start of a list item
-                    const isAtStart = $from.parentOffset === 0
-                    
-                    // If at the start of an empty list item, lift it out of the list
-                    if (currentNode.type.name === 'listItem' && 
-                        currentNode.textContent.trim() === '' && 
-                        isAtStart) {
-                        e.preventDefault()
-                        editor.chain()
-                            .focus()
-                            .liftListItem('listItem')
-                            .run()
-                        return
-                    }
-                    
-                    // If at the start of a non-empty list item, lift it (merge with previous)
-                    if (isAtStart && currentNode.textContent.trim() !== '') {
-                        // Check if there's a previous list item
-                        const indexBefore = $from.index($from.depth - 1)
-                        if (indexBefore > 0) {
-                            // Let default behavior handle merging with previous item
-                            return
-                        } else {
-                            // First item in list - lift it out
+                if (isInList && isInListItem) {
+                    // In a list item
+                    if (isAtStart) {
+                        // At the start of list item
+                        if (isEmptyNode) {
+                            // Empty list item at start - lift it out
                             e.preventDefault()
                             editor.chain()
                                 .focus()
                                 .liftListItem('listItem')
                                 .run()
-                            return
+                        } else {
+                            // Non-empty list item at start
+                            const indexBefore = $from.index($from.depth - 1)
+                            if (indexBefore === 0) {
+                                // First item in list - lift it out
+                                e.preventDefault()
+                                editor.chain()
+                                    .focus()
+                                    .liftListItem('listItem')
+                                    .run()
+                            }
+                            // Otherwise let default behavior merge with previous item
                         }
                     }
                 }
+                return
+            }
+            
+            // ==================== TAB KEY ====================
+            // Indent/outdent list items
+            if (e.key === "Tab" && isInList && isInListItem) {
+                e.preventDefault()
+                if (e.shiftKey) {
+                    // Shift+Tab - decrease indent (lift)
+                    editor.chain().focus().liftListItem('listItem').run()
+                } else {
+                    // Tab - increase indent (sink)
+                    editor.chain().focus().sinkListItem('listItem').run()
+                }
+                return
             }
         }, [editor, onSend, attachments])
+        
+        // Enhanced list toggle handlers that handle list type switching
+        const toggleBulletList = useCallback(() => {
+            if (!editor) return
+            
+            const { state } = editor.view
+            const { $from } = state.selection
+            const currentNode = $from.parent
+            
+            // If currently in an ordered list, properly exit and switch
+            if (editor.isActive('orderedList')) {
+                // Check if we're in a list item
+                if (currentNode.type.name === 'listItem') {
+                    // Exit the ordered list with proper separation, then start bullet list
+                    try {
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .command(({ tr, state }) => {
+                                const { $from } = state.selection
+                                // Insert paragraph as separator
+                                tr.insert($from.pos, state.schema.nodes.paragraph.create())
+                                return true
+                            })
+                            .toggleBulletList()
+                            .run()
+                    } catch (err) {
+                        // Fallback
+                        editor.chain().focus().toggleBulletList().run()
+                    }
+                } else {
+                    editor.chain().focus().toggleBulletList().run()
+                }
+            } else {
+                // Just toggle normally
+                editor.chain().focus().toggleBulletList().run()
+            }
+        }, [editor])
+        
+        const toggleOrderedList = useCallback(() => {
+            if (!editor) return
+            
+            const { state } = editor.view
+            const { $from } = state.selection
+            const currentNode = $from.parent
+            
+            // If currently in a bullet list, properly exit and switch
+            if (editor.isActive('bulletList')) {
+                // Check if we're in a list item
+                if (currentNode.type.name === 'listItem') {
+                    // Exit the bullet list with proper separation, then start ordered list
+                    try {
+                        editor.chain()
+                            .focus()
+                            .liftListItem('listItem')
+                            .command(({ tr, state }) => {
+                                const { $from } = state.selection
+                                // Insert paragraph as separator
+                                tr.insert($from.pos, state.schema.nodes.paragraph.create())
+                                return true
+                            })
+                            .toggleOrderedList()
+                            .run()
+                    } catch (err) {
+                        // Fallback
+                        editor.chain().focus().toggleOrderedList().run()
+                    }
+                } else {
+                    editor.chain().focus().toggleOrderedList().run()
+                }
+            } else {
+                // Just toggle normally
+                editor.chain().focus().toggleOrderedList().run()
+            }
+        }, [editor])
 
         const { toast } = (function safeRequire() {
             try {
@@ -347,10 +442,10 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             <Strikethrough className="h-4 w-4" />
                         </button>
 
-                        <button onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`${editor?.isActive('bulletList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bullet list">
+                        <button onClick={toggleBulletList} className={`${editor?.isActive('bulletList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bullet list">
                             <List className="h-4 w-4" />
                         </button>
-                        <button onClick={() => editor?.chain().focus().toggleOrderedList().run()} className={`${editor?.isActive('orderedList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Numbered list">
+                        <button onClick={toggleOrderedList} className={`${editor?.isActive('orderedList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Numbered list">
                             <ListOrdered className="h-4 w-4" />
                         </button>
 
@@ -390,8 +485,8 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         data-placeholder={placeholder}
                         onKeyDown={handleKeyDown}
                         className={cn(
-                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
-                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px]",
+                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md break-words",
+                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:break-words [&_.ProseMirror]:whitespace-pre-wrap",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
                             "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
@@ -400,11 +495,11 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             // List styling
                             "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:ml-6 [&_.ProseMirror_ul]:my-2",
                             "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:ml-6 [&_.ProseMirror_ol]:my-2",
-                            "[&_.ProseMirror_li]:my-1",
+                            "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-words",
                             "[&_.ProseMirror_ul_ul]:list-[circle] [&_.ProseMirror_ul_ul_ul]:list-[square]",
                             "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic",
-                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto",
-                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm",
+                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-words",
+                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-words",
                             disabled && 'opacity-50 cursor-not-allowed'
                         )}
                     />
