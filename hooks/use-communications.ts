@@ -11,6 +11,11 @@ import {
   updateMessage,
   setTyping,
   removeTyping,
+  clearTypingForChannel,
+  setCurrentUserId,
+  setOnlineUserIds,
+  addOnlineUser,
+  removeOnlineUser,
   updateOnlineUsers,
   toggleChannelList,
   toggleContextPanel,
@@ -42,11 +47,7 @@ import type {
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
-import { getRealtimeManager } from '@/lib/realtime-manager'
-import { enrichMessageWithUserData } from '@/lib/communication/utils'
-
-// Global flag to prevent multiple channel fetches across component remounts
-// let globalChannelsFetched = false
+import { getRealtimeManager, RealtimeEventHandlers } from '@/lib/realtime-manager'
 
 // Global maps to prevent duplicate fetches per user across component remounts
 const globalFetchedUsers = new Map<string, boolean>()
@@ -60,7 +61,7 @@ export function useCommunications() {
   const hasInitialized = useRef(false)  
   const hasUsersInitialized = useRef(false)
   const channelsFetchedRef = useRef(false)
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const presenceInitializedRef = useRef(false)
   const hasFetchedUsersRef = useRef(false)
   const hasFetchedChannelsRef = useRef(false)
   
@@ -74,6 +75,7 @@ export function useCommunications() {
     selectedChannel,
     messages,
     onlineUsers,
+    onlineUserIds,
     typingUsers,
     isChannelListExpanded,
     isContextPanelVisible,
@@ -86,6 +88,7 @@ export function useCommunications() {
     sort,
     pagination,
     currentUser,
+    currentUserId: storeCurrentUserId,
     unreadCount,
     notifications
   } = useAppSelector((state) => state.communications)
@@ -103,21 +106,24 @@ export function useCommunications() {
   
   const sessionUser = session?.user as ExtendedSessionUser | undefined
   const sessionUserId = useMemo(() => (session?.user as ExtendedSessionUser)?.id, [session?.user])
+  const sessionUserName = useMemo(() => sessionUser?.name || sessionUser?.email || 'Unknown', [sessionUser])
+  const sessionUserAvatar = useMemo(() => sessionUser?.image || sessionUser?.avatar, [sessionUser])
 
-  // Memoized event handlers for realtime manager
+  // ============================================
+  // Realtime Event Handlers
+  // ============================================
+
   const onNewMessage = useCallback((message: any) => {
     console.log('📩 onNewMessage handler called with:', message)
     
-    // Skip messages from self to avoid duplicates
+    // Skip messages from self to avoid duplicates (optimistic updates handle this)
     if (message.mongo_sender_id === sessionUserId) {
       console.log('📩 Skipping message from self')
       return
     }
     
     if (message && typeof message === 'object' && message.mongo_sender_id) {
-      // Message is already enriched from the API broadcast
       console.log('📩 Received enriched message:', message)
-      
       dispatch(addMessage({ channelId: message.channel_id, message }))
     } else {
       console.error('Invalid message received, skipping:', message)
@@ -126,8 +132,6 @@ export function useCommunications() {
 
   const onMessageUpdate = useCallback((message: any) => {
     console.log('📝 onMessageUpdate handler called')
-    // Message is already enriched from the API broadcast
-    console.log('📝 Received updated enriched message:', message)
     dispatch(updateMessage({
       channelId: message.channel_id,
       messageId: message.id,
@@ -147,43 +151,79 @@ export function useCommunications() {
     console.log('👋 User left:', memberId)
   }, [])
 
-  const onUserOnline = useCallback((userId: any) => {
-    const updatedUsers = onlineUsers.map(u =>
-      u.mongo_member_id === userId ? { ...u, isOnline: true } : u
-    )
-    dispatch(updateOnlineUsers(updatedUsers))
-  }, [dispatch, onlineUsers])
+  const onUserOnline = useCallback((userId: string) => {
+    console.log('🟢 User online:', userId)
+    dispatch(addOnlineUser(userId))
+  }, [dispatch])
 
-  const onUserOffline = useCallback((userId: any) => {
-    const updatedUsers = onlineUsers.map(u =>
-      u.mongo_member_id === userId ? { ...u, isOnline: false } : u
-    )
-    dispatch(updateOnlineUsers(updatedUsers))
-  }, [dispatch, onlineUsers])
+  const onUserOffline = useCallback((userId: string) => {
+    console.log('🔴 User offline:', userId)
+    dispatch(removeOnlineUser(userId))
+  }, [dispatch])
 
-  const onTypingStart = useCallback((userId: any) => {
+  // Handle typing start with proper data structure
+  const onTypingStart = useCallback((data: { userId: string; userName: string; channelId: string }) => {
+    console.log('⌨️ Typing start:', data)
     dispatch(setTyping({
-      channelId: activeChannelId || '',
-      userId,
-      userName: 'Unknown User',
+      channelId: data.channelId,
+      userId: data.userId,
+      userName: data.userName || 'Someone',
       timestamp: new Date().toISOString()
     }))
-  }, [dispatch, activeChannelId])
+  }, [dispatch])
 
-  const onTypingStop = useCallback((userId: any) => {
-    dispatch(removeTyping({ channelId: activeChannelId || '', userId }))
-  }, [dispatch, activeChannelId])
+  // Handle typing stop
+  const onTypingStop = useCallback((data: { userId: string; channelId: string }) => {
+    console.log('⌨️ Typing stop:', data)
+    dispatch(removeTyping({ channelId: data.channelId, userId: data.userId }))
+  }, [dispatch])
 
+  // Handle presence sync (initial load and updates)
+  const onPresenceSync = useCallback((presenceState: Record<string, any[]>) => {
+    console.log('🌐 Presence sync:', Object.keys(presenceState))
+    const onlineIds = Object.keys(presenceState)
+    dispatch(setOnlineUserIds(onlineIds))
+  }, [dispatch])
 
+  // ============================================
+  // Initialization Effects
+  // ============================================
+
+  // Set current user ID in store
   useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
+    if (sessionUserId && sessionUserId !== storeCurrentUserId) {
+      dispatch(setCurrentUserId(sessionUserId))
+    }
+  }, [sessionUserId, storeCurrentUserId, dispatch])
+
+  // Initialize presence tracking
+  useEffect(() => {
+    const initPresence = async () => {
+      if (sessionUserId && sessionUserName && !presenceInitializedRef.current) {
+        presenceInitializedRef.current = true
+        try {
+          await realtimeManager.initializePresence(
+            sessionUserId,
+            sessionUserName,
+            sessionUserAvatar
+          )
+          console.log('✅ Presence initialized for:', sessionUserId)
+        } catch (error) {
+          console.error('❌ Failed to initialize presence:', error)
+          presenceInitializedRef.current = false
+        }
       }
     }
-  }, [])
+    
+    initPresence()
+    
+    // Cleanup on unmount
+    return () => {
+      // Don't cleanup presence on component unmount, keep user online
+    }
+  }, [sessionUserId, sessionUserName, sessionUserAvatar, realtimeManager])
 
-
+  // Fetch all users
   useEffect(() => {
     const fetchAllUsers = async () => {
       if (sessionUserId && !globalFetchedUsers.get(sessionUserId) && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
@@ -236,14 +276,19 @@ export function useCommunications() {
     return () => {
       if (activeChannelId) {
         console.log('Unsubscribing from channel:', activeChannelId)
+        // Send typing stop if user was typing
+        if (sessionUserId) {
+          realtimeManager.sendTypingStop(activeChannelId, sessionUserId)
+        }
         realtimeManager.unsubscribeFromChannel(activeChannelId)
+        dispatch(clearTypingForChannel(activeChannelId))
       }
     }
-  }, [activeChannelId, realtimeManager])
+  }, [activeChannelId, realtimeManager, sessionUserId, dispatch])
 
   // Update handlers when they change
   useEffect(() => {
-    realtimeManager.updateHandlers({
+    const handlers: RealtimeEventHandlers = {
       onNewMessage,
       onMessageUpdate,
       onMessageDelete,
@@ -252,9 +297,11 @@ export function useCommunications() {
       onUserOnline,
       onUserOffline,
       onTypingStart,
-      onTypingStop
-    })
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop])
+      onTypingStop,
+      onPresenceSync
+    }
+    realtimeManager.updateHandlers(handlers)
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync])
 
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
@@ -475,29 +522,31 @@ export function useCommunications() {
     }
   }, [])
 
-  // Real-time operations
+  // ============================================
+  // Optimized Typing Operations
+  // ============================================
+  
+  /**
+   * Send typing indicator - optimized with throttling.
+   * Call this on every keystroke, the realtime manager handles debouncing.
+   */
   const setUserTyping = useCallback(async (typingIndicator: ITypingIndicator) => {
-    if (activeChannelId) {
-      // Clear existing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
-      }
-
-      // Send typing start
-      await realtimeManager.sendTypingStart(activeChannelId, typingIndicator.userId)
-      dispatch(setTyping(typingIndicator))
-
-      // Auto-stop typing after 3 seconds
-      typingTimeoutRef.current = setTimeout(() => {
-        removeUserTyping(activeChannelId, typingIndicator.userId)
-      }, 3000)
+    if (activeChannelId && sessionUserId) {
+      // The realtime manager handles throttling internally
+      await realtimeManager.sendTypingStart(
+        activeChannelId, 
+        sessionUserId,
+        sessionUserName
+      )
     }
-  }, [dispatch, activeChannelId, realtimeManager])
+  }, [activeChannelId, sessionUserId, sessionUserName, realtimeManager])
 
+  /**
+   * Stop typing indicator - call when user stops typing or sends message.
+   */
   const removeUserTyping = useCallback(async (channelId: string, userId: string) => {
     await realtimeManager.sendTypingStop(channelId, userId)
-    dispatch(removeTyping({ channelId, userId }))
-  }, [dispatch, realtimeManager])
+  }, [realtimeManager])
 
   // UI state operations
   const handleToggleChannelList = useCallback(() => {
@@ -616,6 +665,11 @@ export function useCommunications() {
     usersLoading,
     sessionStatus: status,
     hasChannels,
+    
+    // Online presence
+    onlineUserIds,
+    isUserOnline: (userId: string) => realtimeManager.isUserOnline(userId),
+    getOnlineUsers: () => realtimeManager.getOnlineUsers(),
 
     // Channel operations
     fetchChannels,
@@ -656,4 +710,4 @@ export function useCommunications() {
     refreshChannels,
     refreshMessages
   }
-  }
+}

@@ -2424,3 +2424,31 @@ Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
 you can reuse component also or create new one but every things should be to the point and optimized 
 
 along with we can 
+
+
+
+
+
+
+
+
+
+now make sure to implement these things properly with the realtime 
+
+1) in the groups we can mention anyone from the channel_members using this button 
+{/* Mention button */}
+                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
+                            <AtSign className="h-4 w-4" />
+                        </button>
+or @ when this than show the current memer of that chat and we can pick one of them and also handle mentions in the realtime , prisma, with the realtime notification for that who is mention 
+and we can mention "everyone" if so that all member have notification for alert 
+
+2) there should be proper emoji picker with search (slack inspired)
+ <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
+                                <Smile className="h-4 w-4" />
+                            </button>
+
+3) the reply should be working well with preview of the reply message and when click on it than navigate to that message also like in the whatsapp using the best practices 
+4) the message edit should also be working well with edit fields 
+
+5) there should read icons, delivered icon and read icon and its completely realtime in the both side sender and reciver according to the professional approach

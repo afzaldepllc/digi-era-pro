@@ -4,20 +4,13 @@ import { config } from 'dotenv'
 // Load environment variables
 const result = config({ path: '.env.local' })
 
+// Note: Using type assertion to support newer Prisma config options
+// that may not be in the current type definitions
 export default defineConfig({
-  earlyAccess: true,
   schema: './prisma/schema.prisma',
   datasource: {
     url: process.env.DATABASE_URL!,
   },
-  migrate: {
-    async adapter() {
-      const { PrismaPg } = await import('@prisma/adapter-pg')
-      const { Pool } = await import('pg')
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-      return new PrismaPg(pool)
-    }
-  }
-})
+} as Parameters<typeof defineConfig>[0])
 
 

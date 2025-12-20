@@ -20,6 +20,7 @@ interface CommunicationState {
   
   // Real-time features
   onlineUsers: IParticipant[]
+  onlineUserIds: string[] // Quick lookup for online status (array for Redux serialization)
   typingUsers: Record<string, ITypingIndicator[]> // Keyed by channelId
   
   // UI State
@@ -47,6 +48,7 @@ interface CommunicationState {
   
   // Current user (from auth state)
   currentUser: IParticipant | null
+  currentUserId: string | null
   
   // Notifications
   unreadCount: number
@@ -64,6 +66,7 @@ const initialState: CommunicationState = {
   selectedChannel: null,
   messages: {},
   onlineUsers: [],
+  onlineUserIds: [],
   typingUsers: {},
   isChannelListExpanded: true,
   isContextPanelVisible: false,
@@ -76,6 +79,7 @@ const initialState: CommunicationState = {
   sort: { field: 'created_at', direction: 'asc' },
   pagination: { page: 1, limit: 50, total: 0, pages: 0 },
   currentUser: null,
+  currentUserId: null,
   unreadCount: 0,
   notifications: []
 }
@@ -84,16 +88,23 @@ const communicationSlice = createSlice({
   name: "communications",
   initialState,
   reducers: {
-    // Channel management
+    // ============================================
+    // Channel Management
+    // ============================================
+    
     setActiveChannel: (state, action: PayloadAction<string>) => {
       state.activeChannelId = action.payload
       state.selectedChannel = state.channels.find(ch => ch.id === action.payload) || null
       
-      // Update channel unread count
+      // Clear unread count for this channel when selected
       const channelIndex = state.channels.findIndex(ch => ch.id === action.payload)
-      if (channelIndex !== -1) {
+      if (channelIndex !== -1 && state.channels[channelIndex].unreadCount) {
+        state.unreadCount -= state.channels[channelIndex].unreadCount
         state.channels[channelIndex].unreadCount = 0
       }
+      
+      // Clear typing indicators for this channel
+      state.typingUsers[action.payload] = []
     },
     
     clearActiveChannel: (state) => {
@@ -101,7 +112,10 @@ const communicationSlice = createSlice({
       state.selectedChannel = null
     },
     
-    // Message management
+    // ============================================
+    // Message Management with Channel Ordering
+    // ============================================
+    
     addMessage: (state, action: PayloadAction<{ channelId: string; message: ICommunication }>) => {
       const { channelId, message } = action.payload
       
@@ -118,13 +132,28 @@ const communicationSlice = createSlice({
       
       state.messages[channelId].push(message)
       
-      // Update channel's last message and unread count
+      // Update channel's last message and move to top
       const channelIndex = state.channels.findIndex(ch => ch.id === channelId)
       if (channelIndex !== -1) {
-        state.channels[channelIndex].last_message = message
-        if (channelId !== state.activeChannelId && message.mongo_sender_id !== state.currentUser?.mongo_member_id) {
-          state.channels[channelIndex].unreadCount = (state.channels[channelIndex].unreadCount || 0) + 1
+        const channel = state.channels[channelIndex]
+        channel.last_message = message
+        channel.last_message_at = message.created_at
+        
+        // Update unread count if not active channel and not from current user
+        if (channelId !== state.activeChannelId && message.mongo_sender_id !== state.currentUserId) {
+          channel.unreadCount = (channel.unreadCount || 0) + 1
           state.unreadCount += 1
+        }
+        
+        // Move channel to top of list (most recent first)
+        if (channelIndex > 0) {
+          state.channels.splice(channelIndex, 1)
+          state.channels.unshift(channel)
+        }
+        
+        // Update selectedChannel if it's the same channel
+        if (state.selectedChannel?.id === channelId) {
+          state.selectedChannel = { ...channel }
         }
       }
     },
@@ -143,7 +172,10 @@ const communicationSlice = createSlice({
       }
     },
     
-    // Real-time features
+    // ============================================
+    // Typing Indicators (Optimized)
+    // ============================================
+    
     setTyping: (state, action: PayloadAction<ITypingIndicator>) => {
       const typing = action.payload
       
@@ -151,10 +183,17 @@ const communicationSlice = createSlice({
         state.typingUsers[typing.channelId] = []
       }
       
+      // Don't add typing from current user
+      if (typing.userId === state.currentUserId) {
+        return
+      }
+      
       const existingIndex = state.typingUsers[typing.channelId].findIndex(t => t.userId === typing.userId)
       if (existingIndex !== -1) {
+        // Update existing typing indicator timestamp
         state.typingUsers[typing.channelId][existingIndex] = typing
       } else {
+        // Add new typing indicator
         state.typingUsers[typing.channelId].push(typing)
       }
     },
@@ -164,6 +203,102 @@ const communicationSlice = createSlice({
       
       if (state.typingUsers[channelId]) {
         state.typingUsers[channelId] = state.typingUsers[channelId].filter(t => t.userId !== userId)
+      }
+    },
+    
+    clearTypingForChannel: (state, action: PayloadAction<string>) => {
+      const channelId = action.payload
+      state.typingUsers[channelId] = []
+    },
+    
+    // ============================================
+    // Online Presence (New)
+    // ============================================
+    
+    setCurrentUserId: (state, action: PayloadAction<string>) => {
+      state.currentUserId = action.payload
+    },
+    
+    setOnlineUserIds: (state, action: PayloadAction<string[]>) => {
+      // Use array directly instead of Set for Redux serialization
+      state.onlineUserIds = [...action.payload]
+      
+      // Update channel_members online status in channels
+      state.channels = state.channels.map(channel => ({
+        ...channel,
+        channel_members: channel.channel_members?.map(member => ({
+          ...member,
+          isOnline: action.payload.includes(member.mongo_member_id),
+          is_online: action.payload.includes(member.mongo_member_id)
+        })) || []
+      }))
+      
+      // Update selectedChannel if exists
+      if (state.selectedChannel) {
+        state.selectedChannel = {
+          ...state.selectedChannel,
+          channel_members: state.selectedChannel.channel_members?.map(member => ({
+            ...member,
+            isOnline: action.payload.includes(member.mongo_member_id),
+            is_online: action.payload.includes(member.mongo_member_id)
+          })) || []
+        }
+      }
+    },
+    
+    addOnlineUser: (state, action: PayloadAction<string>) => {
+      const userId = action.payload
+      // Add to array if not already present
+      if (!state.onlineUserIds.includes(userId)) {
+        state.onlineUserIds.push(userId)
+      }
+      
+      // Update channel members
+      state.channels = state.channels.map(channel => ({
+        ...channel,
+        channel_members: channel.channel_members?.map(member => ({
+          ...member,
+          isOnline: member.mongo_member_id === userId ? true : member.isOnline,
+          is_online: member.mongo_member_id === userId ? true : member.is_online
+        })) || []
+      }))
+      
+      if (state.selectedChannel) {
+        state.selectedChannel = {
+          ...state.selectedChannel,
+          channel_members: state.selectedChannel.channel_members?.map(member => ({
+            ...member,
+            isOnline: member.mongo_member_id === userId ? true : member.isOnline,
+            is_online: member.mongo_member_id === userId ? true : member.is_online
+          })) || []
+        }
+      }
+    },
+    
+    removeOnlineUser: (state, action: PayloadAction<string>) => {
+      const userId = action.payload
+      // Remove from array
+      state.onlineUserIds = state.onlineUserIds.filter(id => id !== userId)
+      
+      // Update channel members
+      state.channels = state.channels.map(channel => ({
+        ...channel,
+        channel_members: channel.channel_members?.map(member => ({
+          ...member,
+          isOnline: member.mongo_member_id === userId ? false : member.isOnline,
+          is_online: member.mongo_member_id === userId ? false : member.is_online
+        })) || []
+      }))
+      
+      if (state.selectedChannel) {
+        state.selectedChannel = {
+          ...state.selectedChannel,
+          channel_members: state.selectedChannel.channel_members?.map(member => ({
+            ...member,
+            isOnline: member.mongo_member_id === userId ? false : member.isOnline,
+            is_online: member.mongo_member_id === userId ? false : member.is_online
+          })) || []
+        }
       }
     },
     
@@ -296,6 +431,11 @@ export const {
   updateMessage,
   setTyping,
   removeTyping,
+  clearTypingForChannel,
+  setCurrentUserId,
+  setOnlineUserIds,
+  addOnlineUser,
+  removeOnlineUser,
   updateOnlineUsers,
   toggleChannelList,
   toggleContextPanel,
