@@ -120,7 +120,7 @@ export function MessageInput({
 
   return (
     <TooltipProvider>
-      <div className={cn("border-t bg-card p-4", className)}>
+      <div className={cn("border-t bg-card p-2", className)}>
 
 
         {/* Input area */}
@@ -149,7 +149,7 @@ export function MessageInput({
         </div>
 
         {/* Keyboard shortcut hint */}
-        <div className="mt-2 text-xs text-muted-foreground">
+        <div className="mt-1 text-xs text-muted-foreground">
           Press Enter to send, Shift + Enter for new line
         </div>
       </div>

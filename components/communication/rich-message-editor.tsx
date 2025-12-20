@@ -254,35 +254,34 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
 
                 {/* topbar for text editing options */}
                 {showToolbar && (
-                    <div className="flex items-center gap-1 border-b p-2 bg-card">
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBold().run()} className={editor?.isActive('bold') ? 'bg-accent' : ''} title="Bold">
+                    <div className="flex items-center gap-1 border-b p-1 bg-card">
+                        <button onClick={() => editor?.chain().focus().toggleBold().run()} className={`${editor?.isActive('bold') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bold">
                             <Bold className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleItalic().run()} className={editor?.isActive('italic') ? 'bg-accent' : ''} title="Italic">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleItalic().run()} className={`${editor?.isActive('italic') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Italic">
                             <Italic className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleStrike().run()} className={editor?.isActive('strike') ? 'bg-accent' : ''} title="Strikethrough">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleStrike().run()} className={`${editor?.isActive('strike') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Strikethrough">
                             <Strikethrough className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBulletList().run()} className={editor?.isActive('bulletList') ? 'bg-accent' : ''} title="Bullet list">
+                        <button onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`${editor?.isActive('bulletList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Bullet list">
                             <List className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleOrderedList().run()} className={editor?.isActive('orderedList') ? 'bg-accent' : ''} title="Numbered list">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleOrderedList().run()} className={`${editor?.isActive('orderedList') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Numbered list">
                             <ListOrdered className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={addLink} className={editor?.isActive('link') ? 'bg-accent' : ''} title="Add link">
+                        <button onClick={addLink} className={`${editor?.isActive('link') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Add link">
                             <Link className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleCodeBlock().run()} className={editor?.isActive('codeBlock') ? 'bg-accent' : ''} title="Code block">
+                        </button>
+                        <button onClick={() => editor?.chain().focus().toggleCodeBlock().run()} className={`${editor?.isActive('codeBlock') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title="Code block">
                             <Code className="h-4 w-4" />
-                        </Button>
+                        </button>
 
-                        <Button variant="ghost" size="sm" onClick={() => editor?.chain().focus().toggleBlockquote().run()} className={editor?.isActive('blockquote') ? 'bg-accent' : ''} title="Blockquote">
+                        <button onClick={() => editor?.chain().focus().toggleBlockquote().run()} className={`${editor?.isActive('blockquote') ? 'bg-accent' : ''} border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150`} title ="Blockquote">
                             <Quote className="h-4 w-4" />
-                        </Button>
-
+                        </button>
 
 
 
@@ -355,21 +354,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                             onClick={() => fileInputRef.current?.click()}
                             title="Attach file"
                         >
-                            <Paperclip className="h-5 w-5" />
+                            <Paperclip className="h-4 w-4" />
                         </button>
                         <button
                             className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowToolbar(p => !p)} title="Toggle formatting">
-                            <TypeIcon className="h-5 w-5" />
+                            <TypeIcon className="h-4 w-4" />
                         </button>
 
                         {/* Mention button */}
                         <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionSuggestions} title="Mention someone">
-                            <AtSign className="h-5 w-5" />
+                            <AtSign className="h-4 w-4" />
                         </button>
                         {/* Emoji picker (bottom) */}
                         <div className="relative" ref={emojiPickerRef}>
                             <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
-                                <Smile className="h-5 w-5" />
+                                <Smile className="h-4 w-4" />
                             </button>
 
                             {showEmojiPicker && (
@@ -407,7 +406,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                                     setShowSuggestions(false)
                                 }
                             }} title="Send message">
-                            <Send className="h-5 w-5 text-primary" />
+                            <Send className="h-4 w-4 text-primary" />
                         </button>
                     </div>
                 </div>
