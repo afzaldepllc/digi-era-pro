@@ -137,7 +137,8 @@ export function HtmlTextRenderer({
       <div
         className={cn(
           "text-sm text-muted-foreground",
-          "prose prose-sm max-w-none", // Tailwind typography classes for better HTML rendering
+          "prose prose-sm max-w-full", // Tailwind typography classes - use max-w-full to respect parent
+          "break-words [overflow-wrap:anywhere] [word-break:break-word]", // Ensure text wraps properly
           "[&>p]:my-1 [&>ol]:my-1 [&>ul]:my-1", // Reduce spacing in lists and paragraphs
           "[&>ol]:list-decimal [&>ol]:list-inside [&>ol]:pl-4", // Ordered list with numbers
           "[&>ul]:list-disc [&>ul]:list-inside [&>ul]:pl-4", // Unordered list with bullets
@@ -146,6 +147,7 @@ export function HtmlTextRenderer({
           "[&_li]:ml-0", // Reset list item margin
           "[&_strong]:font-semibold [&_em]:italic", // Ensure formatting works
           "[&_p]:inline", // Make paragraphs inside list items inline
+          "[&_*]:max-w-full [&_*]:break-words", // Ensure all children respect width and wrap
           preserveFormatting && "whitespace-pre-wrap",
           className
         )}

@@ -256,7 +256,7 @@ export function MessageList({
 
           {/* Message text */}
             <div className={cn(
-            "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto",
+            "bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto overflow-hidden",
             isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
             )}>
               {/* {message.content} */}
@@ -265,7 +265,7 @@ export function MessageList({
               fallbackText="No description"
               showFallback={true}
               renderAsHtml={true}
-              className="text-sm whitespace-pre-wrap break-words break-all overflow-wrap-anywhere"
+              className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
               truncateHtml={false}
               />
 
