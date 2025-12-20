@@ -2445,7 +2445,7 @@ Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_SYSTEM_README-WITH-SUPABASE-FIN
                             <AtSign className="h-4 w-4" />
                         </button>
 or @ when this than show the current memer of that chat and we can pick one of them and also handle mentions in the realtime , prisma, with the realtime notification for that who is mention 
-and we can mention "everyone" if so that all member have notification for alert 
+and we can mention "everyone" if so that all member have notification for alert and we can also remove the mention one using the backspace
 
 2) there should be proper emoji picker with search (slack inspired)
  <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
