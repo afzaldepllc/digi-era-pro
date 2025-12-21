@@ -52,8 +52,7 @@ export function CreateChannelModal({
 
   const clientUsers = clients
   const regularUsers = users.filter(u => u.isClient !== true)
-  console.log("regularUsers53",regularUsers);
-  console.log("clientUsers54",clientUsers);
+
   const handleCategoryToggle = (category: DepartmentCategory) => {
     setSelectedCategories(prev =>
       prev.includes(category)

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
 // Supabase Client for Broadcasting
@@ -113,9 +114,9 @@ export async function POST(request: NextRequest) {
             emoji
           }
         })
-        console.log('📡 Reaction removed broadcasted to channel:', channel_id)
+        logger.debug('Reaction removed broadcasted to channel:', channel_id)
       } catch (broadcastError) {
-        console.error('Failed to broadcast reaction removal:', broadcastError)
+        logger.error('Failed to broadcast reaction removal:', broadcastError)
         // Don't fail the request if broadcast fails
       }
 
@@ -157,9 +158,9 @@ export async function POST(request: NextRequest) {
           created_at: newReaction.created_at.toISOString()
         }
       })
-      console.log('📡 Reaction added broadcasted to channel:', channel_id)
+      logger.debug('Reaction added broadcasted to channel:', channel_id)
     } catch (broadcastError) {
-      console.error('Failed to broadcast reaction addition:', broadcastError)
+      logger.error('Failed to broadcast reaction addition:', broadcastError)
       // Don't fail the request if broadcast fails
     }
 
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error adding reaction:', error)
+    logger.error('Error adding reaction:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const errorDetails = error instanceof Error ? error.stack : String(error)
     return createErrorResponse('Failed to add reaction', 500, { message: errorMessage, details: errorDetails })
@@ -242,9 +243,9 @@ export async function DELETE(request: NextRequest) {
           emoji: reaction.emoji
         }
       })
-      console.log('📡 Reaction removed broadcasted to channel:', reaction.channel_id)
+      logger.debug('Reaction removed broadcasted to channel:', reaction.channel_id)
     } catch (broadcastError) {
-      console.error('Failed to broadcast reaction removal:', broadcastError)
+      logger.error('Failed to broadcast reaction removal:', broadcastError)
       // Don't fail the request if broadcast fails
     }
 
@@ -254,7 +255,7 @@ export async function DELETE(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error removing reaction:', error)
+    logger.error('Error removing reaction:', error)
     return createErrorResponse('Failed to remove reaction', 500)
   }
 }
@@ -321,7 +322,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error fetching reactions:', error)
+    logger.error('Error fetching reactions:', error)
     return createErrorResponse('Failed to fetch reactions', 500)
   }
 }

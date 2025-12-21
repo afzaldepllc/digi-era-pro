@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { channelOperations } from '@/lib/db-utils'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { apiLogger as logger } from '@/lib/logger'
 
 // GET /api/communication/channels/[channelId] - Get channel details
 export async function GET(
@@ -54,7 +55,7 @@ export async function GET(
 
     return NextResponse.json({ channel })
   } catch (error) {
-    console.error('Error fetching channel:', error)
+    logger.error('Error fetching channel:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -121,7 +122,7 @@ export async function PUT(
 
     return NextResponse.json({ channel: enrichedChannel })
   } catch (error) {
-    console.error('Error updating channel:', error)
+    logger.error('Error updating channel:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -176,7 +177,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting channel:', error)
+    logger.error('Error deleting channel:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -53,6 +53,7 @@ import type {
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager, RealtimeEventHandlers } from '@/lib/realtime-manager'
+import { communicationLogger as logger } from '@/lib/logger'
 
 // Global maps to prevent duplicate fetches per user across component remounts
 const globalFetchedUsers = new Map<string, boolean>()
@@ -69,6 +70,12 @@ export function useCommunications() {
   const presenceInitializedRef = useRef(false)
   const hasFetchedUsersRef = useRef(false)
   const hasFetchedChannelsRef = useRef(false)
+  
+  // Use ref for toast to prevent unnecessary callback recreations
+  const toastRef = useRef(toast)
+  useEffect(() => {
+    toastRef.current = toast
+  }, [toast])
   
   // State for real users data
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -119,24 +126,24 @@ export function useCommunications() {
   // ============================================
 
   const onNewMessage = useCallback((message: any) => {
-    console.log('📩 onNewMessage handler called with:', message)
+    logger.debug('onNewMessage handler called with:', message)
     
     // Skip messages from self to avoid duplicates (optimistic updates handle this)
     if (message.mongo_sender_id === sessionUserId) {
-      console.log('📩 Skipping message from self')
+      logger.debug('Skipping message from self')
       return
     }
     
     if (message && typeof message === 'object' && message.mongo_sender_id) {
-      console.log('📩 Received enriched message:', message)
+      logger.debug('Received enriched message:', message)
       dispatch(addMessage({ channelId: message.channel_id, message }))
     } else {
-      console.error('Invalid message received, skipping:', message)
+      logger.error('Invalid message received, skipping:', message)
     }
   }, [dispatch, sessionUserId])
 
   const onMessageUpdate = useCallback((message: any) => {
-    console.log('📝 onMessageUpdate handler called')
+    logger.debug('onMessageUpdate handler called')
     dispatch(updateMessage({
       channelId: message.channel_id,
       messageId: message.id,
@@ -145,30 +152,30 @@ export function useCommunications() {
   }, [dispatch])
 
   const onMessageDelete = useCallback((messageId: any) => {
-    console.log('🗑️ Message deleted:', messageId)
+    logger.debug('Message deleted:', messageId)
   }, [])
 
   const onUserJoined = useCallback((member: any) => {
-    console.log('👋 User joined:', member)
+    logger.debug('User joined:', member)
   }, [])
 
   const onUserLeft = useCallback((memberId: any) => {
-    console.log('👋 User left:', memberId)
+    logger.debug('User left:', memberId)
   }, [])
 
   const onUserOnline = useCallback((userId: string) => {
-    console.log('🟢 User online:', userId)
+    logger.debug('User online:', userId)
     dispatch(addOnlineUser(userId))
   }, [dispatch])
 
   const onUserOffline = useCallback((userId: string) => {
-    console.log('🔴 User offline:', userId)
+    logger.debug('User offline:', userId)
     dispatch(removeOnlineUser(userId))
   }, [dispatch])
 
   // Handle typing start with proper data structure
   const onTypingStart = useCallback((data: { userId: string; userName: string; channelId: string }) => {
-    console.log('⌨️ Typing start:', data)
+    logger.debug('Typing start:', data)
     dispatch(setTyping({
       channelId: data.channelId,
       userId: data.userId,
@@ -179,7 +186,7 @@ export function useCommunications() {
 
   // Handle typing stop
   const onTypingStop = useCallback((data: { userId: string; channelId: string }) => {
-    console.log('⌨️ Typing stop:', data)
+    logger.debug('Typing stop:', data)
     dispatch(removeTyping({ channelId: data.channelId, userId: data.userId }))
   }, [dispatch])
 
@@ -190,7 +197,7 @@ export function useCommunications() {
     channelId: string; 
     readAt: string 
   }) => {
-    console.log('👁️ Message read:', data)
+    logger.debug('Message read:', data)
     // Don't process our own read receipts
     if (data.userId === sessionUserId) return
     
@@ -207,7 +214,7 @@ export function useCommunications() {
     messageId: string; 
     channelId: string 
   }) => {
-    console.log('📨 Message delivered:', data)
+    logger.debug('Message delivered:', data)
     dispatch(setMessageDelivered({
       channelId: data.channelId,
       messageId: data.messageId
@@ -216,7 +223,7 @@ export function useCommunications() {
 
   // Handle presence sync (initial load and updates)
   const onPresenceSync = useCallback((presenceState: Record<string, any[]>) => {
-    console.log('🌐 Presence sync:', Object.keys(presenceState))
+    logger.debug('Presence sync:', Object.keys(presenceState))
     const onlineIds = Object.keys(presenceState)
     dispatch(setOnlineUserIds(onlineIds))
   }, [dispatch])
@@ -231,7 +238,7 @@ export function useCommunications() {
     content_preview: string
     created_at: string
   }) => {
-    console.log('📬 Mention notification received:', data)
+    logger.debug('Mention notification received:', data)
     
     // Add notification to store
     dispatch(addNotification({
@@ -245,11 +252,11 @@ export function useCommunications() {
     }))
 
     // Show toast notification
-    toast({
+    toastRef.current({
       title: `@${data.sender_name} mentioned you`,
       description: data.content_preview.slice(0, 60) + (data.content_preview.length > 60 ? '...' : ''),
     })
-  }, [dispatch, toast])
+  }, [dispatch])
 
   // Handle reaction added (real-time)
   const onReactionAdd = useCallback((data: {
@@ -261,7 +268,7 @@ export function useCommunications() {
     emoji: string;
     created_at: string;
   }) => {
-    console.log('👍 Reaction added:', data)
+    logger.debug('Reaction added:', data)
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
     
@@ -286,7 +293,7 @@ export function useCommunications() {
     mongo_user_id: string;
     emoji: string;
   }) => {
-    console.log('👎 Reaction removed:', data)
+    logger.debug('Reaction removed:', data)
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
     
@@ -321,9 +328,9 @@ export function useCommunications() {
             sessionUserName,
             sessionUserAvatar
           )
-          console.log('✅ Presence initialized for:', sessionUserId)
+          logger.debug('Presence initialized for:', sessionUserId)
         } catch (error) {
-          console.error('❌ Failed to initialize presence:', error)
+          logger.error('Failed to initialize presence:', error)
           presenceInitializedRef.current = false
         }
       }
@@ -349,7 +356,7 @@ export function useCommunications() {
           const response = await apiRequest('/api/users')
           setAllUsers(response.users || [])
         } catch (error) {
-          console.error('Failed to fetch users:', error)
+          logger.error('Failed to fetch users:', error)
         } finally {
           setUsersLoading(false)
         }
@@ -361,12 +368,12 @@ export function useCommunications() {
 
   // Fetch channels on mount - but only if not already initialized globally
   useEffect(() => {
-    console.log('🔄 Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
+    logger.debug('Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
     if (sessionUserId && !globalFetchedChannels.get(sessionUserId) && !loading) {
       globalFetchedChannels.set(sessionUserId, true)
       hasFetchedChannelsRef.current = true
       channelsFetchedRef.current = true
-      console.log('🚀 Fetching channels')
+      logger.debug('Fetching channels')
       fetchChannels()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -376,12 +383,12 @@ export function useCommunications() {
   useEffect(() => {
     const subscribe = async () => {
       if (activeChannelId) {
-        console.log('Subscribing to channel:', activeChannelId)
+        logger.debug('Subscribing to channel:', activeChannelId)
         try {
           await realtimeManager.subscribeToChannel(activeChannelId)
           fetchMessages({ channel_id: activeChannelId })
         } catch (error) {
-          console.error('Failed to subscribe to channel:', error)
+          logger.error('Failed to subscribe to channel:', error)
         }
       }
     }
@@ -389,7 +396,7 @@ export function useCommunications() {
 
     return () => {
       if (activeChannelId) {
-        console.log('Unsubscribing from channel:', activeChannelId)
+        logger.debug('Unsubscribing from channel:', activeChannelId)
         // Send typing stop if user was typing
         if (sessionUserId) {
           realtimeManager.sendTypingStop(activeChannelId, sessionUserId)
@@ -426,7 +433,7 @@ export function useCommunications() {
   useEffect(() => {
     if (sessionUserId) {
       realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
-        console.error('Failed to subscribe to notifications:', err)
+        logger.error('Failed to subscribe to notifications:', err)
       })
     }
     
@@ -437,7 +444,7 @@ export function useCommunications() {
 
   // Channel operations
   const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
-    console.log('🔄 fetchChannels called with params:', params)
+    logger.debug('fetchChannels called with params:', params)
     try {
       dispatch(setLoading(true))
       // Build query string
@@ -450,13 +457,13 @@ export function useCommunications() {
       const url = `/api/communication/channels${queryString ? `?${queryString}` : ''}`
       
       const response = await apiRequest(url)
-      console.log('Raw response from API:', response)
+      logger.debug('Channels loaded:', response?.length || 0)
       dispatch(setChannels(response))
       return response  
     } catch (error) {
       dispatch(setError('Failed to fetch channels'))
       dispatch(setChannelsInitialized(true)) // Prevent infinite retries
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to load channels",
         variant: "destructive"
@@ -483,8 +490,7 @@ export function useCommunications() {
     try {
       dispatch(setMessagesLoading(true))
       // Build query string
-      // TODO: Change back to 50 after testing pagination
-      const MESSAGE_LIMIT = 5 // params.limit || 50
+      const MESSAGE_LIMIT = params.limit || 50
       const queryParams = new URLSearchParams({
         channel_id: params.channel_id,
         limit: MESSAGE_LIMIT.toString(),
@@ -494,11 +500,11 @@ export function useCommunications() {
       const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
       dispatch(setMessages({ channelId: params.channel_id, messages: response.data || response }))
 
-      console.log('Fetched and enriched messages320:', response) 
+      logger.debug('Fetched messages:', response.data?.length || response?.length || 0)
       return response
     } catch (error) {
       dispatch(setError('Failed to fetch messages'))
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to load messages",
         variant: "destructive"
@@ -513,8 +519,7 @@ export function useCommunications() {
   // Fetch older messages (pagination - prepend to existing)
   const fetchOlderMessages = useCallback(async (params: FetchMessagesParams & { offset: number }) => {
     try {
-      // TODO: Change back to 30 after testing pagination
-      const OLDER_MESSAGE_LIMIT = 5 // params.limit || 30
+      const OLDER_MESSAGE_LIMIT = params.limit || 30
       const queryParams = new URLSearchParams({
         channel_id: params.channel_id,
         limit: OLDER_MESSAGE_LIMIT.toString(),
@@ -529,7 +534,7 @@ export function useCommunications() {
         hasMore: olderMessages.length === OLDER_MESSAGE_LIMIT
       }
     } catch (error) {
-      console.error('Failed to fetch older messages:', error)
+      logger.error('Failed to fetch older messages:', error)
       return { messages: [], hasMore: false }
     }
   }, [])
@@ -552,7 +557,7 @@ export function useCommunications() {
         hasMore: response.meta?.hasMore || false
       }
     } catch (error) {
-      console.error('Failed to search messages:', error)
+      logger.error('Failed to search messages:', error)
       return { messages: [], total: 0, hasMore: false }
     }
   }, [])
@@ -613,7 +618,7 @@ export function useCommunications() {
       })
       // Check if response is valid
       if (!response || !response.id) {
-        console.error('Invalid response from API:', response)
+        logger.error('Invalid response from API:', response)
         dispatch(updateMessage({
           channelId: messageData.channel_id,
           messageId: tempId,
@@ -633,7 +638,7 @@ export function useCommunications() {
       // console.log('📤 Broadcasting message, channel_id:', messageData.channel_id)
       // await realtimeManager.broadcastMessage(messageData.channel_id, response)
 
-      toast({
+      toastRef.current({
         title: "Message sent",
         description: "Your message has been sent successfully",
       })
@@ -649,7 +654,7 @@ export function useCommunications() {
       }))
 
       dispatch(setError('Failed to send message'))
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to send message",
         variant: "destructive"
@@ -790,7 +795,7 @@ export function useCommunications() {
         }))
       }
 
-      toast({
+      toastRef.current({
         title: files.length > 0 ? "Files sent" : "Message sent",
         description: files.length > 0 
           ? `${files.length} file(s) uploaded successfully`
@@ -807,7 +812,7 @@ export function useCommunications() {
       }))
 
       dispatch(setError('Failed to send message with files'))
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to send message with files",
         variant: "destructive"
@@ -816,7 +821,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, sessionUserId, sessionUser, toast])
+  }, [dispatch, sessionUserId, sessionUser])
 
   // Update an existing message (for editing)
   const editMessage = useCallback(async (messageId: string, updates: { content?: string }) => {
@@ -862,7 +867,7 @@ export function useCommunications() {
         }))
       }
 
-      toast({
+      toastRef.current({
         title: "Message updated",
         description: "Your message has been edited",
       })
@@ -870,7 +875,7 @@ export function useCommunications() {
       return response
     } catch (error) {
       dispatch(setError('Failed to update message'))
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to update message",
         variant: "destructive"
@@ -879,7 +884,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, messages, toast])
+  }, [dispatch, messages])
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -892,7 +897,7 @@ export function useCommunications() {
       // Refresh channels list
       await fetchChannels()
 
-      toast({
+      toastRef.current({
         title: "Channel created",
         description: "New conversation started successfully",
       })
@@ -900,7 +905,7 @@ export function useCommunications() {
       return response
     } catch (error) {
       dispatch(setError('Failed to create channel'))
-      toast({
+      toastRef.current({
         title: "Error",
         description: "Failed to create channel",
         variant: "destructive"
@@ -924,7 +929,7 @@ export function useCommunications() {
         await realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
       }
     } catch (error) {
-      console.error('Failed to mark message as read:', error)
+      logger.error('Failed to mark message as read:', error)
     }
   }, [realtimeManager, sessionUserId])
 
@@ -984,9 +989,9 @@ export function useCommunications() {
         })
       }, false) // Don't show error toast, we handle it ourselves
 
-      console.log('✅ Reaction toggled:', result)
+      logger.debug('Reaction toggled:', result)
     } catch (error: any) {
-      console.error('Failed to toggle reaction:', error)
+      logger.error('Failed to toggle reaction:', error)
       
       // Check if user already reacted with this emoji (for reverting)
       const channelMessages = messages[channelId] || []
@@ -1013,13 +1018,13 @@ export function useCommunications() {
         }))
       }
       
-      toast({
+      toastRef.current({
         title: "Error",
         description: error?.error || "Failed to add reaction",
         variant: "destructive"
       })
     }
-  }, [dispatch, messages, sessionUserId, sessionUserName, toast])
+  }, [dispatch, messages, sessionUserId, sessionUserName])
 
   // ============================================
   // Optimized Typing Operations

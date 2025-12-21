@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
+import { apiLogger as logger } from '@/lib/logger'
 
 // POST /api/communication/read-receipts - Mark message as read
 export async function POST(request: NextRequest) {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ receipt })
   } catch (error) {
-    console.error('Error marking message as read:', error)
+    logger.error('Error marking message as read:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ receipts })
   } catch (error) {
-    console.error('Error fetching read receipts:', error)
+    logger.error('Error fetching read receipts:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

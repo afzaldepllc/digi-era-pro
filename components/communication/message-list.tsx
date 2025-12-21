@@ -325,9 +325,6 @@ export function MessageList({
       return <Check className="h-3 w-3 text-muted-foreground" />
     }
 
-    console.log('sender170', sender)
-    console.log('readers171', readers)
-
     return (
       <div
         data-message-id={message.id}

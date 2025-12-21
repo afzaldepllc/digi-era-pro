@@ -4,6 +4,7 @@ import { S3Service } from '@/lib/services/s3-service'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
 // Validation Schemas
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
           }
         })
       } catch (broadcastError) {
-        console.error('Failed to broadcast attachment event:', broadcastError)
+        logger.error('Failed to broadcast attachment event:', broadcastError)
       }
     }
 
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error uploading attachments:', error)
+    logger.error('Error uploading attachments:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to upload attachments'
     return createErrorResponse(errorMessage, 500)
   }
@@ -253,7 +254,7 @@ export async function GET(request: NextRequest) {
           try {
             fileUrl = await S3Service.getPresignedUrl(attachment.s3_key, 'CHAT_ATTACHMENTS')
           } catch (error) {
-            console.error('Failed to refresh presigned URL for:', attachment.s3_key)
+            logger.error('Failed to refresh presigned URL for:', attachment.s3_key)
           }
         }
 
@@ -282,7 +283,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error fetching attachments:', error)
+    logger.error('Error fetching attachments:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch attachments'
     return createErrorResponse(errorMessage, 500)
   }

@@ -58,7 +58,7 @@ export const ChannelList = memo(function ChannelList({
 }: ChannelListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<'all' | 'dm' | 'project' | 'client-support'>('all')
-  console.log("channels prop 58",channels);
+
   const getChannelIcon = (channel: IChannel) => {
     switch (channel.type) {
       case 'dm':
@@ -76,11 +76,8 @@ export const ChannelList = memo(function ChannelList({
 
   const getChannelDisplayName = (channel: IChannel) => {
     if (channel.type === 'dm') {
-      console.log("channel members76",channel.channel_members);
-      console.log("currentUserId76",currentUserId);
       // For DM, show the other participant's name
       const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
-      console.log("otherParticipant78",otherParticipant);
       return otherParticipant?.name || 'Unknown User'
     }
     return channel.name || 'Unnamed Channel'
@@ -151,8 +148,6 @@ export const ChannelList = memo(function ChannelList({
         ? onlineUserIds.includes(avatar.mongo_member_id)
         : avatar.isOnline
     ) : false
-
-    console.log("channel  info 142",channel);
 
     return (
       <div

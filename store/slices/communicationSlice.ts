@@ -351,8 +351,7 @@ const communicationSlice = createSlice({
         ...channel,
         channel_members: channel.channel_members?.map(member => ({
           ...member,
-          isOnline: action.payload.includes(member.mongo_member_id),
-          is_online: action.payload.includes(member.mongo_member_id)
+          isOnline: action.payload.includes(member.mongo_member_id)
         })) || []
       }))
       
@@ -362,8 +361,7 @@ const communicationSlice = createSlice({
           ...state.selectedChannel,
           channel_members: state.selectedChannel.channel_members?.map(member => ({
             ...member,
-            isOnline: action.payload.includes(member.mongo_member_id),
-            is_online: action.payload.includes(member.mongo_member_id)
+            isOnline: action.payload.includes(member.mongo_member_id)
           })) || []
         }
       }
@@ -381,8 +379,7 @@ const communicationSlice = createSlice({
         ...channel,
         channel_members: channel.channel_members?.map(member => ({
           ...member,
-          isOnline: member.mongo_member_id === userId ? true : member.isOnline,
-          is_online: member.mongo_member_id === userId ? true : member.is_online
+          isOnline: member.mongo_member_id === userId ? true : member.isOnline
         })) || []
       }))
       
@@ -391,8 +388,7 @@ const communicationSlice = createSlice({
           ...state.selectedChannel,
           channel_members: state.selectedChannel.channel_members?.map(member => ({
             ...member,
-            isOnline: member.mongo_member_id === userId ? true : member.isOnline,
-            is_online: member.mongo_member_id === userId ? true : member.is_online
+            isOnline: member.mongo_member_id === userId ? true : member.isOnline
           })) || []
         }
       }
@@ -408,8 +404,7 @@ const communicationSlice = createSlice({
         ...channel,
         channel_members: channel.channel_members?.map(member => ({
           ...member,
-          isOnline: member.mongo_member_id === userId ? false : member.isOnline,
-          is_online: member.mongo_member_id === userId ? false : member.is_online
+          isOnline: member.mongo_member_id === userId ? false : member.isOnline
         })) || []
       }))
       
@@ -418,8 +413,7 @@ const communicationSlice = createSlice({
           ...state.selectedChannel,
           channel_members: state.selectedChannel.channel_members?.map(member => ({
             ...member,
-            isOnline: member.mongo_member_id === userId ? false : member.isOnline,
-            is_online: member.mongo_member_id === userId ? false : member.is_online
+            isOnline: member.mongo_member_id === userId ? false : member.isOnline
           })) || []
         }
       }

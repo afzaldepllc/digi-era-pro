@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { z } from 'zod'
+import { apiLogger as logger } from '@/lib/logger'
 
 // Search query validation
 const searchQuerySchema = z.object({
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       offset: parseInt(searchParams.get('offset') || '0')
     }
 
-    console.log('[Search API] Raw query params:', {
+    logger.debug('[Search API] Raw query params:', {
       channel_id: searchParams.get('channel_id'),
       query: searchParams.get('query'),
       limit: searchParams.get('limit'),
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Validate
     const validatedParams = searchQuerySchema.parse(queryParams)
     
-    console.log('[Search API] Validated params:', validatedParams)
+    logger.debug('[Search API] Validated params:', validatedParams)
 
     // Check if user is member of the channel
     const membership = await prisma.channel_members.findFirst({
@@ -91,8 +92,8 @@ export async function GET(request: NextRequest) {
       orderBy: { created_at: 'desc' },
       select: { id: true, content: true }
     })
-    console.log('[Search API] Sample messages in channel:', allMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 100) })))
-    console.log('[Search API] Searching for query:', JSON.stringify(validatedParams.query))
+    logger.debug('[Search API] Sample messages in channel:', allMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 100) })))
+    logger.debug('[Search API] Searching for query:', JSON.stringify(validatedParams.query))
 
     // Search messages using PostgreSQL full-text search or ILIKE
     const messages = await prisma.messages.findMany({
@@ -112,9 +113,9 @@ export async function GET(request: NextRequest) {
       }
     })
     
-    console.log('[Search API] Found messages count:', messages.length)
+    logger.debug('[Search API] Found messages count:', messages.length)
     if (messages.length > 0) {
-      console.log('[Search API] First match:', messages[0].content?.substring(0, 100))
+      logger.debug('[Search API] First match:', messages[0].content?.substring(0, 100))
     }
 
     // Get total count for pagination
@@ -143,7 +144,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error searching messages:', error)
+    logger.error('Error searching messages:', error)
     
     if (error.name === 'ZodError') {
       return createErrorResponse('Invalid search parameters', 400)

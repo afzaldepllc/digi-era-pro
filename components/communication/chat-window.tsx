@@ -81,7 +81,6 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageInputRef = useRef<MessageInputRef>(null)
   
-  console.log('selectedChannel messages in ChatWindow66:', messages)
   // Auto-select channel if channelId is provided and no channel is selected
   useEffect(() => {
     if (channelId && !selectedChannel) {
@@ -116,7 +115,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       await sendMessage(messageData)
       handleStopTyping() // Stop typing indicator after sending
     } catch (error) {
-      console.error('Failed to send message:', error)
+      // Error is handled by the sendMessage function
     }
   }
 
@@ -140,8 +139,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }, [updateMessage])
 
   const handleDelete = (messageId: string) => {
-    // TODO: Implement delete functionality
-    console.log('Delete message:', messageId)
+    // TODO: Implement delete functionality - Phase 2
   }
 
   // Handle reaction toggle on a message

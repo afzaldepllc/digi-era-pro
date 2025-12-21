@@ -6,6 +6,7 @@ import { SecurityUtils } from '@/lib/security/validation'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
+import { apiLogger as logger } from '@/lib/logger'
 
 
 // Helper to create consistent error responses
@@ -60,7 +61,7 @@ export async function PUT(
       message: 'Message updated successfully'
     })
   } catch (error: any) {
-    console.error('Error updating message:', error)
+    logger.error('Error updating message:', error)
     return createAPIErrorResponse('Failed to update message', 500, undefined, getClientInfo(request))
   }
 }
@@ -103,7 +104,7 @@ export async function DELETE(
       message: 'Message deleted successfully'
     })
   } catch (error: any) {
-    console.error('Error deleting message:', error)
+    logger.error('Error deleting message:', error)
     return createAPIErrorResponse('Failed to delete message', 500, undefined, getClientInfo(request))
   }
 }

@@ -62,7 +62,6 @@ export interface IChannelMember {
   channelRole: 'admin' | 'member' // Channel role (renamed from role)
   joined_at: string // Join timestamp
   last_seen_at?: string // Last seen timestamp
-  is_online: boolean // Online status
   notifications_enabled: boolean // Notification preference
   
   // Enriched user fields
@@ -71,7 +70,7 @@ export interface IChannelMember {
   email: string // User email
   avatar?: string // User avatar
   userType: 'User' | 'Client' // User type
-  isOnline: boolean // Online status (alias for is_online)
+  isOnline: boolean // Online status (enriched from presence or is_online db field)
 }
 
 export interface IParticipant {

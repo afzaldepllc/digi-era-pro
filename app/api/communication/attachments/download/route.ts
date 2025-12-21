@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { S3Service } from '@/lib/services/s3-service'
+import { apiLogger as logger } from '@/lib/logger'
 
 // GET /api/communication/attachments/download?id=xxx
 // Returns a fresh presigned download URL for an attachment
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
       fileSize: attachment.file_size
     })
   } catch (error) {
-    console.error('Error generating download URL:', error)
+    logger.error('Error generating download URL:', error)
     return NextResponse.json(
       { error: 'Failed to generate download URL' },
       { status: 500 }

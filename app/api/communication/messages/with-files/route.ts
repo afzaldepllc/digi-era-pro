@@ -6,6 +6,7 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { default as User } from '@/models/User'
+import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
 // Type Definitions
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
         event: 'new_message',
         payload: messageWithSender
       })
-      console.log('📡 Message with attachments broadcasted to channel:', channelId)
+      logger.debug('Message with attachments broadcasted to channel:', channelId)
 
       // Broadcast mention notifications
       if (parsedMentionedUserIds.length > 0) {
@@ -260,12 +261,12 @@ export async function POST(request: NextRequest) {
               payload: mentionNotification
             })
           } catch (notifError) {
-            console.error('Failed to send mention notification to:', mentionedUserId, notifError)
+            logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
           }
         }
       }
     } catch (broadcastError) {
-      console.error('❌ Failed to broadcast message:', broadcastError)
+      logger.error('Failed to broadcast message:', broadcastError)
     }
 
     return NextResponse.json({
@@ -278,7 +279,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: unknown) {
-    console.error('Error sending message with files:', error)
+    logger.error('Error sending message with files:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to send message'
     return createErrorResponse(errorMessage, 500)
   }

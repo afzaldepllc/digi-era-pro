@@ -9,6 +9,7 @@ import { enrichChannelWithUserData } from '@/lib/communication/utils'
 import { default as User } from '@/models/User'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
+import { apiLogger as logger } from '@/lib/logger'
 
 
 // Helper to create consistent error responses
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error fetching channels:', error)
+    logger.error('Error fetching channels:', error)
     return createAPIErrorResponse('Failed to fetch channels', 500, undefined, getClientInfo(request))
   }
 }
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
       client_id: validatedData.client_id,
       is_private: validatedData.is_private
     })
-    console.log("memberIds141",memberIds);
+    logger.debug("Channel members created:", memberIds);
     // For DM channels, check if one already exists between these users
     if (validatedData.type === 'dm' && memberIds.length === 2) {
       const sortedMembers = memberIds.sort()
@@ -243,7 +244,7 @@ export async function POST(request: NextRequest) {
       message: 'Channel created successfully'
     })
   } catch (error: any) {
-    console.error('Error creating channel:', error)
+    logger.error('Error creating channel:', error)
     return createAPIErrorResponse('Failed to create channel', 500, undefined, getClientInfo(request))
   }
 }

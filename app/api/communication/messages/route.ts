@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { default as User } from '@/models/User'
 import type { IParticipant } from '@/types/communication'
+import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
 // Type Definitions
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error fetching messages:', error)
+    logger.error('Error fetching messages:', error)
     return createAPIErrorResponse('Failed to fetch messages', 500, undefined, getClientInfo(request))
   }
 }
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
         event: 'new_message',
         payload: messageWithSender
       })
-      console.log('📡 Message broadcasted to channel:', validatedData.channel_id)
+      logger.debug('Message broadcasted to channel:', validatedData.channel_id)
 
       // Broadcast mention notifications to mentioned users
       if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
@@ -277,14 +278,14 @@ export async function POST(request: NextRequest) {
               event: 'mention_notification',
               payload: mentionNotification
             })
-            console.log('📬 Mention notification sent to user:', mentionedUserId)
+            logger.debug('Mention notification sent to user:', mentionedUserId)
           } catch (notifError) {
-            console.error('Failed to send mention notification to:', mentionedUserId, notifError)
+            logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
           }
         }
       }
     } catch (broadcastError) {
-      console.error('❌ Failed to broadcast message:', broadcastError)
+      logger.error('Failed to broadcast message:', broadcastError)
       // Don't fail the request if broadcast fails
     }
 
@@ -294,14 +295,14 @@ export async function POST(request: NextRequest) {
       message: 'Message sent successfully'
     })
   } catch (error: unknown) {
-    console.error('Error sending message:', error)
+    logger.error('Error sending message:', error)
     
     // Extract error details for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const errorStack = error instanceof Error ? error.stack : undefined
     
     // Log detailed error for server-side debugging
-    console.error('Detailed error:', {
+    logger.error('Detailed error:', {
       message: errorMessage,
       stack: errorStack,
       error
