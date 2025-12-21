@@ -20,8 +20,8 @@ const STORAGE_KEY_PREFIX = "sidebar-width-"
 export function ResizableSidebar({
   children,
   defaultWidth = 320,
-  minWidth = 280,
-  maxWidth = 400,
+  minWidth = 200,
+  maxWidth = 500,
   storageKey = "communication",
   className,
   dragHandleClassName,

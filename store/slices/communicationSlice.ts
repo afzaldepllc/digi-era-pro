@@ -161,7 +161,8 @@ const communicationSlice = createSlice({
         return
       }
       
-      state.messages[channelId].push(message)
+      // Create a fresh copy to avoid mutating frozen payload
+      state.messages[channelId].push({ ...message })
       
       // Update channel's last message and move to top
       const channelIndex = state.channels.findIndex(ch => ch.id === channelId)
@@ -535,7 +536,9 @@ const communicationSlice = createSlice({
     addChannel: (state, action: PayloadAction<IChannel>) => {
       const exists = state.channels.some(c => c.id === action.payload.id)
       if (!exists) {
-        state.channels.unshift(action.payload) // Add to beginning (most recent)
+        // Create a fresh copy to avoid mutating frozen payload
+        const newChannel = { ...action.payload, unreadCount: action.payload.unreadCount ?? 0 }
+        state.channels.unshift(newChannel) // Add to beginning (most recent)
       }
     },
     
@@ -574,21 +577,20 @@ const communicationSlice = createSlice({
         return
       }
       
-      state.channels = action.payload
+      // Create fresh copies to avoid mutating frozen payload
+      state.channels = action.payload.map(channel => ({
+        ...channel,
+        unreadCount: channel.unreadCount ?? 0
+      }))
       state.channelsInitialized = true // Mark as initialized to prevent duplicate fetches
-      // Initialize unreadCount for channels if not present
-      state.channels.forEach(channel => {
-        if (channel.unreadCount === undefined || channel.unreadCount === null) {
-          channel.unreadCount = 0
-        }
-      })
       // Calculate total unread count
       state.unreadCount = state.channels.reduce((total, channel) => total + (channel.unreadCount || 0), 0)
     },
     
     setMessages: (state, action: PayloadAction<{ channelId: string; messages: ICommunication[] }>) => {
       const { channelId, messages } = action.payload
-      state.messages[channelId] = messages
+      // Create fresh copies to avoid mutating frozen payload
+      state.messages[channelId] = messages.map(m => ({ ...m }))
     },
     
     // Prepend older messages (for pagination)
@@ -599,7 +601,7 @@ const communicationSlice = createSlice({
       }
       // Filter out any duplicates and prepend older messages
       const existingIds = new Set(state.messages[channelId].map(m => m.id))
-      const newMessages = messages.filter(m => !existingIds.has(m.id))
+      const newMessages = messages.filter(m => !existingIds.has(m.id)).map(m => ({ ...m }))
       state.messages[channelId] = [...newMessages, ...state.messages[channelId]]
     },
     
@@ -729,9 +731,10 @@ const communicationSlice = createSlice({
       };
     }>) => {
       const { messages, pagination } = action.payload
-      state.trashedMessages = messages
+      // Create fresh copies to avoid mutating frozen payload
+      state.trashedMessages = messages.map(m => ({ ...m }))
       if (pagination) {
-        state.trashedMessagesPagination = pagination
+        state.trashedMessagesPagination = { ...pagination }
       }
     },
     
@@ -749,9 +752,9 @@ const communicationSlice = createSlice({
       const { messages, pagination } = action.payload
       // Filter out duplicates
       const existingIds = new Set(state.trashedMessages.map(m => m.id))
-      const newMessages = messages.filter(m => !existingIds.has(m.id))
+      const newMessages = messages.filter(m => !existingIds.has(m.id)).map(m => ({ ...m }))
       state.trashedMessages.push(...newMessages)
-      state.trashedMessagesPagination = pagination
+      state.trashedMessagesPagination = { ...pagination }
     },
     
     // Set trashed messages loading state

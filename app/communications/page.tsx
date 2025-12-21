@@ -253,9 +253,9 @@ export default function CommunicationsPage() {
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Desktop sidebar - Resizable */}
         <ResizableSidebar
-          defaultWidth={320}
-          minWidth={280}
-          maxWidth={400}
+          defaultWidth={300}
+          minWidth={200}
+          maxWidth={500}
           storageKey="communication-sidebar"
           className="hidden lg:flex border-r"
         >

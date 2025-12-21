@@ -1061,8 +1061,12 @@ export function useCommunications() {
         body: JSON.stringify(channelData)
       })
 
-      // Refresh channels list
-      await fetchChannels()
+      // Add the new channel to Redux state immediately (optimistic update)
+      if (response?.id) {
+        dispatch(addChannel(response as IChannel))
+        // Also update cache
+        communicationCache.addChannelToCache(response)
+      }
 
       toastRef.current({
         title: "Channel created",
@@ -1082,7 +1086,7 @@ export function useCommunications() {
       dispatch(setActionLoading(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, fetchChannels]) // Removed toast to prevent infinite loop
+  }, [dispatch]) // Removed fetchChannels - using optimistic update now
 
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {

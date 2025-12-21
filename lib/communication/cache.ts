@@ -44,8 +44,9 @@ class CommunicationCache {
   // ============================================
 
   setChannels(channels: any[]): void {
+    // Create copies to avoid sharing references with Redux state
     this.channelsCache = {
-      data: channels,
+      data: channels.map(c => ({ ...c })),
       timestamp: Date.now(),
       expiresAt: Date.now() + this.config.channelsTTL,
     };
@@ -59,7 +60,8 @@ class CommunicationCache {
       return null;
     }
     
-    return this.channelsCache.data;
+    // Return copies to avoid sharing references with Redux state
+    return this.channelsCache.data.map(c => ({ ...c }));
   }
 
   invalidateChannels(): void {
@@ -73,16 +75,18 @@ class CommunicationCache {
     const index = channels.findIndex(c => c.id === channelId);
     
     if (index !== -1) {
-      channels[index] = { ...channels[index], ...updates };
-      this.channelsCache.data = channels;
+      // Create new array to avoid mutating frozen/readonly arrays
+      const newChannels = [...channels];
+      newChannels[index] = { ...channels[index], ...updates };
+      this.channelsCache.data = newChannels;
     }
   }
 
   addChannelToCache(channel: any): void {
     if (!this.channelsCache) return;
     
-    // Add to beginning of list
-    this.channelsCache.data = [channel, ...this.channelsCache.data];
+    // Add a copy to beginning of list
+    this.channelsCache.data = [{ ...channel }, ...this.channelsCache.data];
   }
 
   removeChannelFromCache(channelId: string): void {
@@ -106,8 +110,9 @@ class CommunicationCache {
       }
     }
 
+    // Create copies to avoid sharing references with Redux state
     this.messagesCache.set(channelId, {
-      data: messages,
+      data: messages.map(m => ({ ...m })),
       timestamp: Date.now(),
       expiresAt: Date.now() + this.config.messagesTTL,
     });
@@ -123,15 +128,16 @@ class CommunicationCache {
       return null;
     }
     
-    return entry.data;
+    // Return copies to avoid sharing references with Redux state
+    return entry.data.map(m => ({ ...m }));
   }
 
   addMessageToCache(channelId: string, message: any): void {
     const entry = this.messagesCache.get(channelId);
     if (!entry) return;
     
-    // Add to end of messages (newest)
-    entry.data = [...entry.data, message];
+    // Add a copy to end of messages (newest)
+    entry.data = [...entry.data, { ...message }];
   }
 
   updateMessageInCache(channelId: string, messageId: string, updates: Partial<any>): void {
@@ -140,7 +146,10 @@ class CommunicationCache {
     
     const index = entry.data.findIndex((m: any) => m.id === messageId);
     if (index !== -1) {
-      entry.data[index] = { ...entry.data[index], ...updates };
+      // Create new array to avoid mutation
+      const newData = [...entry.data];
+      newData[index] = { ...entry.data[index], ...updates };
+      entry.data = newData;
     }
   }
 
