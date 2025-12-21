@@ -18,8 +18,22 @@ export interface RealtimeEventHandlers {
   onTypingStart?: (data: { userId: string; userName: string; channelId: string }) => void
   onTypingStop?: (data: { userId: string; channelId: string }) => void
   onPresenceSync?: (presenceState: Record<string, any[]>) => void
-  onReactionAdd?: (reaction: any) => void
-  onReactionRemove?: (reactionId: string) => void
+  onReactionAdd?: (data: {
+    id: string
+    message_id: string
+    channel_id: string
+    mongo_user_id: string
+    user_name?: string
+    emoji: string
+    created_at: string
+  }) => void
+  onReactionRemove?: (data: {
+    id: string
+    message_id: string
+    channel_id: string
+    mongo_user_id: string
+    emoji: string
+  }) => void
   onChannelUpdate?: (channel: any) => void
   onAttachmentsAdded?: (data: { channelId: string; messageId?: string; attachments: any[] }) => void
   onMentionNotification?: (data: { 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -82,41 +82,76 @@ export function MessageList({
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const prevScrollHeightRef = useRef<number>(0)
+  const prevFirstMessageIdRef = useRef<string | null>(null)
   const isInitialLoadRef = useRef(true)
+  const isNearBottomRef = useRef(true)
+  const shouldRestoreScrollRef = useRef(false)
 
-  // Auto-scroll to bottom only for new messages (not when loading older ones)
-  useEffect(() => {
+  // Use useLayoutEffect to restore scroll position BEFORE browser paint
+  // This prevents the visual "jump" when loading older messages
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    // Restore scroll position after loading older messages (prepended)
+    if (shouldRestoreScrollRef.current && prevScrollHeightRef.current > 0) {
+      const newScrollHeight = container.scrollHeight
+      const scrollDiff = newScrollHeight - prevScrollHeightRef.current
+      container.scrollTop = container.scrollTop + scrollDiff
+      shouldRestoreScrollRef.current = false
+      prevScrollHeightRef.current = 0
+      return
+    }
+
+    // Update the first message id reference
+    const currentFirstMessageId = messages.length > 0 ? messages[0].id : null
+    const messagesWerePrepended = prevFirstMessageIdRef.current !== null && 
+                                   currentFirstMessageId !== null && 
+                                   prevFirstMessageIdRef.current !== currentFirstMessageId &&
+                                   messages.some(m => m.id === prevFirstMessageIdRef.current)
+    
+    prevFirstMessageIdRef.current = currentFirstMessageId
+
+    // Don't auto-scroll if messages were prepended (older messages loaded)
+    if (messagesWerePrepended) {
+      return
+    }
+
+    // Initial load - scroll to bottom immediately
     if (isInitialLoadRef.current) {
-      // Initial load - scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
       isInitialLoadRef.current = false
-    } else if (!loadingMore) {
-      // New message arrived - scroll to bottom smoothly
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      return
     }
-  }, [messages.length, loadingMore])
 
-  // Maintain scroll position when loading older messages
-  useEffect(() => {
-    if (loadingMore && messagesContainerRef.current && prevScrollHeightRef.current > 0) {
-      const newScrollHeight = messagesContainerRef.current.scrollHeight
-      const scrollDiff = newScrollHeight - prevScrollHeightRef.current
-      messagesContainerRef.current.scrollTop += scrollDiff
+    // Only auto-scroll for new messages if user was near bottom
+    if (isNearBottomRef.current && !loadingMore) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, loadingMore])
 
   // Infinite scroll - load more when scrolling to top
   const handleScroll = useCallback(async () => {
     const container = messagesContainerRef.current
-    if (!container || loadingMore || !hasMoreMessages || !onLoadMore) return
+    if (!container) return
+
+    // Track if user is near the bottom (within 150px)
+    // This determines whether we should auto-scroll on new messages
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    isNearBottomRef.current = distanceFromBottom < 150
+
+    // Don't trigger load more if already loading or no more messages
+    if (loadingMore || !hasMoreMessages || !onLoadMore) return
 
     // Trigger load more when scrolled near top (within 100px)
     if (container.scrollTop < 100) {
-      setLoadingMore(true)
+      // Save scroll height BEFORE loading new messages
       prevScrollHeightRef.current = container.scrollHeight
+      shouldRestoreScrollRef.current = true
+      setLoadingMore(true)
       
       try {
-        const result = await onLoadMore()
+        await onLoadMore()
         // hasMoreMessages will be updated by parent
       } finally {
         setLoadingMore(false)
