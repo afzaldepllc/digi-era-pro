@@ -1,5 +1,9 @@
 # pahse #01
 
+and now again  use the 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md,Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md and 
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md to understand the current flow of this project and communication module 
+
 now the channel are created on different categories like (dm,project based ...) , so  the different channel created on these types  
 
 type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support'
@@ -13,6 +17,14 @@ and when channel create than all the involved users are added as channel_members
 
 4) and implementation should be generic and optimized as in future i will add the create project channel button in the project overview (/projects/[id] routes) and same for department and other , so that we can create the channel from the (/communication route or some different route easily )
 there should be proper channel setting in which user can update the profile pick using s3 and along with the  importants things 
+
+5) and in the project task module there should be proper button to create the proect based channel and if exist than button to navigate to that project channel's message lists and in the project overview there should be all attachments shown which are assosiate in that project channel 
+
+6) there should be proper implementation of the voice message within this communication module  according to best practices 
+
+so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
+
+
 # phase 02 
 
 1) there should be proper channel setting for archive and pin from the channel setting 
@@ -27,6 +39,43 @@ there should be proper channel setting in which user can update the profile pick
 
 # phase 03
 
+and now use the 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md and 
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md to understand the current flow of this project and communication module  and use these to understand these and their related files  project task flow 
+
+import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
+import { ProjectCategorization } from "@/components/projects/ProjectCategorization";
+import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
+import { useNavigation } from "@/components/providers/navigation-provider";
+import { Project } from "@/types";
+import HtmlTextRenderer from "@/components/shared/html-text-renderer";
+import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
 1) i want the another realtime and generic flow for realtime actions perform in which when the project created than go the notification for the department head (IT manager )(or user with given user id ) and this can be used to send the notification on project approval, on project task assigment to assignee with the supabase using the complete flow of current project implementation and supabse implementation using the supabase 
 
 2) this generic realtime can used to create the task with realtime experience and in the backend the api call for task creation/updation/assignement using the same api calls with mongodb with same current implementation but experience should be realtime and this can be used in the task drag and drop on the tasks board view 
+
+
+so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
+
+# phase 04 
+
+
+
+
+and now use the 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md and 
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md to understand the current flow of this project and communication module  and use these to understand these and their related files  project task flow 
+
+import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
+import { ProjectCategorization } from "@/components/projects/ProjectCategorization";
+import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
+import { useNavigation } from "@/components/providers/navigation-provider";
+import { Project } from "@/types";
+import HtmlTextRenderer from "@/components/shared/html-text-renderer";
+import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
+1) i want the another realtime and generic flow for realtime actions perform in which when the project created than go the notification for the department head (IT manager )(or user with given user id ) and this can be used to send the notification on project approval, on project task assigment to assignee with the supabase using the complete flow of current project implementation and supabse implementation using the supabase 
+
+2) this generic realtime can used to create the task with realtime experience and in the backend the api call for task creation/updation/assignement using the same api calls with mongodb with same current implementation but experience should be realtime and this can be used in the task drag and drop on the tasks board view 
+
+
+so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
