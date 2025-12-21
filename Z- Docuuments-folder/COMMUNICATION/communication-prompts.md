@@ -84,3 +84,20 @@ import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
 
 
 so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
+
+
+
+
+
+
+
+
+
+use this one to understand the current implementation for comunication modules 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md
+
+and than start to implement the missing things according to the plaaning mention in the 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md
+
+now just implement phase one complete now and other will be implemented latter but make sure every things should be working well wihout any error,(even not any logical, performance realted and not even the type definition error )
+and make sure every things should handled professionally  
