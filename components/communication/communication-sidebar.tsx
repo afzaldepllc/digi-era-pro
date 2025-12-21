@@ -10,12 +10,16 @@ import {
   Users,
   Hash,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  FileText
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { UserDirectory } from "./user-directory"
 import { IChannel } from "@/types/communication"
 import { ChannelList } from "./channel-list"
+import { TrashView } from "./trash-view"
+import { AuditLogView } from "./audit-log-view"
 
 interface CommunicationSidebarProps {
   channels: IChannel[]
@@ -40,6 +44,8 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
 }: CommunicationSidebarProps) {
   const [showUsers, setShowUsers] = useState(true)
   const [showChannels, setShowChannels] = useState(true)
+  const [showTrash, setShowTrash] = useState(false)
+  const [showAuditLog, setShowAuditLog] = useState(false)
 
   const handleStartDM = useCallback(async (userId: string) => {
     // This will be handled by the parent component
@@ -52,11 +58,31 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
       <div className="pl-4 pr-10 pt-4 pb-2 border-b">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg">Messages</h2>
-          {onCreateChannel && (
-            <Button variant="ghost" size="sm" onClick={onCreateChannel}>
-              <MessageSquare className="h-4 w-4" />
+          <div className="flex items-center gap-1">
+            {/* Audit Log button (admin only - API will enforce) */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowAuditLog(true)}
+              title="View Audit Logs"
+            >
+              <FileText className="h-4 w-4" />
             </Button>
-          )}
+            {/* Trash button */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowTrash(true)}
+              title="View Trash"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            {onCreateChannel && (
+              <Button variant="ghost" size="sm" onClick={onCreateChannel}>
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -145,6 +171,18 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
           </div>
         )}
       </ScrollArea>
+      
+      {/* Trash View Dialog */}
+      <TrashView 
+        isOpen={showTrash} 
+        onClose={() => setShowTrash(false)} 
+      />
+      
+      {/* Audit Log View Dialog */}
+      <AuditLogView 
+        isOpen={showAuditLog} 
+        onClose={() => setShowAuditLog(false)} 
+      />
     </div>
   )
 })

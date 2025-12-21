@@ -152,10 +152,12 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
+    // Pass currentUserId to filter out messages hidden by this user
     const messages = await messageOperations.getChannelMessages(
       validatedParams.channel_id,
       validatedParams.limit,
-      validatedParams.offset
+      validatedParams.offset,
+      session.user.id // Filter hidden messages for this user
     )
 
     // Transform messages using denormalized sender fields (NO MongoDB lookup needed!)

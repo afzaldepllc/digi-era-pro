@@ -78,6 +78,14 @@ model messages {
   sender_avatar            String?
   sender_role              String          @default("User")
   
+  // Trash/Delete fields for soft delete with 30-day restore
+  is_trashed               Boolean         @default(false)
+  trashed_at               DateTime?       @db.Timestamptz(6)
+  trashed_by               String?         // mongo_user_id who trashed
+  trash_reason             String?
+  hidden_by_users          String[]        @default([]) // For "Hide for Me" feature
+  original_content         String?         // Preserved for restoration
+  
   attachments              attachments[]
   channels                 channels        @relation(fields: [channel_id], references: [id], onDelete: Cascade)
   messages                 messages?       @relation("messagesTomessages", fields: [parent_message_id], references: [id])
@@ -86,6 +94,9 @@ model messages {
   read_receipts            read_receipts[]
 
   @@index([parent_message_id])
+  @@index([channel_id, is_trashed, created_at(sort: Desc)])
+  @@index([mongo_sender_id, is_trashed])
+  @@index([is_trashed, trashed_at])
 }
 
 model reactions {

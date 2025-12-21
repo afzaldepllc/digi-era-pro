@@ -16,7 +16,8 @@ import {
   Clock,
   CornerDownRight,
   Loader2,
-  Smile
+  Smile,
+  EyeOff
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment, IGroupedReaction } from "@/types/communication"
@@ -27,6 +28,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -47,6 +49,8 @@ interface MessageListProps {
   onReply?: (message: ICommunication) => void
   onEdit?: (message: ICommunication) => void
   onDelete?: (messageId: string) => void
+  onMoveToTrash?: (messageId: string, channelId: string) => void
+  onHideForSelf?: (messageId: string, channelId: string) => void
   onReaction?: (messageId: string, channelId: string, emoji: string) => void
   onScrollToMessage?: (messageId: string) => void
   onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
@@ -65,6 +69,8 @@ export function MessageList({
   onReply,
   onEdit,
   onDelete,
+  onMoveToTrash,
+  onHideForSelf,
   onReaction,
   onScrollToMessage,
   onLoadMore,
@@ -384,7 +390,7 @@ export function MessageList({
                     <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
+                <DropdownMenuContent align={isOwn ? "end" : "start"}>
                   {onReply && (
                     <DropdownMenuItem onClick={() => onReply(message)}>
                       <Reply className="h-4 w-4 mr-2" />
@@ -397,7 +403,36 @@ export function MessageList({
                       Edit
                     </DropdownMenuItem>
                   )}
-                  {isOwn && onDelete && (
+                  
+                  {/* Delete options separator */}
+                  {(onHideForSelf || (isOwn && onMoveToTrash) || (isOwn && onDelete)) && (
+                    <DropdownMenuSeparator />
+                  )}
+                  
+                  {/* Hide for Me - available for all messages */}
+                  {onHideForSelf && (
+                    <DropdownMenuItem 
+                      onClick={() => onHideForSelf(message.id, message.channel_id)}
+                      className="text-muted-foreground"
+                    >
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      Hide for Me
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Move to Trash - only for message owner */}
+                  {isOwn && onMoveToTrash && (
+                    <DropdownMenuItem 
+                      onClick={() => onMoveToTrash(message.id, message.channel_id)}
+                      className="text-amber-600"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Move to Trash
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Legacy delete (falls back to trash if no new handlers) */}
+                  {isOwn && onDelete && !onMoveToTrash && (
                     <DropdownMenuItem
                       onClick={() => onDelete(message.id)}
                       className="text-destructive"

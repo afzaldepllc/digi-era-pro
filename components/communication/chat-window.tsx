@@ -67,7 +67,10 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     fetchOlderMessages,
     prependMessagesToChannel,
     searchMessages,
-    toggleReaction
+    toggleReaction,
+    // Trash operations (Phase 2)
+    moveToTrash,
+    hideForSelf
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
@@ -139,8 +142,21 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }, [updateMessage])
 
   const handleDelete = (messageId: string) => {
-    // TODO: Implement delete functionality - Phase 2
+    // Legacy delete - now handled by moveToTrash
+    if (channelId && moveToTrash) {
+      moveToTrash(messageId, channelId)
+    }
   }
+
+  // Handle move to trash (Phase 2: Message Lifecycle)
+  const handleMoveToTrash = useCallback((messageId: string, msgChannelId: string) => {
+    moveToTrash(messageId, msgChannelId)
+  }, [moveToTrash])
+
+  // Handle hide for self (Phase 2: Message Lifecycle)
+  const handleHideForSelf = useCallback((messageId: string, msgChannelId: string) => {
+    hideForSelf(messageId, msgChannelId)
+  }, [hideForSelf])
 
   // Handle reaction toggle on a message
   const handleReaction = useCallback((messageId: string, emoji: string) => {
@@ -641,7 +657,6 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               </Alert>
             )}
 
-            {/* Loading skeleton */}
             {messagesLoading && (
               <div className="flex-1 p-4 space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -656,7 +671,6 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               </div>
             )}
 
-            {/* Messages */}
             {!messagesLoading && mockCurrentUser && (
               (() => {
                 const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
@@ -671,6 +685,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     onReply={handleReply}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
+                    onMoveToTrash={handleMoveToTrash}
+                    onHideForSelf={handleHideForSelf}
                     onReaction={handleReaction}
                     onLoadMore={handleLoadMore}
                     hasMoreMessages={hasMoreMessages}

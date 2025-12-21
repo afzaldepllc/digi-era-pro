@@ -63,6 +63,27 @@ interface CommunicationState {
     timestamp: Date
     read: boolean
   }>
+  
+  // Trash management (Phase 2: Message Lifecycle)
+  trashedMessages: ITrashedMessage[]
+  trashedMessagesLoading: boolean
+  trashedMessagesPagination: {
+    page: number
+    limit: number
+    total: number
+    pages: number
+    hasMore: boolean
+  }
+}
+
+// Trashed message interface with expiry info
+export interface ITrashedMessage extends ICommunication {
+  trashed_at: string
+  trashed_by: string
+  trash_reason?: string
+  days_remaining: number
+  expires_at: string
+  is_expiring_soon: boolean // < 7 days remaining
 }
 
 const initialState: CommunicationState = {
@@ -86,7 +107,12 @@ const initialState: CommunicationState = {
   currentUser: null,
   currentUserId: null,
   unreadCount: 0,
-  notifications: []
+  notifications: [],
+  
+  // Trash management (Phase 2)
+  trashedMessages: [],
+  trashedMessagesLoading: false,
+  trashedMessagesPagination: { page: 1, limit: 20, total: 0, pages: 0, hasMore: false }
 }
 
 const communicationSlice = createSlice({
@@ -561,6 +587,159 @@ const communicationSlice = createSlice({
 
     setChannelsInitialized: (state, action: PayloadAction<boolean>) => {
       state.channelsInitialized = action.payload
+    },
+    
+    // ============================================
+    // Trash Management (Phase 2: Message Lifecycle)
+    // ============================================
+    
+    // Move message to trash (removes from active messages)
+    moveMessageToTrash: (state, action: PayloadAction<{ 
+      channelId: string; 
+      messageId: string;
+      trashedAt: string;
+      trashedBy: string;
+      trashReason?: string;
+    }>) => {
+      const { channelId, messageId, trashedAt, trashedBy, trashReason } = action.payload
+      
+      if (state.messages[channelId]) {
+        // Find and remove the message from active messages
+        const messageIndex = state.messages[channelId].findIndex(msg => msg.id === messageId)
+        if (messageIndex !== -1) {
+          const message = state.messages[channelId][messageIndex]
+          
+          // Calculate expiry info
+          const trashedDate = new Date(trashedAt)
+          const expiresAt = new Date(trashedDate)
+          expiresAt.setDate(expiresAt.getDate() + 30)
+          const daysRemaining = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+          
+          // Add to trashed messages with expiry info
+          state.trashedMessages.unshift({
+            ...message,
+            trashed_at: trashedAt,
+            trashed_by: trashedBy,
+            trash_reason: trashReason,
+            days_remaining: daysRemaining,
+            expires_at: expiresAt.toISOString(),
+            is_expiring_soon: daysRemaining < 7
+          } as any)
+          
+          // Remove from active messages
+          state.messages[channelId].splice(messageIndex, 1)
+        }
+      }
+    },
+    
+    // Restore message from trash (adds back to active messages)
+    restoreMessageFromTrash: (state, action: PayloadAction<{ 
+      messageId: string;
+      channelId: string;
+      restoredMessage: ICommunication;
+    }>) => {
+      const { messageId, channelId, restoredMessage } = action.payload
+      
+      // Remove from trashed messages
+      state.trashedMessages = state.trashedMessages.filter(msg => msg.id !== messageId)
+      
+      // Add back to active messages for the channel
+      if (!state.messages[channelId]) {
+        state.messages[channelId] = []
+      }
+      
+      // Insert message in correct chronological position
+      const insertIndex = state.messages[channelId].findIndex(
+        msg => new Date(msg.created_at) > new Date(restoredMessage.created_at)
+      )
+      
+      if (insertIndex === -1) {
+        // Message is the newest, add to end
+        state.messages[channelId].push(restoredMessage)
+      } else {
+        // Insert at correct position
+        state.messages[channelId].splice(insertIndex, 0, restoredMessage)
+      }
+    },
+    
+    // Hide message for current user only (doesn't affect trash)
+    hideMessageForSelf: (state, action: PayloadAction<{ 
+      channelId: string; 
+      messageId: string;
+    }>) => {
+      const { channelId, messageId } = action.payload
+      
+      if (state.messages[channelId]) {
+        // Remove message from view (it's hidden for current user)
+        state.messages[channelId] = state.messages[channelId].filter(msg => msg.id !== messageId)
+      }
+    },
+    
+    // Permanently delete message (removes from trash completely)
+    permanentlyDeleteMessage: (state, action: PayloadAction<{ messageId: string }>) => {
+      const { messageId } = action.payload
+      state.trashedMessages = state.trashedMessages.filter(msg => msg.id !== messageId)
+    },
+    
+    // Set trashed messages (from API fetch)
+    setTrashedMessages: (state, action: PayloadAction<{
+      messages: ITrashedMessage[];
+      pagination?: {
+        page: number;
+        limit: number;
+        total: number;
+        pages: number;
+        hasMore: boolean;
+      };
+    }>) => {
+      const { messages, pagination } = action.payload
+      state.trashedMessages = messages
+      if (pagination) {
+        state.trashedMessagesPagination = pagination
+      }
+    },
+    
+    // Append trashed messages (for pagination)
+    appendTrashedMessages: (state, action: PayloadAction<{
+      messages: ITrashedMessage[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        pages: number;
+        hasMore: boolean;
+      };
+    }>) => {
+      const { messages, pagination } = action.payload
+      // Filter out duplicates
+      const existingIds = new Set(state.trashedMessages.map(m => m.id))
+      const newMessages = messages.filter(m => !existingIds.has(m.id))
+      state.trashedMessages.push(...newMessages)
+      state.trashedMessagesPagination = pagination
+    },
+    
+    // Set trashed messages loading state
+    setTrashedMessagesLoading: (state, action: PayloadAction<boolean>) => {
+      state.trashedMessagesLoading = action.payload
+    },
+    
+    // Update trashed message expiry info (for real-time updates)
+    updateTrashedMessageExpiry: (state) => {
+      state.trashedMessages = state.trashedMessages.map(msg => {
+        const expiresAt = new Date(msg.expires_at)
+        const daysRemaining = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        return {
+          ...msg,
+          days_remaining: daysRemaining,
+          is_expiring_soon: daysRemaining < 7
+        }
+      }).filter(msg => msg.days_remaining > 0) // Auto-remove expired messages
+    },
+    
+    // Clear all trashed messages (reset)
+    clearTrashedMessages: (state) => {
+      state.trashedMessages = []
+      state.trashedMessagesPagination = { page: 1, limit: 20, total: 0, pages: 0, hasMore: false }
     }
   }
 })
@@ -600,7 +779,17 @@ export const {
   setChannelsInitialized,
   addReactionToMessage,
   removeReactionFromMessage,
-  resetState
+  resetState,
+  // Trash management exports (Phase 2)
+  moveMessageToTrash,
+  restoreMessageFromTrash,
+  hideMessageForSelf,
+  permanentlyDeleteMessage,
+  setTrashedMessages,
+  appendTrashedMessages,
+  setTrashedMessagesLoading,
+  updateTrashedMessageExpiry,
+  clearTrashedMessages
 } = communicationSlice.actions
 
 export default communicationSlice.reducer

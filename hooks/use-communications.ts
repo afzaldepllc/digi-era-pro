@@ -37,7 +37,17 @@ import {
   addNotification,
   clearNotifications,
   setChannelsInitialized,
-  resetState
+  resetState,
+  // Trash management imports (Phase 2)
+  moveMessageToTrash,
+  restoreMessageFromTrash,
+  hideMessageForSelf,
+  permanentlyDeleteMessage,
+  setTrashedMessages,
+  appendTrashedMessages,
+  setTrashedMessagesLoading,
+  clearTrashedMessages,
+  type ITrashedMessage
 } from '@/store/slices/communicationSlice'
 import type {
   FetchMessagesParams,
@@ -102,7 +112,11 @@ export function useCommunications() {
     currentUser,
     currentUserId: storeCurrentUserId,
     unreadCount,
-    notifications
+    notifications,
+    // Trash management state (Phase 2)
+    trashedMessages,
+    trashedMessagesLoading,
+    trashedMessagesPagination
   } = useAppSelector((state) => state.communications)
 
   // Type guard for session user with extended properties
@@ -305,6 +319,90 @@ export function useCommunications() {
       emoji: data.emoji
     }))
   }, [dispatch, sessionUserId])
+
+  // ============================================
+  // Trash-Related Event Handlers (Phase 2)
+  // ============================================
+
+  // Handle message trashed (real-time)
+  const onMessageTrashed = useCallback((data: {
+    message_id: string;
+    channel_id: string;
+    trashed_by: string;
+    trashed_at: string;
+    trash_reason?: string;
+  }) => {
+    logger.debug('Message trashed:', data)
+    
+    // Don't process if we initiated the trash action (already handled optimistically)
+    if (data.trashed_by === sessionUserId) return
+    
+    dispatch(moveMessageToTrash({
+      channelId: data.channel_id,
+      messageId: data.message_id,
+      trashedAt: data.trashed_at,
+      trashedBy: data.trashed_by,
+      trashReason: data.trash_reason
+    }))
+  }, [dispatch, sessionUserId])
+
+  // Handle message restored (real-time)
+  const onMessageRestored = useCallback((data: {
+    message: ICommunication;
+    restored_by: string;
+    channel_id: string;
+  }) => {
+    logger.debug('Message restored:', data)
+    
+    // Don't process if we initiated the restore (already handled optimistically)
+    if (data.restored_by === sessionUserId) return
+    
+    dispatch(restoreMessageFromTrash({
+      messageId: data.message.id,
+      channelId: data.channel_id,
+      restoredMessage: data.message
+    }))
+  }, [dispatch, sessionUserId])
+
+  // Handle message hidden (real-time - only affects current user)
+  const onMessageHidden = useCallback((data: {
+    message_id: string;
+    channel_id: string;
+    hidden_by: string;
+  }) => {
+    logger.debug('Message hidden:', data)
+    
+    // Only hide if the current user initiated the hide
+    if (data.hidden_by === sessionUserId) {
+      dispatch(hideMessageForSelf({
+        channelId: data.channel_id,
+        messageId: data.message_id
+      }))
+    }
+  }, [dispatch, sessionUserId])
+
+  // Handle message permanently deleted (real-time)
+  const onMessagePermanentlyDeleted = useCallback((data: {
+    message_id: string;
+    channel_id: string;
+    deleted_by: string;
+  }) => {
+    logger.debug('Message permanently deleted:', data)
+    
+    // Remove from trash if present
+    dispatch(permanentlyDeleteMessage({ messageId: data.message_id }))
+    
+    // Also remove from active messages in case it wasn't in trash
+    if (messages[data.channel_id]) {
+      const messageExists = messages[data.channel_id].some(m => m.id === data.message_id)
+      if (messageExists) {
+        dispatch(hideMessageForSelf({
+          channelId: data.channel_id,
+          messageId: data.message_id
+        }))
+      }
+    }
+  }, [dispatch, messages])
 
   // ============================================
   // Initialization Effects
@@ -1027,6 +1125,293 @@ export function useCommunications() {
   }, [dispatch, messages, sessionUserId, sessionUserName])
 
   // ============================================
+  // Trash Operations (Phase 2: Message Lifecycle)
+  // ============================================
+
+  /**
+   * Move a message to trash (soft delete with 30-day restoration window)
+   * Only the message owner or admin can do this
+   */
+  const moveToTrash = useCallback(async (messageId: string, channelId: string, reason?: string) => {
+    if (!sessionUserId) return { success: false, error: 'Not authenticated' }
+
+    try {
+      dispatch(setActionLoading(true))
+
+      // Optimistically move to trash
+      dispatch(moveMessageToTrash({
+        channelId,
+        messageId,
+        trashedAt: new Date().toISOString(),
+        trashedBy: sessionUserId,
+        trashReason: reason
+      }))
+
+      // Send to API - use query params as expected by the API route
+      const queryParams = new URLSearchParams({ deleteType: 'trash' })
+      if (reason) queryParams.set('reason', reason)
+      
+      const response = await apiRequest(`/api/communication/messages/${messageId}?${queryParams.toString()}`, {
+        method: 'DELETE'
+      })
+
+      toastRef.current({
+        title: "Message moved to trash",
+        description: "You can restore it within 30 days",
+      })
+
+      return { success: true, data: response }
+    } catch (error: any) {
+      logger.error('Failed to move message to trash:', error)
+      
+      // Revert optimistic update - refetch messages
+      if (activeChannelId) {
+        fetchMessages({ channel_id: activeChannelId })
+      }
+
+      toastRef.current({
+        title: "Error",
+        description: error?.error || "Failed to move message to trash",
+        variant: "destructive"
+      })
+
+      return { success: false, error: error?.error || 'Failed to move to trash' }
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, sessionUserId, activeChannelId, fetchMessages])
+
+  /**
+   * Hide a message for the current user only (Delete for Me)
+   * The message remains visible to other users
+   */
+  const hideForSelf = useCallback(async (messageId: string, channelId: string) => {
+    if (!sessionUserId) return { success: false, error: 'Not authenticated' }
+
+    try {
+      dispatch(setActionLoading(true))
+
+      // Optimistically hide the message
+      dispatch(hideMessageForSelf({
+        channelId,
+        messageId
+      }))
+
+      // Send to API - use query params as expected by the API route
+      await apiRequest(`/api/communication/messages/${messageId}?deleteType=self`, {
+        method: 'DELETE'
+      })
+
+      toastRef.current({
+        title: "Message hidden",
+        description: "This message will no longer appear for you",
+      })
+
+      return { success: true }
+    } catch (error: any) {
+      logger.error('Failed to hide message:', error)
+      
+      // Revert optimistic update - refetch messages
+      if (activeChannelId) {
+        fetchMessages({ channel_id: activeChannelId })
+      }
+
+      toastRef.current({
+        title: "Error",
+        description: error?.error || "Failed to hide message",
+        variant: "destructive"
+      })
+
+      return { success: false, error: error?.error || 'Failed to hide message' }
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, sessionUserId, activeChannelId, fetchMessages])
+
+  /**
+   * Restore a message from trash
+   * Only available within 30 days of trashing
+   */
+  const restoreFromTrash = useCallback(async (messageId: string) => {
+    if (!sessionUserId) return { success: false, error: 'Not authenticated' }
+
+    try {
+      dispatch(setActionLoading(true))
+
+      // Send to API first to get the restored message
+      // Note: apiRequest unwraps successful responses, so we get the data directly
+      const restoredMessage = await apiRequest('/api/communication/messages/restore', {
+        method: 'POST',
+        body: JSON.stringify({ messageId })
+      })
+
+      if (restoredMessage && restoredMessage.id && restoredMessage.channel_id) {
+        // Update Redux state with restored message
+        dispatch(restoreMessageFromTrash({
+          messageId,
+          channelId: restoredMessage.channel_id,
+          restoredMessage: restoredMessage
+        }))
+
+        toastRef.current({
+          title: "Message restored",
+          description: "The message has been restored successfully",
+        })
+
+        return { success: true, data: restoredMessage }
+      }
+
+      throw new Error('Invalid restore response')
+    } catch (error: any) {
+      logger.error('Failed to restore message:', error)
+
+      toastRef.current({
+        title: "Error",
+        description: error?.error || error?.message || "Failed to restore message",
+        variant: "destructive"
+      })
+
+      return { success: false, error: error?.error || 'Failed to restore message' }
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, sessionUserId])
+
+  /**
+   * Permanently delete a message (no recovery possible)
+   * Only admins can do this
+   */
+  const permanentlyDelete = useCallback(async (messageId: string) => {
+    if (!sessionUserId) return { success: false, error: 'Not authenticated' }
+
+    try {
+      dispatch(setActionLoading(true))
+
+      // Optimistically remove from trash
+      dispatch(permanentlyDeleteMessage({ messageId }))
+
+      // Send to API - use query params as expected by the API route
+      await apiRequest(`/api/communication/messages/${messageId}?deleteType=permanent`, {
+        method: 'DELETE'
+      })
+
+      toastRef.current({
+        title: "Message permanently deleted",
+        description: "This action cannot be undone",
+      })
+
+      return { success: true }
+    } catch (error: any) {
+      logger.error('Failed to permanently delete message:', error)
+      
+      // Refetch trashed messages to restore state
+      fetchTrashedMessages()
+
+      toastRef.current({
+        title: "Error",
+        description: error?.error || "Failed to permanently delete message",
+        variant: "destructive"
+      })
+
+      return { success: false, error: error?.error || 'Failed to delete permanently' }
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, sessionUserId])
+
+  /**
+   * Fetch trashed messages for the current user
+   */
+  const fetchTrashedMessages = useCallback(async (params?: { limit?: number; offset?: number }) => {
+    if (!sessionUserId) return { success: false, error: 'Not authenticated' }
+
+    try {
+      dispatch(setTrashedMessagesLoading(true))
+
+      const queryParams = new URLSearchParams()
+      if (params?.limit) queryParams.append('limit', params.limit.toString())
+      if (params?.offset) queryParams.append('offset', params.offset.toString())
+      
+      const queryString = queryParams.toString()
+      const url = `/api/communication/messages/trash${queryString ? `?${queryString}` : ''}`
+
+      // Note: apiRequest unwraps successful responses, so we may get data directly or full response
+      const response = await apiRequest(url)
+
+      // Handle both unwrapped array and full response object
+      let messagesData: any[] = []
+      let paginationData: any = null
+
+      if (Array.isArray(response)) {
+        // apiRequest unwrapped to just the data array
+        messagesData = response
+      } else if (response && typeof response === 'object') {
+        // Full response object with success/data/pagination
+        if (response.data && Array.isArray(response.data)) {
+          messagesData = response.data
+          paginationData = response.pagination
+        } else if (response.success === false) {
+          throw new Error(response.error || 'Failed to fetch trash')
+        }
+      }
+
+      const trashedMessagesData: ITrashedMessage[] = messagesData.map((msg: any) => ({
+        ...msg,
+        trashed_at: msg.trashed_at,
+        trashed_by: msg.trashed_by,
+        trash_reason: msg.trash_reason,
+        days_remaining: msg.days_remaining,
+        expires_at: msg.expires_at,
+        is_expiring_soon: msg.is_expiring_soon
+      }))
+
+      const defaultLimit = params?.limit || 20
+      const calculatedPagination = {
+        page: paginationData?.page || Math.floor((params?.offset || 0) / defaultLimit) + 1,
+        limit: defaultLimit,
+        total: paginationData?.total || trashedMessagesData.length,
+        pages: paginationData?.totalPages || Math.ceil(trashedMessagesData.length / defaultLimit),
+        hasMore: paginationData?.hasMore || trashedMessagesData.length === defaultLimit
+      }
+
+      if (params?.offset && params.offset > 0) {
+        // Append for pagination
+        dispatch(appendTrashedMessages({
+          messages: trashedMessagesData,
+          pagination: calculatedPagination
+        }))
+      } else {
+        // Set fresh data
+        dispatch(setTrashedMessages({
+          messages: trashedMessagesData,
+          pagination: calculatedPagination
+        }))
+      }
+
+      return { success: true, data: trashedMessagesData }
+    } catch (error: any) {
+      logger.error('Failed to fetch trashed messages:', error)
+      
+      toastRef.current({
+        title: "Error",
+        description: "Failed to load trash",
+        variant: "destructive"
+      })
+
+      return { success: false, error: error?.error || 'Failed to fetch trash' }
+    } finally {
+      dispatch(setTrashedMessagesLoading(false))
+    }
+  }, [dispatch, sessionUserId])
+
+  /**
+   * Clear all trashed messages from state
+   */
+  const clearTrash = useCallback(() => {
+    dispatch(clearTrashedMessages())
+  }, [dispatch])
+
+  // ============================================
   // Optimized Typing Operations
   // ============================================
   
@@ -1222,6 +1607,17 @@ export function useCommunications() {
     // Utility operations
     resetState: handleResetState,
     refreshChannels,
-    refreshMessages
+    refreshMessages,
+
+    // Trash operations (Phase 2: Message Lifecycle)
+    trashedMessages,
+    trashedMessagesLoading,
+    trashedMessagesPagination,
+    moveToTrash,
+    hideForSelf,
+    restoreFromTrash,
+    permanentlyDelete,
+    fetchTrashedMessages,
+    clearTrash
   }
 }

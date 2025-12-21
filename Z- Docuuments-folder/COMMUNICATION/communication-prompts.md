@@ -101,3 +101,24 @@ Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md
 
 now just implement phase two complete now and other will be implemented latter but make sure every things should be working well wihout any error,(even not any logical, performance realted and not even the type definition error )
 and make sure every things should handled professionally  
+
+
+
+
+
+
+your implemented code not following (when implemented the phase towoof communication module on missing things
+)the current flow of this project like 
+  // Apply middleware (rate limiting + authentication + permissions)
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+
+    using the CustomModal where modal is needed 
+    and some other things so use this file to understand the complete flow of thie project 
+    
+    Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
+and 
+
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md
+
+
+and make sure every things should be working well im

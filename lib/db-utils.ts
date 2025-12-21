@@ -156,17 +156,39 @@ export const messageOperations = {
     })
   },
 
-  // Get messages for a channel with replies
-  getChannelMessages: async (channel_id: string, limit: number = 50, offset: number = 0) => {
+  // Get messages for a channel with replies (filters out trashed and hidden messages)
+  getChannelMessages: async (
+    channel_id: string, 
+    limit: number = 50, 
+    offset: number = 0,
+    currentUserId?: string
+  ) => {
+    // Build where clause to filter out trashed messages
+    // and messages hidden by the current user
+    const whereClause: any = {
+      channel_id,
+      parent_message_id: null, // Only get top-level messages (not replies)
+      is_trashed: false, // Exclude trashed messages
+    }
+    
+    // If currentUserId provided, also exclude messages hidden by this user
+    if (currentUserId) {
+      whereClause.NOT = {
+        hidden_by_users: {
+          has: currentUserId
+        }
+      }
+    }
+    
     return await prisma.messages.findMany({
-      where: {
-        channel_id,
-        parent_message_id: null, // Only get top-level messages (not replies)
-      },
+      where: whereClause,
       include: {
         other_messages: { // Get first few replies
           take: 3,
           orderBy: { created_at: 'asc' },
+          where: {
+            is_trashed: false, // Also exclude trashed replies
+          },
           include: {
             read_receipts: true,
             reactions: true,
