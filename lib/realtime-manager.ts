@@ -82,8 +82,158 @@ export class RealtimeManager {
   private readonly TYPING_TIMEOUT_MS = 3500 // Auto-stop typing after 3.5 seconds of inactivity
   private readonly REMOTE_TYPING_TIMEOUT_MS = 4000 // Remove remote typing after 4 seconds
 
+  // Connection recovery
+  private reconnectAttempts = 0
+  private readonly MAX_RECONNECT_ATTEMPTS = 10
+  private readonly INITIAL_RECONNECT_DELAY_MS = 1000
+  private reconnectTimeout: NodeJS.Timeout | null = null
+  private subscribedChannelIds: Set<string> = new Set() // Track channels for reconnection
+  private connectionState: 'connected' | 'disconnected' | 'reconnecting' | 'error' = 'connected'
+
   constructor(handlers: RealtimeEventHandlers = {}) {
     this.eventHandlers = handlers
+    this.setupConnectionMonitoring()
+  }
+
+  // ============================================
+  // Connection Recovery & Monitoring
+  // ============================================
+
+  private setupConnectionMonitoring() {
+    if (typeof window === 'undefined') return
+
+    // Listen to browser online/offline events
+    window.addEventListener('online', this.handleOnline.bind(this))
+    window.addEventListener('offline', this.handleOffline.bind(this))
+  }
+
+  private handleOnline() {
+    console.log('🌐 Network came online, attempting to reconnect...')
+    this.reconnect()
+  }
+
+  private handleOffline() {
+    console.log('📴 Network went offline')
+    this.setConnectionState('disconnected')
+  }
+
+  private setConnectionState(state: 'connected' | 'disconnected' | 'reconnecting' | 'error') {
+    this.connectionState = state
+    
+    // Dispatch custom event for UI components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('realtime-connection-change', {
+        detail: { 
+          state, 
+          attempt: this.reconnectAttempts 
+        }
+      }))
+    }
+  }
+
+  getConnectionState(): string {
+    return this.connectionState
+  }
+
+  /**
+   * Reconnect with exponential backoff
+   */
+  async reconnect(): Promise<void> {
+    if (this.connectionState === 'reconnecting') {
+      console.log('🔄 Already reconnecting...')
+      return
+    }
+
+    this.setConnectionState('reconnecting')
+
+    // Clear any pending reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+
+    // Calculate delay with exponential backoff
+    const delay = Math.min(
+      this.INITIAL_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+      30000 // Max 30 seconds
+    )
+
+    this.reconnectAttempts++
+
+    if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+      console.error('❌ Max reconnection attempts reached')
+      this.setConnectionState('error')
+      this.reconnectAttempts = 0
+      return
+    }
+
+    console.log(`🔄 Reconnect attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS} in ${delay}ms...`)
+
+    return new Promise((resolve) => {
+      this.reconnectTimeout = setTimeout(async () => {
+        try {
+          // Re-initialize presence if we had it
+          if (this.currentUserId && this.currentUserName) {
+            await this.reinitializePresence()
+          }
+
+          // Re-subscribe to all tracked channels
+          await this.resubscribeToChannels()
+
+          this.reconnectAttempts = 0
+          this.setConnectionState('connected')
+          console.log('✅ Successfully reconnected')
+          resolve()
+        } catch (error) {
+          console.error('❌ Reconnection failed:', error)
+          // Try again
+          this.setConnectionState('disconnected')
+          this.reconnect()
+          resolve()
+        }
+      }, delay)
+    })
+  }
+
+  private async reinitializePresence(): Promise<void> {
+    // Clean up old presence channel
+    if (this.presenceChannel) {
+      await supabase.removeChannel(this.presenceChannel)
+      this.presenceChannel = null
+      this.presenceInitialized = false
+    }
+
+    // Re-initialize
+    if (this.currentUserId && this.currentUserName) {
+      await this.initializePresence(
+        this.currentUserId, 
+        this.currentUserName, 
+        this.currentUserAvatar || undefined
+      )
+    }
+  }
+
+  private async resubscribeToChannels(): Promise<void> {
+    const channelIds = Array.from(this.subscribedChannelIds)
+    
+    // Clean up old channels
+    for (const [channelId, rtChannel] of this.rtChannels) {
+      await supabase.removeChannel(rtChannel)
+    }
+    this.rtChannels.clear()
+    this.subscriptionPromises.clear()
+
+    // Re-subscribe to all channels
+    console.log(`🔄 Resubscribing to ${channelIds.length} channels...`)
+    
+    for (const channelId of channelIds) {
+      try {
+        await this.subscribeToChannel(channelId)
+        console.log(`✅ Resubscribed to channel: ${channelId}`)
+      } catch (error) {
+        console.error(`❌ Failed to resubscribe to channel ${channelId}:`, error)
+      }
+    }
   }
 
   // ============================================
@@ -356,6 +506,7 @@ export class RealtimeManager {
         if (status === 'SUBSCRIBED') {
           console.log(`✅ Successfully subscribed to RT channel ${channelId}`)
           this.rtChannels.set(channelId, rtChannel)
+          this.subscribedChannelIds.add(channelId) // Track for reconnection
           this.subscriptionPromises.delete(channelId)
           resolve()
         } else if (status === 'CHANNEL_ERROR') {
@@ -381,6 +532,7 @@ export class RealtimeManager {
       this.rtChannels.delete(channelId)
     }
     this.subscriptionPromises.delete(channelId)
+    this.subscribedChannelIds.delete(channelId) // Remove from tracking
     
     // Clean up typing state for this channel
     this.clearTypingState(channelId)
@@ -664,6 +816,21 @@ export class RealtimeManager {
       clearTimeout(timeout)
     }
     this.remoteTypingTimeouts.clear()
+
+    // Clean up reconnection state
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+    this.subscribedChannelIds.clear()
+    this.reconnectAttempts = 0
+    this.connectionState = 'connected'
+
+    // Remove event listeners
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline.bind(this))
+      window.removeEventListener('offline', this.handleOffline.bind(this))
+    }
   }
 }
 

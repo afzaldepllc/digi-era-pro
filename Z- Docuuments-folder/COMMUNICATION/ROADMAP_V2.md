@@ -1,7 +1,7 @@
 # Communication Module - Professional Improvements Roadmap v2
 
 > **Last Updated:** December 2024  
-> **Status:** Phase 1-2 Completed | Phase 3+ Pending  
+> **Status:** Phase 1-4 Completed | Phase 5 Pending  
 > **Target:** Enterprise-grade WhatsApp/Slack-style messaging
 
 ---
@@ -12,8 +12,8 @@
 |-------|------|--------|-------|
 | 1 | Critical Bug Fixes | ✅ Completed | Pagination, logging, cleanup |
 | 2 | Message Lifecycle | ✅ Completed | Trash, restore, audit logs |
-| 3 | Channel Management | 🔄 Next | Leave, archive, settings |
-| 4 | Loading & Reliability | ⏳ Pending | Skeletons, reconnection |
+| 3 | Channel Management | ✅ Completed | Leave, archive, settings modal |
+| 4 | Loading & Reliability | ✅ Completed | Skeletons, reconnection, connection status |
 | 5 | Performance & Security | ⏳ Pending | Cache, rate limiting |
 
 ---

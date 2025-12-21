@@ -14,7 +14,8 @@ import {
   Phone, 
   Plus,
   Settings,
-  Filter
+  Filter,
+  Archive
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant } from "@/types/communication"
@@ -141,6 +142,7 @@ export const ChannelList = memo(function ChannelList({
     const displayName = getChannelDisplayName(channel)
     const subtitle = getChannelSubtitle(channel)
     const hasUnread = (channel.unreadCount || 0) > 0
+    const isArchived = (channel as any).is_archived || false
     
     // Check if user is online using real-time onlineUserIds from Supabase
     const isAvatarUserOnline = avatar ? (
@@ -157,7 +159,8 @@ export const ChannelList = memo(function ChannelList({
           "hover:shadow-lg hover:scale-[1.02]",
           "border-2 border-transparent hover:border-accent/30",
           isActive && "shadow-md border-primary/20",
-          hasUnread && "border-secondary-200/50"
+          hasUnread && "border-secondary-200/50",
+          isArchived && "opacity-60 bg-muted/30"
         )}
       >
         {/* Avatar or Icon */}
@@ -255,7 +258,14 @@ export const ChannelList = memo(function ChannelList({
               {channel.type === 'dm' ? 'Direct' : channel.type === 'client-support' ? 'Support' : channel.type.replace('-', ' ')}
             </Badge>
             
-            {!channel.is_private && (
+            {isArchived && (
+              <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <Archive className="h-3 w-3" />
+                Archived
+              </Badge>
+            )}
+            
+            {!channel.is_private && !isArchived && (
               <Badge variant="secondary" className="text-xs">
                 External
               </Badge>

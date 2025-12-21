@@ -8,6 +8,7 @@ import { MessageInput, MessageInputRef } from "@/components/communication/messag
 import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { TypingIndicator } from "@/components/communication/typing-indicator"
 import { ContextPanel } from "@/components/ui/context-panel"
+import { ChannelSettingsModal } from "@/components/communication/channel-settings-modal"
 import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 import { 
   Info, 
@@ -19,7 +20,8 @@ import {
   Archive,
   Settings,
   Menu,
-  X
+  X,
+  LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChatWindowProps, CreateMessageData, ICommunication, ITypingIndicator, IParticipant } from "@/types/communication"
@@ -70,7 +72,10 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     toggleReaction,
     // Trash operations (Phase 2)
     moveToTrash,
-    hideForSelf
+    hideForSelf,
+    // Channel management (Phase 3)
+    leaveChannel,
+    archiveChannel,
   } = useCommunications()
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
@@ -78,6 +83,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<ICommunication[]>([])
+  const [showChannelSettings, setShowChannelSettings] = useState(false)
   const [searchIndex, setSearchIndex] = useState(0)
   const [isSearching, setIsSearching] = useState(false)
   const [searchTotal, setSearchTotal] = useState(0)
@@ -460,7 +466,14 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     <Badge variant="secondary" className="shrink-0">Client Support</Badge>
                   )}
                   
-                  {!selectedChannel.is_private && (
+                  {(selectedChannel as any).is_archived && (
+                    <Badge variant="secondary" className="shrink-0 gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      <Archive className="h-3 w-3" />
+                      Archived
+                    </Badge>
+                  )}
+                  
+                  {!selectedChannel.is_private && !(selectedChannel as any).is_archived && (
                     <Badge variant="destructive" className="shrink-0">External</Badge>
                   )}
                 </div>
@@ -540,15 +553,29 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     <Pin className="h-4 w-4 mr-2" />
                     Pin Channel
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowChannelSettings(true)}>
                     <Settings className="h-4 w-4 mr-2" />
                     Channel Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive">
-                    <Archive className="h-4 w-4 mr-2" />
-                    Archive Channel
-                  </DropdownMenuItem>
+                  {selectedChannel && selectedChannel.type !== 'dm' && (
+                    <>
+                      <DropdownMenuItem 
+                        onClick={() => leaveChannel(channelId)}
+                        className="text-orange-600 focus:text-orange-600"
+                      >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Leave Channel
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => archiveChannel(channelId, (selectedChannel as any).is_archived ? 'unarchive' : 'archive')}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Archive className="h-4 w-4 mr-2" />
+                        {(selectedChannel as any).is_archived ? 'Unarchive Channel' : 'Archive Channel'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -698,20 +725,41 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               })()
             )}
 
-            {/* Message input */}
-            <MessageInput
-              ref={messageInputRef}
-              channelId={channelId}
-              onSend={handleSendMessage}
-              onSendWithFiles={sendMessageWithFiles}
-              onEdit={handleEditMessage}
-              disabled={actionLoading}
-              placeholder={`Message ${getChannelTitle()}...`}
-              allowAttachments={true}
-              onTyping={handleTyping}
-              onStopTyping={handleStopTyping}
-              channelMembers={selectedChannel?.channel_members || []}
-            />
+            {/* Archived channel banner */}
+            {(selectedChannel as any)?.is_archived && (
+              <div className="flex items-center justify-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800">
+                <Archive className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                  This channel is archived. You can view messages but cannot send new ones.
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => archiveChannel(channelId, 'unarchive')}
+                  className="ml-2 h-7 text-xs"
+                  disabled={actionLoading}
+                >
+                  Unarchive
+                </Button>
+              </div>
+            )}
+
+            {/* Message input - hidden for archived channels */}
+            {!(selectedChannel as any)?.is_archived && (
+              <MessageInput
+                ref={messageInputRef}
+                channelId={channelId}
+                onSend={handleSendMessage}
+                onSendWithFiles={sendMessageWithFiles}
+                onEdit={handleEditMessage}
+                disabled={actionLoading}
+                placeholder={`Message ${getChannelTitle()}...`}
+                allowAttachments={true}
+                onTyping={handleTyping}
+                onStopTyping={handleStopTyping}
+                channelMembers={selectedChannel?.channel_members || []}
+              />
+            )}
           </div>
 
           {/* Context panel */}
@@ -722,6 +770,15 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
           />
         </div>
       </div>
+
+      {/* Channel Settings Modal */}
+      {selectedChannel && (
+        <ChannelSettingsModal
+          isOpen={showChannelSettings}
+          onClose={() => setShowChannelSettings(false)}
+          channel={selectedChannel}
+        />
+      )}
     </TooltipProvider>
   )
 }

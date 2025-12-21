@@ -1520,9 +1520,13 @@ export function useCommunications() {
       // Refresh channels list to reflect the change
       await fetchChannels()
 
+      // Handle different response formats
+      const wasArchived = result?.archived || result?.action === 'archived'
+      const message = result?.message || (wasArchived ? "Channel was archived (you were the last member)" : "You have left the channel")
+
       toastRef.current({
-        title: result.archived ? "Channel archived" : "Left channel",
-        description: result.message || "You have left the channel",
+        title: wasArchived ? "Channel archived" : "Left channel",
+        description: message,
       })
 
       // If we left the currently active channel, clear it
@@ -1530,16 +1534,28 @@ export function useCommunications() {
         dispatch(clearActiveChannel())
       }
 
-      return result
+      return { success: true, ...result }
     } catch (error: any) {
-      const errorMessage = error?.message || 'Failed to leave channel'
+      // Extract error message from various error formats
+      const errorMessage = error?.error || error?.message || 'Failed to leave channel'
+      
+      // Check for specific error cases
+      if (errorMessage.includes('cannot leave') || errorMessage.includes('admin')) {
+        toastRef.current({
+          title: "Cannot leave channel",
+          description: "You must transfer admin role before leaving",
+          variant: "destructive"
+        })
+        return { success: false, needsAdminTransfer: true }
+      }
+      
       dispatch(setError(errorMessage))
       toastRef.current({
         title: "Error",
         description: errorMessage,
         variant: "destructive"
       })
-      throw error
+      return { success: false, error: errorMessage }
     } finally {
       dispatch(setActionLoading(false))
     }
@@ -1564,21 +1580,45 @@ export function useCommunications() {
       // Refresh channels list to reflect the change
       await fetchChannels()
 
+      // Handle different response formats
+      const message = result?.message || `Channel has been ${action === 'archive' ? 'archived' : 'unarchived'}`
+      
       toastRef.current({
         title: action === 'archive' ? "Channel archived" : "Channel unarchived",
-        description: result.message || `Channel has been ${action}d`,
+        description: message,
       })
 
-      return result
+      return { success: true, ...result }
     } catch (error: any) {
-      const errorMessage = error?.message || `Failed to ${action} channel`
+      // Extract error message from various error formats
+      const errorMessage = error?.error || error?.message || `Failed to ${action} channel`
+      
+      // Check for specific error cases
+      if (errorMessage.includes('already archived')) {
+        toastRef.current({
+          title: "Already archived",
+          description: "This channel is already archived",
+          variant: "default"
+        })
+        return { success: false, alreadyArchived: true }
+      }
+      
+      if (errorMessage.includes('not archived')) {
+        toastRef.current({
+          title: "Not archived",
+          description: "This channel is not archived",
+          variant: "default"
+        })
+        return { success: false, notArchived: true }
+      }
+      
       dispatch(setError(errorMessage))
       toastRef.current({
         title: "Error",
         description: errorMessage,
         variant: "destructive"
       })
-      throw error
+      return { success: false, error: errorMessage }
     } finally {
       dispatch(setActionLoading(false))
     }
