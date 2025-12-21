@@ -10,6 +10,7 @@ import { default as User } from '@/models/User'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
 import { apiLogger as logger } from '@/lib/logger'
+import { supabase } from '@/lib/supabase'
 
 
 // Helper to create consistent error responses
@@ -237,6 +238,26 @@ export async function POST(request: NextRequest) {
 
     // Enrich channel with user data
     const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
+
+    // Broadcast new channel to all members for real-time sync
+    try {
+      // Broadcast to each member's personal notification channel
+      for (const memberId of memberIds) {
+        const rtChannel = supabase.channel(`user:${memberId}:channels`)
+        await rtChannel.send({
+          type: 'broadcast',
+          event: 'channel_update',
+          payload: {
+            id: enrichedChannel.id,
+            type: 'new_channel',
+            channel: enrichedChannel
+          }
+        })
+        await supabase.removeChannel(rtChannel)
+      }
+    } catch (broadcastError) {
+      logger.warn('Failed to broadcast new channel:', broadcastError)
+    }
 
     return NextResponse.json({
       success: true,

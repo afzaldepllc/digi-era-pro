@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/sheet"
 import { handleAPIError } from "@/lib/utils/api-client"
 import { CreateChannelModal } from "@/components/communication/create-channel-modal"
+import { ResizableSidebar } from "@/components/communication/resizable-sidebar"
 import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle';
 
 export default function CommunicationsPage() {
@@ -250,8 +251,14 @@ export default function CommunicationsPage() {
 
       {/* Main content */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Desktop sidebar */}
-        <div className="hidden lg:block w-80 border-r shrink-0 overflow-hidden">
+        {/* Desktop sidebar - Resizable */}
+        <ResizableSidebar
+          defaultWidth={320}
+          minWidth={280}
+          maxWidth={400}
+          storageKey="communication-sidebar"
+          className="hidden lg:flex border-r"
+        >
           <CommunicationSidebar
             channels={channels}
             activeChannelId={activeChannelId}
@@ -261,7 +268,7 @@ export default function CommunicationsPage() {
             onCreateChannel={handleCreateChannel}
             loading={loading}
           />
-        </div>
+        </ResizableSidebar>
 
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import DOMPurify from 'dompurify';
 import { cn } from '@/lib/utils';
 
 export interface HtmlTextRendererProps {
@@ -87,34 +88,21 @@ export function HtmlTextRenderer({
     return processedHtml;
   };
 
-  // Helper function to sanitize HTML content
+  // Helper function to sanitize HTML content using DOMPurify
   const sanitizeHtml = (html: string): string => {
-    // Basic sanitization - you might want to use a library like DOMPurify in production
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    
-    // Remove potentially dangerous elements and attributes
-    const dangerousTags = ['script', 'iframe', 'object', 'embed', 'link', 'meta'];
-    dangerousTags.forEach(tag => {
-      const elements = tempDiv.querySelectorAll(tag);
-      elements.forEach(el => el.remove());
-    });
-    
-    // Remove dangerous attributes
-    const dangerousAttrs = ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur'];
-    const allElements = tempDiv.querySelectorAll('*');
-    allElements.forEach(el => {
-      dangerousAttrs.forEach(attr => {
-        el.removeAttribute(attr);
-      });
-      // Remove javascript: links
-      if (el.getAttribute('href')?.startsWith('javascript:')) {
-        el.removeAttribute('href');
-      }
+    // Use DOMPurify for robust XSS protection
+    const sanitized = DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'span', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-user-id', 'data-user-name', 'style'],
+      ALLOW_DATA_ATTR: true,
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button'],
+      FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
+      ADD_ATTR: ['target'], // Allow target for links
+      USE_PROFILES: { html: true }
     });
     
     // Highlight @mentions after sanitization
-    return highlightMentions(tempDiv.innerHTML);
+    return highlightMentions(sanitized);
   };
 
   // Process the content

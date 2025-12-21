@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
+import { supabase } from '@/lib/supabase'
 import type { channels } from '@prisma/client'
 
 // Extended channel type with archive fields (until Prisma client is regenerated)
@@ -81,6 +82,28 @@ export async function POST(
         }
       })
 
+      // Broadcast channel update to all members for real-time sync
+      try {
+        const rtChannel = supabase.channel(`channel:${channelId}`)
+        await rtChannel.send({
+          type: 'broadcast',
+          event: 'channel_update',
+          payload: {
+            id: channelId,
+            type: 'archive',
+            channel: {
+              id: updatedChannel.id,
+              is_archived: true,
+              archived_at: updatedChannel.archived_at,
+              archived_by: updatedChannel.archived_by
+            }
+          }
+        })
+        await supabase.removeChannel(rtChannel)
+      } catch (broadcastError) {
+        logger.warn('Failed to broadcast channel archive:', broadcastError)
+      }
+
       return NextResponse.json({ 
         success: true, 
         action: 'archived',
@@ -106,6 +129,28 @@ export async function POST(
           channel_members: true
         }
       })
+
+      // Broadcast channel update to all members for real-time sync
+      try {
+        const rtChannel = supabase.channel(`channel:${channelId}`)
+        await rtChannel.send({
+          type: 'broadcast',
+          event: 'channel_update',
+          payload: {
+            id: channelId,
+            type: 'unarchive',
+            channel: {
+              id: updatedChannel.id,
+              is_archived: false,
+              archived_at: null,
+              archived_by: null
+            }
+          }
+        })
+        await supabase.removeChannel(rtChannel)
+      } catch (broadcastError) {
+        logger.warn('Failed to broadcast channel unarchive:', broadcastError)
+      }
 
       return NextResponse.json({ 
         success: true, 

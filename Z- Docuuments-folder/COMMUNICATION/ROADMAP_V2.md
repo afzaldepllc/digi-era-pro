@@ -1,7 +1,7 @@
 # Communication Module - Professional Improvements Roadmap v2
 
 > **Last Updated:** December 2024  
-> **Status:** Phase 1-4 Completed | Phase 5 Pending  
+> **Status:** Phase 1-5 Completed | Real-time & UI Enhancements Complete  
 > **Target:** Enterprise-grade WhatsApp/Slack-style messaging
 
 ---
@@ -12,9 +12,37 @@
 |-------|------|--------|-------|
 | 1 | Critical Bug Fixes | ✅ Completed | Pagination, logging, cleanup |
 | 2 | Message Lifecycle | ✅ Completed | Trash, restore, audit logs |
-| 3 | Channel Management | ✅ Completed | Leave, archive, settings modal |
+| 3 | Channel Management | ✅ Completed | Leave, archive, settings modal, realtime updates |
 | 4 | Loading & Reliability | ✅ Completed | Skeletons, reconnection, connection status |
-| 5 | Performance & Security | ⏳ Pending | Cache, rate limiting |
+| 5 | Performance & Security | ✅ Completed | Cache layer, rate limiting, DOMPurify XSS protection |
+| 6 | UI Enhancements | ✅ Completed | Resizable sidebar, archived channel indicators |
+
+---
+
+## Recent Additions (December 2024)
+
+### Real-time Channel Updates
+- **Redux Actions:** `addChannel`, `updateChannel`, `removeChannel` for instant UI updates
+- **API Broadcasting:** Archive/unarchive/leave/create operations broadcast via Supabase
+- **User Channel Subscription:** Automatic subscription to `user:${userId}:channels` for new channel notifications
+- **Optimistic Updates:** Local state updates immediately, synced with server response
+
+### Caching Layer (`lib/communication/cache.ts`)
+- Channel caching with 2-minute TTL
+- Message caching per channel (1-minute TTL)
+- User data caching (5-minute TTL)
+- Cache invalidation on channel updates
+
+### Resizable Sidebar (`components/communication/resizable-sidebar.tsx`)
+- Drag handle for horizontal resize
+- Min: 280px, Max: 400px
+- localStorage persistence
+- Double-click to reset
+- Mobile-friendly (100% width in Sheet)
+
+### Security Enhancements
+- DOMPurify integration for XSS protection in `html-text-renderer.tsx`
+- Rate limiting verified (300 req/15min for API, 100 for sensitive, 5 for auth)
 
 ---
 

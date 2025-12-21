@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
+import { supabase } from '@/lib/supabase'
 
 // POST /api/communication/channels/[channelId]/leave - Leave a channel
 export async function POST(
@@ -118,6 +119,23 @@ export async function POST(
         }
       }
     })
+
+    // Broadcast member_left event for real-time sync
+    try {
+      const rtChannel = supabase.channel(`channel:${channelId}`)
+      await rtChannel.send({
+        type: 'broadcast',
+        event: 'channel_update',
+        payload: {
+          id: channelId,
+          type: 'member_left',
+          member_id: userId
+        }
+      })
+      await supabase.removeChannel(rtChannel)
+    } catch (broadcastError) {
+      logger.warn('Failed to broadcast member left:', broadcastError)
+    }
 
     // Update member count
     await prisma.channels.update({

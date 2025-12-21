@@ -103,6 +103,7 @@ npx prisma generate
 import { prisma } from '@/lib/prisma'
 import User from '@/models/User'
 
+
 class ChannelSyncManager {
   /**
    * Sync user to department channels when user joins department

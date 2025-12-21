@@ -527,6 +527,42 @@ const communicationSlice = createSlice({
       state.notifications = []
     },
     
+    // ============================================
+    // Channel Real-time Updates (Phase 3)
+    // ============================================
+    
+    // Add a new channel (real-time)
+    addChannel: (state, action: PayloadAction<IChannel>) => {
+      const exists = state.channels.some(c => c.id === action.payload.id)
+      if (!exists) {
+        state.channels.unshift(action.payload) // Add to beginning (most recent)
+      }
+    },
+    
+    // Update an existing channel (real-time)
+    updateChannel: (state, action: PayloadAction<Partial<IChannel> & { id: string }>) => {
+      const index = state.channels.findIndex(c => c.id === action.payload.id)
+      if (index !== -1) {
+        state.channels[index] = { ...state.channels[index], ...action.payload }
+        // Also update selectedChannel if it's the same
+        if (state.selectedChannel?.id === action.payload.id) {
+          state.selectedChannel = { ...state.selectedChannel, ...action.payload }
+        }
+      }
+    },
+    
+    // Remove a channel (real-time - when user leaves or channel is deleted)
+    removeChannel: (state, action: PayloadAction<string>) => {
+      state.channels = state.channels.filter(c => c.id !== action.payload)
+      // Clear active channel if it was removed
+      if (state.activeChannelId === action.payload) {
+        state.activeChannelId = null
+        state.selectedChannel = null
+      }
+      // Clean up messages for removed channel
+      delete state.messages[action.payload]
+    },
+    
     // Data setters for TanStack Query integration
     setChannels: (state, action: PayloadAction<IChannel[]>) => {
       // Only update if channels actually changed (prevent infinite loops)
@@ -780,6 +816,10 @@ export const {
   addReactionToMessage,
   removeReactionFromMessage,
   resetState,
+  // Channel real-time updates (Phase 3)
+  addChannel,
+  updateChannel,
+  removeChannel,
   // Trash management exports (Phase 2)
   moveMessageToTrash,
   restoreMessageFromTrash,

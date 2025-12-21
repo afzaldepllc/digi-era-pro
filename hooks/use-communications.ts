@@ -38,6 +38,10 @@ import {
   clearNotifications,
   setChannelsInitialized,
   resetState,
+  // Channel real-time updates (Phase 3)
+  addChannel,
+  updateChannel,
+  removeChannel,
   // Trash management imports (Phase 2)
   moveMessageToTrash,
   restoreMessageFromTrash,
@@ -64,6 +68,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
 import { getRealtimeManager, RealtimeEventHandlers } from '@/lib/realtime-manager'
 import { communicationLogger as logger } from '@/lib/logger'
+import { communicationCache } from '@/lib/communication/cache'
 
 // Global maps to prevent duplicate fetches per user across component remounts
 const globalFetchedUsers = new Map<string, boolean>()
@@ -321,6 +326,49 @@ export function useCommunications() {
   }, [dispatch, sessionUserId])
 
   // ============================================
+  // Channel Real-time Event Handlers (Phase 3)
+  // ============================================
+
+  // Handle channel update (archive/unarchive, settings changes, etc.)
+  const onChannelUpdate = useCallback((data: {
+    id: string;
+    type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel';
+    channel?: IChannel & { members?: Array<{ user_id: string }> };
+    member_id?: string;
+  }) => {
+    logger.debug('Channel update received:', data)
+    
+    if (data.type === 'new_channel' && data.channel) {
+      // New channel created - add it if current user is a member
+      const isMember = data.channel.members?.some((m: { user_id: string }) => m.user_id === sessionUserId)
+      if (isMember) {
+        dispatch(addChannel(data.channel as IChannel))
+        // Update cache
+        communicationCache.addChannelToCache(data.channel)
+        toastRef.current({
+          title: "New Channel",
+          description: `You've been added to #${data.channel.name}`,
+        })
+      }
+    } else if (data.type === 'member_left' && data.member_id === sessionUserId) {
+      // Current user was removed or left - remove channel from list
+      dispatch(removeChannel(data.id))
+      // Update cache
+      communicationCache.removeChannelFromCache(data.id)
+    } else if (data.channel) {
+      // Channel updated (archive/unarchive, name change, etc.)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id: _channelId, ...updates } = data.channel
+      dispatch(updateChannel({
+        id: data.id,
+        ...updates
+      }))
+      // Update cache
+      communicationCache.updateChannelInCache(data.id, data.channel)
+    }
+  }, [dispatch, sessionUserId])
+
+  // ============================================
   // Trash-Related Event Handlers (Phase 2)
   // ============================================
 
@@ -522,10 +570,11 @@ export function useCommunications() {
       onPresenceSync,
       onMentionNotification,
       onReactionAdd,
-      onReactionRemove
+      onReactionRemove,
+      onChannelUpdate
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate])
 
   // Subscribe to notifications when user is logged in
   useEffect(() => {
@@ -541,8 +590,22 @@ export function useCommunications() {
   }, [sessionUserId, realtimeManager])
 
   // Channel operations
-  const fetchChannels = useCallback(async (params: { type?: string; department_id?: string; project_id?: string } = {}) => {
+  const fetchChannels = useCallback(async (
+    params: { type?: string; department_id?: string; project_id?: string; forceRefresh?: boolean } = {}
+  ) => {
     logger.debug('fetchChannels called with params:', params)
+    
+    // Check cache first (only for unfiltered requests)
+    const isUnfiltered = !params.type && !params.department_id && !params.project_id
+    if (isUnfiltered && !params.forceRefresh) {
+      const cachedChannels = communicationCache.getChannels()
+      if (cachedChannels) {
+        logger.debug('Using cached channels:', cachedChannels.length)
+        dispatch(setChannels(cachedChannels))
+        return cachedChannels
+      }
+    }
+    
     try {
       dispatch(setLoading(true))
       // Build query string
@@ -556,6 +619,12 @@ export function useCommunications() {
       
       const response = await apiRequest(url)
       logger.debug('Channels loaded:', response?.length || 0)
+      
+      // Cache the response (only for unfiltered requests)
+      if (isUnfiltered) {
+        communicationCache.setChannels(response)
+      }
+      
       dispatch(setChannels(response))
       return response  
     } catch (error) {
@@ -1517,8 +1586,11 @@ export function useCommunications() {
         method: 'POST'
       })
 
-      // Refresh channels list to reflect the change
-      await fetchChannels()
+      // Remove channel from local state immediately (optimistic)
+      dispatch(removeChannel(channelId))
+      
+      // Update cache
+      communicationCache.removeChannelFromCache(channelId)
 
       // Handle different response formats
       const wasArchived = result?.archived || result?.action === 'archived'
@@ -1559,7 +1631,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, fetchChannels, activeChannelId])
+  }, [dispatch, activeChannelId])
 
   /**
    * Archive or unarchive a channel.
@@ -1577,8 +1649,19 @@ export function useCommunications() {
         body: JSON.stringify({ action })
       })
 
-      // Refresh channels list to reflect the change
-      await fetchChannels()
+      // Optimistically update the channel in Redux state
+      const archiveUpdates: Partial<IChannel> & { id: string } = {
+        id: channelId,
+        is_archived: action === 'archive'
+      }
+      if (action === 'archive') {
+        archiveUpdates.archived_at = new Date().toISOString()
+        archiveUpdates.archived_by = sessionUserId || undefined
+      }
+      dispatch(updateChannel(archiveUpdates))
+      
+      // Update cache
+      communicationCache.updateChannelInCache(channelId, archiveUpdates)
 
       // Handle different response formats
       const message = result?.message || `Channel has been ${action === 'archive' ? 'archived' : 'unarchived'}`
@@ -1622,7 +1705,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, fetchChannels])
+  }, [dispatch, sessionUserId])
 
   // Get current user from session
   const currentUserFromSession = useMemo(() => {

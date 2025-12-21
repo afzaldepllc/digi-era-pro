@@ -350,6 +350,7 @@ export class RealtimeManager {
   // ============================================
   
   private notificationChannel: RealtimeChannel | null = null
+  private userChannelsChannel: RealtimeChannel | null = null
 
   async subscribeToNotifications(userId: string): Promise<void> {
     if (this.notificationChannel) {
@@ -377,6 +378,43 @@ export class RealtimeManager {
         
         if (status === 'SUBSCRIBED') {
           console.log('✅ Notification channel subscribed')
+          // Also subscribe to user's channel updates
+          this.subscribeToUserChannels(userId).catch(err => {
+            console.warn('⚠️ Failed to subscribe to user channels:', err)
+          })
+          resolve()
+        }
+      })
+    })
+  }
+
+  // Subscribe to user's channel updates (new channels created, etc.)
+  async subscribeToUserChannels(userId: string): Promise<void> {
+    if (this.userChannelsChannel) {
+      console.log('📢 Already subscribed to user channels')
+      return
+    }
+
+    console.log('📢 Subscribing to user channels for:', userId)
+
+    return new Promise((resolve, reject) => {
+      this.userChannelsChannel = supabase.channel(`user:${userId}:channels`)
+
+      this.userChannelsChannel
+        .on('broadcast', { event: 'channel_update' }, (payload) => {
+          console.log('📢 Received channel update:', payload.payload)
+          this.eventHandlers.onChannelUpdate?.(payload.payload)
+        })
+
+      this.userChannelsChannel.subscribe((status, err) => {
+        if (err) {
+          console.error('❌ User channels subscription error:', err)
+          reject(err)
+          return
+        }
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ User channels subscribed')
           resolve()
         }
       })
@@ -388,6 +426,11 @@ export class RealtimeManager {
       await supabase.removeChannel(this.notificationChannel)
       this.notificationChannel = null
       console.log('🔔 Unsubscribed from notifications')
+    }
+    if (this.userChannelsChannel) {
+      await supabase.removeChannel(this.userChannelsChannel)
+      this.userChannelsChannel = null
+      console.log('📢 Unsubscribed from user channels')
     }
   }
 
