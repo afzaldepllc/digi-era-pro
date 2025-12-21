@@ -429,14 +429,14 @@ export function AuditLogView({
               <div className="space-y-1">
                 <Label className="text-xs">Action Type</Label>
                 <Select
-                  value={filters.action || ""}
-                  onValueChange={(value) => setFilters(f => ({ ...f, action: value || undefined }))}
+                  value={filters.action || "all"}
+                  onValueChange={(value) => setFilters(f => ({ ...f, action: value === "all" ? undefined : value }))}
                 >
                   <SelectTrigger className="h-8">
                     <SelectValue placeholder="All actions" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All actions</SelectItem>
+                    <SelectItem value="all">All actions</SelectItem>
                     <SelectItem value="created">Created</SelectItem>
                     <SelectItem value="edited">Edited</SelectItem>
                     <SelectItem value="trashed">Trashed</SelectItem>

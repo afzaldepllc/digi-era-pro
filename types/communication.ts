@@ -47,6 +47,10 @@ export interface IChannel {
   last_message_at?: string // Last message timestamp
   created_at: string // Creation timestamp
   updated_at: string // Update timestamp
+  // Archive fields (Phase 2)
+  is_archived?: boolean // Whether the channel is archived
+  archived_at?: string // Archive timestamp
+  archived_by?: string // MongoDB user ID who archived
   // UI helper fields (not in schema)
   last_message?: ICommunication
   unreadCount?: number

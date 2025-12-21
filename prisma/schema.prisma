@@ -50,12 +50,19 @@ model channels {
   created_at          DateTime          @default(now()) @db.Timestamptz(6)
   updated_at          DateTime          @default(now()) @db.Timestamptz(6)
   categories          String[]          @default([])
+  
+  // Archive fields
+  is_archived         Boolean           @default(false)
+  archived_at         DateTime?         @db.Timestamptz(6)
+  archived_by         String?           // mongo_user_id who archived
+  
   attachments         attachments[]
   channel_members     channel_members[]
   messages            messages[]
   reactions           reactions[]
 
   @@index([categories], type: Gin)
+  @@index([is_archived])
 }
 
 model messages {

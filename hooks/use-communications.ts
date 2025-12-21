@@ -1500,6 +1500,90 @@ export function useCommunications() {
     }
   }, [fetchMessages, activeChannelId])
 
+  // ============================================
+  // Channel Leave/Archive Operations (Phase 2)
+  // ============================================
+
+  /**
+   * Leave a channel.
+   * If user is the only admin, admin role is transferred to the oldest member.
+   * If user is the last member, channel is archived.
+   */
+  const leaveChannel = useCallback(async (channelId: string) => {
+    try {
+      dispatch(setActionLoading(true))
+      
+      const result = await apiRequest(`/api/communication/channels/${channelId}/leave`, {
+        method: 'POST'
+      })
+
+      // Refresh channels list to reflect the change
+      await fetchChannels()
+
+      toastRef.current({
+        title: result.archived ? "Channel archived" : "Left channel",
+        description: result.message || "You have left the channel",
+      })
+
+      // If we left the currently active channel, clear it
+      if (activeChannelId === channelId) {
+        dispatch(clearActiveChannel())
+      }
+
+      return result
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to leave channel'
+      dispatch(setError(errorMessage))
+      toastRef.current({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      })
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, fetchChannels, activeChannelId])
+
+  /**
+   * Archive or unarchive a channel.
+   * Only channel admins can archive/unarchive.
+   */
+  const archiveChannel = useCallback(async (
+    channelId: string, 
+    action: 'archive' | 'unarchive' = 'archive'
+  ) => {
+    try {
+      dispatch(setActionLoading(true))
+      
+      const result = await apiRequest(`/api/communication/channels/${channelId}/archive`, {
+        method: 'POST',
+        body: JSON.stringify({ action })
+      })
+
+      // Refresh channels list to reflect the change
+      await fetchChannels()
+
+      toastRef.current({
+        title: action === 'archive' ? "Channel archived" : "Channel unarchived",
+        description: result.message || `Channel has been ${action}d`,
+      })
+
+      return result
+    } catch (error: any) {
+      const errorMessage = error?.message || `Failed to ${action} channel`
+      dispatch(setError(errorMessage))
+      toastRef.current({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      })
+      throw error
+    } finally {
+      dispatch(setActionLoading(false))
+    }
+  }, [dispatch, fetchChannels])
+
   // Get current user from session
   const currentUserFromSession = useMemo(() => {
     if (!sessionUser) return null
@@ -1577,6 +1661,10 @@ export function useCommunications() {
     updateMessage: editMessage,
     createChannel,
     markAsRead,
+
+    // Channel leave/archive operations (Phase 2)
+    leaveChannel,
+    archiveChannel,
 
     // Reaction operations
     toggleReaction,

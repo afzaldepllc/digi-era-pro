@@ -2312,178 +2312,7 @@ export function ChannelSettingsModal({ channel, isAdmin, onClose }: ChannelSetti
   }
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Channel Settings
-          </DialogTitle>
-        </DialogHeader>
-
-        <Tabs defaultValue="general" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            {isAdmin && <TabsTrigger value="manage">Manage</TabsTrigger>}
-          </TabsList>
-
-          {/* General Tab */}
-          <TabsContent value="general" className="space-y-4 mt-4">
-            {/* Channel Info */}
-            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-              <Avatar className="h-16 w-16">
-                {channel.avatar_url ? (
-                  <img src={channel.avatar_url} alt={channel.name} />
-                ) : (
-                  <div className="bg-primary text-primary-foreground h-full w-full flex items-center justify-center text-xl font-semibold">
-                    {channel.name?.charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </Avatar>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">{channel.name}</h3>
-                <p className="text-sm text-muted-foreground">{channel.type}</p>
-                <p className="text-xs text-muted-foreground">
-                  {channel.member_count} members
-                </p>
-              </div>
-              {isAdmin && (
-                <Button variant="outline" size="sm">
-                  <Camera className="h-4 w-4 mr-2" />
-                  Change Photo
-                </Button>
-              )}
-            </div>
-
-            {/* Pin Channel */}
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <Pin className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <Label className="font-medium">Pin Channel</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Pinned channels appear at the top of your list
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={isPinned}
-                onCheckedChange={handleTogglePin}
-                disabled={isUpdating}
-              />
-            </div>
-
-            {/* View Members */}
-            <Button variant="outline" className="w-full justify-start">
-              <Users className="h-4 w-4 mr-2" />
-              View Members ({channel.member_count})
-            </Button>
-          </TabsContent>
-
-          {/* Notifications Tab */}
-          <TabsContent value="notifications" className="space-y-4 mt-4">
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Notification Level</Label>
-              
-              <div 
-                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                  notificationLevel === 'all' ? 'border-primary bg-primary/5' : ''
-                }`}
-                onClick={() => handleNotificationChange('all')}
-              >
-                <div className="flex items-center gap-3">
-                  <Bell className="h-5 w-5" />
-                  <div>
-                    <p className="font-medium">All Messages</p>
-                    <p className="text-sm text-muted-foreground">
-                      Get notified for every message
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                  notificationLevel === 'mentions' ? 'border-primary bg-primary/5' : ''
-                }`}
-                onClick={() => handleNotificationChange('mentions')}
-              >
-                <div className="flex items-center gap-3">
-                  <Bell className="h-5 w-5" />
-                  <div>
-                    <p className="font-medium">Mentions Only</p>
-                    <p className="text-sm text-muted-foreground">
-                      Only notify when you're @mentioned
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                  notificationLevel === 'none' ? 'border-primary bg-primary/5' : ''
-                }`}
-                onClick={() => handleNotificationChange('none')}
-              >
-                <div className="flex items-center gap-3">
-                  <BellOff className="h-5 w-5" />
-                  <div>
-                    <p className="font-medium">Muted</p>
-                    <p className="text-sm text-muted-foreground">
-                      No notifications from this channel
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Manage Tab (Admin Only) */}
-          {isAdmin && (
-            <TabsContent value="manage" className="space-y-4 mt-4">
-              <div className="border-destructive/20 border rounded-lg p-4 space-y-4">
-                <h4 className="font-medium text-destructive">Danger Zone</h4>
-
-                {/* Archive Channel */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {channel.is_archived ? 'Unarchive Channel' : 'Archive Channel'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {channel.is_archived 
-                        ? 'Restore messaging capability' 
-                        : 'Make read-only. Can be unarchived later.'}
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={handleArchive}>
-                    <Archive className="mr-2 h-4 w-4" />
-                    {channel.is_archived ? 'Unarchive' : 'Archive'}
-                  </Button>
-                </div>
-
-                <Separator />
-
-                {/* Delete Channel */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Delete Channel</p>
-                    <p className="text-sm text-muted-foreground">
-                      Permanently delete this channel and all messages
-                    </p>
-                  </div>
-                  <Button variant="destructive">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          )}
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+   Use the CustomModal component for this one 
   )
 }
 ```
@@ -3819,7 +3648,7 @@ export function ChannelListSkeleton() {
 }
 ```
 
-#### 3.1.2 Message List Skeleton
+#### 4.1.2 Message List Skeleton
 
 ```tsx
 export function MessageListSkeleton() {
@@ -3847,7 +3676,7 @@ function MessageBubbleSkeleton({ align, long = false }) {
 }
 ```
 
-### 3.2 Granular Loading States
+### 4.2 Granular Loading States
 
 Add more specific loading states to Redux:
 
@@ -3868,7 +3697,7 @@ interface CommunicationState {
 }
 ```
 
-### 3.3 Error Boundaries
+### 4.3 Error Boundaries
 
 ```tsx
 // components/communication/chat-error-boundary.tsx
@@ -3897,7 +3726,7 @@ class ChatErrorBoundary extends React.Component {
 }
 ```
 
-### 3.4 Empty States
+### 4.4 Empty States
 
 ```tsx
 // No channels

@@ -106,9 +106,9 @@ and make sure every things should handled professionally
 
 
 
-
-your implemented code not following (when implemented the phase towoof communication module on missing things
-)the current flow of this project like 
+use this doc to understand the complete flow of this project 
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md
+the current flow of this project like 
   // Apply middleware (rate limiting + authentication + permissions)
     const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
 
@@ -121,4 +121,20 @@ and
 Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md
 
 
-and make sure every things should be working well im
+and now i want to update the planning files these are the 
+
+
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md
+Z- Docuuments-folder\COMMUNICATION\REALTIME_NOTIFICATIONS_PLANNING.md
+Z- Docuuments-folder\COMMUNICATION\ADVANCED_CHANNEL_MANAGEMENT_PLANNING.md
+
+where two phases of the 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md
+are implemented but there are some issues in these planning files like 
+Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md is too large for every phase and many things are not according to the current flow of this project(like use the CustomModal where need and use the  
+ // Apply middleware (rate limiting + authentication + permissions)
+    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'departments', 'read')
+    
+) so i want the concise planning and when i implemente one by one than make sure there should  not be any duplicacy and planning should be to the point with complete and clear hints 
+
+so update the all these three planning files accordingly and as i have imlemented till phase 2 of the Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md so tell me the sequence of implementation and make sure every things should be simple but professional like the enterprice level like whatsapp/slack and only important features should be there and if there are some feature which are not according to professional approch than also remove them from these planning files related to the communincation/ realtime module but i want every things should be consice and professional and performane matter 100% here in this project 
