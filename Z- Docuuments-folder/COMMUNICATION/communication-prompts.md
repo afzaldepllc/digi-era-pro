@@ -9,10 +9,13 @@ now the channel are created on different categories like (dm,project based ...) 
 type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support'
 
 and when channel create than all the involved users are added as channel_members in that channel like when department created than all users added in that channel as a channel_members and same in the project case on which project task's assingee and project creator added but now the problem is that when channel created than only those users can added which was exist on that time but if some users created after the department channel creation and he should be there in that channel for communication and same as in the project based channel and other types other than the direct and client-support(one to one with support agent and client ) so i want to handle this one in this way 
-1) when we are going to create this type of group channel(not direct channel) than there should be check input and if checked than  new created/assinee added automatically when they are created/assingee 
+1) when we are going to create this type of group channel(not direct channel) than there should be check input and if checked than  new created/assinee added automatically when they are created/assinged(which can enable/disable latter also from the channel settings
+), and there should be setting for adding the members from the different department(means if channel created for IT category and in which creator, and all department members are involved and no other than that a user can be added but that setting make sure is enable than we can add other members other than that category and if disabled than not and same for project task assingees and same for other types of channels )
 2) on the created group channel admin(handle the roles in the channel properly , by default creator is admin of that channel and he can also assign the admin role to other channel_members also ) can  add the new user from the users(no matter that one is assignee,belongs to that department or not and on that selecting time exclude the already used channel_members )
 
 3) and there should be setting for the channel for admin only in which only admin users can send messages and add new memebers and other members can see those messages just like the whastapp 
+
+4) there should be proper check 
 
 
 4) and implementation should be generic and optimized as in future i will add the create project channel button in the project overview (/projects/[id] routes) and same for department and other , so that we can create the channel from the (/communication route or some different route easily )
@@ -25,7 +28,7 @@ there should be proper channel setting in which user can update the profile pick
 so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
 
 
-# phase 02 
+# phase 02  (plann completed )
 
 1) there should be proper channel setting for archive and pin from the channel setting 
 
@@ -34,6 +37,8 @@ so create the new planning file for implementation of this one while make sure e
 2) there should be proper message realtime notification(realtime notifincation should be show in the main header of main page D:\digi-era-pro\components\layout\header.tsx ) and notification setting also implemented well according to best practices 
 
 3) there should be proper increase and increse width within min and max width for components\communication\communication-sidebar.tsx on expanding/deexpanding horizontally in the large screen only not in the mobile screen (there should be 100% width for communication sidebar in mobile screen and on chat click messages list show and vice versa )according to best practices 
+
+
 
 
 

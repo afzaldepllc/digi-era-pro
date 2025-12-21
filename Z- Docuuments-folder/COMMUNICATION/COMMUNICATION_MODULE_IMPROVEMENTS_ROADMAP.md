@@ -30,7 +30,7 @@ This document outlines a comprehensive improvement plan to elevate the communica
 | **Chat Filters** | No filter panel (flask button) | Missing feature |
 | **Message Notifications** | No real-time notifications in header | Missing feature |
 | **Notification Settings** | Not implemented | Missing feature |
-| **Sidebar Responsiveness** | Fixed width, no resize, poor mobile UX | UX issue |
+| **Sidebar Responsiveness** | Fixed width, no resize, poor mobile UX | UX issue (but should be resizable)
 | **Error Recovery** | Failed messages can't be retried | Poor UX |
 | **Loading States** | Inconsistent, no skeletons | Jarring UX |
 | **Cache Invalidation** | No proper cache layer | Stale data |
