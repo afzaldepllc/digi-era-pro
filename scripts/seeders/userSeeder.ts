@@ -128,7 +128,7 @@ export const userSeeds: IUserSeed[] = [
   },
   {
     name: 'Testing user',
-    email: 'bc230202687maf@vu.edu.pk',
+    email: 'test@gmail.com',
     password: 'Test@123',
     departmentName: 'Graphics',
     roleName: 'super_admin',
