@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, memo } from "react"
+import { useState, useCallback, memo, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -15,8 +15,10 @@ import {
   ExternalLink,
   X,
   Play,
+  Pause,
   Maximize2,
-  Eye
+  Eye,
+  Mic
 } from "lucide-react"
 import { IAttachment } from "@/types/communication"
 import { formatDistanceToNow } from "date-fns"
@@ -194,6 +196,175 @@ export const ImagePreview = memo(function ImagePreview({
   )
 })
 
+// WhatsApp-style Voice Message / Audio Player
+export const AudioPlayer = memo(function AudioPlayer({
+  src,
+  duration: initialDuration,
+  className,
+  isVoiceMessage = false,
+  onDownload
+}: {
+  src: string
+  duration?: number
+  className?: string
+  isVoiceMessage?: boolean
+  onDownload?: () => void
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(initialDuration || 0)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Format time as mm:ss
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Handle audio events
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration)
+      setIsLoading(false)
+    }
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
+    const handleEnded = () => {
+      setIsPlaying(false)
+      setCurrentTime(0)
+    }
+    const handleError = () => setIsLoading(false)
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('ended', handleEnded)
+    audio.addEventListener('error', handleError)
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
+      audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('error', handleError)
+    }
+  }, [])
+
+  const togglePlayback = () => {
+    if (!audioRef.current) return
+
+    if (isPlaying) {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play()
+      setIsPlaying(true)
+    }
+  }
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return
+    
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const percent = x / rect.width
+    const newTime = percent * duration
+    
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+  }
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
+
+  return (
+    <div className={cn(
+      "flex items-center gap-3 p-3 rounded-2xl min-w-[200px] max-w-[280px]",
+      isVoiceMessage 
+        ? "bg-emerald-500/10 border border-emerald-500/20" 
+        : "bg-muted/50 border",
+      className
+    )}>
+      {/* Hidden audio element */}
+      <audio ref={audioRef} src={src} preload="metadata" />
+
+      {/* Play/Pause button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn(
+          "h-10 w-10 rounded-full shrink-0",
+          isVoiceMessage 
+            ? "bg-emerald-500 hover:bg-emerald-600 text-white" 
+            : "bg-primary hover:bg-primary/90 text-primary-foreground"
+        )}
+        onClick={togglePlayback}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        ) : isPlaying ? (
+          <Pause className="h-5 w-5" />
+        ) : (
+          <Play className="h-5 w-5 ml-0.5" />
+        )}
+      </Button>
+
+      {/* Waveform / Progress */}
+      <div className="flex-1 space-y-1">
+        {/* Progress bar with waveform-like appearance */}
+        <div 
+          className="h-6 relative cursor-pointer flex items-center"
+          onClick={handleSeek}
+        >
+          {/* Waveform visualization (simulated) */}
+          <div className="absolute inset-0 flex items-center gap-[2px]">
+            {Array.from({ length: 30 }).map((_, i) => {
+              const height = 20 + Math.sin(i * 0.5) * 15 + Math.random() * 10
+              const isPast = (i / 30) * 100 <= progressPercent
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex-1 rounded-full transition-colors",
+                    isPast 
+                      ? isVoiceMessage ? "bg-emerald-500" : "bg-primary"
+                      : "bg-muted-foreground/30"
+                  )}
+                  style={{ height: `${height}%` }}
+                />
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Time display */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="tabular-nums">{formatTime(currentTime)}</span>
+          <span className="tabular-nums">{formatTime(duration)}</span>
+        </div>
+      </div>
+
+      {/* Voice message icon or download */}
+      {isVoiceMessage ? (
+        <div className="shrink-0">
+          <Mic className="h-4 w-4 text-emerald-500" />
+        </div>
+      ) : onDownload && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={onDownload}
+        >
+          <Download className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  )
+})
+
 // Single attachment preview (WhatsApp style)
 export const AttachmentPreview = memo(function AttachmentPreview({
   attachment,
@@ -318,6 +489,24 @@ export const AttachmentPreview = memo(function AttachmentPreview({
           </DialogContent>
         </Dialog>
       </>
+    )
+  }
+
+  // Audio / Voice message attachment
+  if (category === 'audio' && attachment.file_url) {
+    // Check if it's a voice message based on filename or type
+    const isVoice = attachment.file_name.toLowerCase().includes('voice') || 
+                    attachment.file_type?.includes('webm') ||
+                    (attachment as any).isVoiceMessage
+
+    return (
+      <AudioPlayer
+        src={attachment.file_url}
+        duration={attachment.durationSeconds}
+        isVoiceMessage={isVoice}
+        onDownload={showDownload ? handleDownload : undefined}
+        className={className}
+      />
     )
   }
 

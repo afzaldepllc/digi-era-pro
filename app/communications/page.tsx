@@ -79,7 +79,8 @@ export default function CommunicationsPage() {
     setFilters,
     filters,
     mockUsers,
-    mockCurrentUser
+    mockCurrentUser,
+    pinChannel
   } = useCommunications()
 
   // Handle URL params for direct channel access
@@ -195,6 +196,7 @@ export default function CommunicationsPage() {
                   currentUserId={mockCurrentUser?._id || ''}
                   onlineUserIds={onlineUserIds}
                   onCreateChannel={handleCreateChannel}
+                  onPinChannel={pinChannel}
                   loading={loading}
                 />
               </SheetContent>
@@ -266,6 +268,7 @@ export default function CommunicationsPage() {
             currentUserId={mockCurrentUser?._id || ''}
             onlineUserIds={onlineUserIds}
             onCreateChannel={handleCreateChannel}
+            onPinChannel={pinChannel}
             loading={loading}
           />
         </ResizableSidebar>

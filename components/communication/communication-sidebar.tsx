@@ -28,6 +28,7 @@ interface CommunicationSidebarProps {
   onlineUserIds?: string[] // Real-time online user IDs from Supabase
   onChannelSelect: (channelId: string) => void
   onCreateChannel?: () => void
+  onPinChannel?: (channelId: string, isPinned: boolean) => Promise<void>
   loading?: boolean
   className?: string
 }
@@ -39,6 +40,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
   onlineUserIds = [],
   onChannelSelect,
   onCreateChannel,
+  onPinChannel,
   loading = false,
   className
 }: CommunicationSidebarProps) {
@@ -132,6 +134,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
                     onChannelSelect={onChannelSelect}
                     currentUserId={currentUserId}
                     onlineUserIds={onlineUserIds}
+                    onPinChannel={onPinChannel}
                     showSearch={false}
                     className="border-0 shadow-none"
                   />

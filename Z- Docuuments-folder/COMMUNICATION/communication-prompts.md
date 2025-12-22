@@ -138,3 +138,8 @@ Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md 
 ) so i want the concise planning and when i implemente one by one than make sure there should  not be any duplicacy and planning should be to the point with complete and clear hints 
 
 so update the all these three planning files accordingly and as i have imlemented till phase 2 of the Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPROVEMENTS_ROADMAP.md so tell me the sequence of implementation and make sure every things should be simple but professional like the enterprice level like whatsapp/slack and only important features should be there and if there are some feature which are not according to professional approch than also remove them from these planning files related to the communincation/ realtime module but i want every things should be consice and professional and performane matter 100% here in this project 
+
+
+
+
+i want to when i go the clients list / client edit page than there should be action button for the conversation of support user/ or any enternal user and with that clients 

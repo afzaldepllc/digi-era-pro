@@ -128,6 +128,57 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     }
   }
 
+  // Handle sending voice messages
+  const handleSendVoice = useCallback(async (audioBlob: Blob, duration: number) => {
+    if (!channelId) return
+    
+    try {
+      // Create form data for upload
+      const formData = new FormData()
+      formData.append('file', audioBlob, `voice-message-${Date.now()}.webm`)
+      formData.append('folder', 'voice-messages')
+      formData.append('channelId', channelId)
+      
+      // Upload to S3
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload voice message')
+      }
+      
+      const uploadResult = await uploadResponse.json()
+      
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || 'Upload failed')
+      }
+      
+      // Send message with audio URL
+      await sendMessage({
+        channel_id: channelId,
+        content: '🎤 Voice message',
+        content_type: 'audio',
+        attachments: [{
+          id: crypto.randomUUID(),
+          message_id: '',
+          file_name: 'Voice Message',
+          file_url: uploadResult.url,
+          file_size: audioBlob.size,
+          file_type: audioBlob.type,
+          durationSeconds: duration,
+          created_at: new Date().toISOString()
+        }]
+      })
+      
+      handleStopTyping()
+    } catch (error) {
+      console.error('Failed to send voice message:', error)
+      throw error
+    }
+  }, [channelId, sendMessage, handleStopTyping])
+
   // Handle message actions
   const handleMessageRead = (messageId: string) => {
     markAsRead(messageId, channelId)
@@ -751,6 +802,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 channelId={channelId}
                 onSend={handleSendMessage}
                 onSendWithFiles={sendMessageWithFiles}
+                onSendVoice={handleSendVoice}
                 onEdit={handleEditMessage}
                 disabled={actionLoading}
                 placeholder={`Message ${getChannelTitle()}...`}

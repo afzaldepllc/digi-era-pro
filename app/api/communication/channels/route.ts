@@ -81,6 +81,31 @@ export async function GET(request: NextRequest) {
       orderBy: { updated_at: 'desc' },
     })
 
+    // Sort channels: pinned first (by pinned_at desc), then by updated_at desc
+    const sortedChannels = channels.sort((a: any, b: any) => {
+      // Find current user's membership in each channel
+      const aMember = a.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      const bMember = b.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      const aIsPinned = aMember?.is_pinned || false
+      const bIsPinned = bMember?.is_pinned || false
+      
+      // Pinned channels first
+      if (aIsPinned && !bIsPinned) return -1
+      if (!aIsPinned && bIsPinned) return 1
+      
+      // If both pinned, sort by pinned_at (most recently pinned first)
+      if (aIsPinned && bIsPinned) {
+        const aPinnedAt = aMember?.pinned_at ? new Date(aMember.pinned_at).getTime() : 0
+        const bPinnedAt = bMember?.pinned_at ? new Date(bMember.pinned_at).getTime() : 0
+        return bPinnedAt - aPinnedAt
+      }
+      
+      // For non-pinned, sort by updated_at desc
+      const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0
+      const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0
+      return bUpdated - aUpdated
+    })
+
     // Fetch all users for enrichment
     const allUsers = await executeGenericDbQuery(async () => {
       return await User.find({ isDeleted: { $ne: true } }).select('_id name email avatar isClient role').lean()
@@ -88,16 +113,26 @@ export async function GET(request: NextRequest) {
 
     // Enrich channels with user data from MongoDB
     const enrichedChannels = await Promise.all(
-      channels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
+      sortedChannels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
     )
+
+    // Add pin info to each channel for easy access
+    const channelsWithPinInfo = enrichedChannels.map((channel: any) => {
+      const memberInfo = channel.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      return {
+        ...channel,
+        is_pinned: memberInfo?.is_pinned || false,
+        pinned_at: memberInfo?.pinned_at || null
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      data: enrichedChannels,
+      data: channelsWithPinInfo,
       meta: {
-        total: enrichedChannels.length,
+        total: channelsWithPinInfo.length,
         page: 1,
-        limit: enrichedChannels.length,
+        limit: channelsWithPinInfo.length,
         pages: 1
       }
     })

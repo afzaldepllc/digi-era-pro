@@ -334,7 +334,23 @@ class ChannelSyncManager {
 
       const enrichedChannel = await enrichChannelWithUserData(channel, allUsers)
 
+      // Create and subscribe to the channel first, then broadcast
       const rtChannel = supabase.channel(`user:${userId}:channels`)
+      
+      // Subscribe first (required for broadcast to work)
+      await new Promise<void>((resolve, reject) => {
+        rtChannel.subscribe((status, err) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          if (status === 'SUBSCRIBED') {
+            resolve()
+          }
+        })
+      })
+
+      // Now send the broadcast
       await rtChannel.send({
         type: 'broadcast',
         event: 'channel_update',
@@ -344,7 +360,10 @@ class ChannelSyncManager {
           channel: enrichedChannel
         }
       })
+
+      // Clean up
       await supabase.removeChannel(rtChannel)
+      logger.info('ChannelSyncManager: Broadcasted channel update to user', { userId, channelId, eventType })
     } catch (error) {
       logger.warn('ChannelSyncManager: Failed to broadcast channel to user:', error)
     }
@@ -361,6 +380,21 @@ class ChannelSyncManager {
   ): Promise<void> {
     try {
       const rtChannel = supabase.channel(`rt_${channelId}`)
+      
+      // Subscribe first (required for broadcast to work)
+      await new Promise<void>((resolve, reject) => {
+        rtChannel.subscribe((status, err) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          if (status === 'SUBSCRIBED') {
+            resolve()
+          }
+        })
+      })
+
+      // Now send the broadcast
       await rtChannel.send({
         type: 'broadcast',
         event: 'member_update',
@@ -376,7 +410,10 @@ class ChannelSyncManager {
           } : undefined
         }
       })
+
+      // Clean up
       await supabase.removeChannel(rtChannel)
+      logger.info('ChannelSyncManager: Broadcasted member update', { channelId, memberId, eventType })
     } catch (error) {
       logger.warn('ChannelSyncManager: Failed to broadcast member update:', error)
     }

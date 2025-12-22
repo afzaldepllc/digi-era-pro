@@ -32,6 +32,10 @@ model channel_members {
   is_online             Boolean   @default(false)
   notifications_enabled Boolean   @default(true)
   
+  // Pin feature - each user can pin up to 5 channels
+  is_pinned             Boolean   @default(false)
+  pinned_at             DateTime? @db.Timestamptz(6)
+  
   // Member metadata for tracking how they were added
   added_by              String?   // mongo_user_id who added this member
   added_via             String?   // 'creation' | 'auto_sync' | 'manual_add' | 'invitation'
@@ -41,6 +45,7 @@ model channel_members {
   @@unique([channel_id, mongo_member_id])
   @@index([mongo_member_id])
   @@index([channel_id, role])
+  @@index([mongo_member_id, is_pinned])
 }
 
 model channels {

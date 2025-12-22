@@ -1088,6 +1088,54 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed fetchChannels - using optimistic update now
 
+  // ============================================
+  // Channel Pin Operations
+  // ============================================
+
+  /**
+   * Toggle pin status for a channel
+   * User can pin up to 5 channels
+   */
+  const pinChannel = useCallback(async (channelId: string, currentlyPinned: boolean): Promise<void> => {
+    if (!sessionUserId) {
+      throw new Error('Not authenticated')
+    }
+
+    // Optimistic update
+    dispatch(updateChannel({
+      id: channelId,
+      is_pinned: !currentlyPinned,
+      pinned_at: !currentlyPinned ? new Date().toISOString() : null
+    }))
+
+    try {
+      const response = await apiRequest(`/api/communication/channels/${channelId}/pin`, {
+        method: 'POST'
+      }, false)
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update pin status')
+      }
+
+      toastRef.current({
+        title: response.data.is_pinned ? "Channel pinned" : "Channel unpinned",
+        description: response.message,
+      })
+
+      // Refresh channels to get proper sort order
+      await fetchChannels()
+    } catch (error: any) {
+      // Revert optimistic update
+      dispatch(updateChannel({
+        id: channelId,
+        is_pinned: currentlyPinned,
+        pinned_at: currentlyPinned ? new Date().toISOString() : null
+      }))
+
+      throw error
+    }
+  }, [dispatch, sessionUserId, fetchChannels])
+
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
       await apiRequest('/api/communication/read-receipts', {
@@ -1775,6 +1823,7 @@ export function useCommunications() {
     fetchChannels,
     selectChannel,
     clearActiveChannel: clearChannel,
+    pinChannel,
 
     // Message operations
     fetchMessages,

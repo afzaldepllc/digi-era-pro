@@ -10,13 +10,13 @@ interface RouteParams {
 
 const updateSettingsSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  avatar_url: z.string().url().optional().nullable(),
+  avatar_url: z.string().optional().nullable().transform(val => val === '' ? null : val),
   auto_sync_enabled: z.boolean().optional(),
   allow_external_members: z.boolean().optional(),
   admin_only_post: z.boolean().optional(),
   admin_only_add: z.boolean().optional(),
   is_private: z.boolean().optional()
-})
+}).partial()
 
 // Helper to create consistent error responses
 function createErrorResponse(message: string, status: number, details?: any) {

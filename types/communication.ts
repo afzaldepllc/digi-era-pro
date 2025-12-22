@@ -7,7 +7,7 @@ export interface ICommunication {
   channel_id: string // Supabase channel UUID reference
   mongo_sender_id: string // MongoDB user ID of sender
   content: string // Message content
-  content_type: 'text' | 'file' | 'system' // Content type
+  content_type: 'text' | 'file' | 'audio' | 'system' // Content type
   thread_id?: string // For threading (optional)
   reply_count: number // Number of replies
   mongo_mentioned_user_ids?: string[] // Array of mentioned user IDs
@@ -56,6 +56,9 @@ export interface IChannel {
   is_archived?: boolean // Whether the channel is archived
   archived_at?: string // Archive timestamp
   archived_by?: string // MongoDB user ID who archived
+  // Pin fields (per-user, added from channel_members)
+  is_pinned?: boolean // Whether the current user has pinned this channel
+  pinned_at?: string | null // When the current user pinned this channel
   // UI helper fields (not in schema)
   last_message?: ICommunication
   unreadCount?: number
@@ -129,7 +132,7 @@ export interface FetchMessagesParams {
 export interface CreateMessageData {
   channel_id: string
   content: string // Changed from 'message'
-  content_type?: 'text' | 'file' | 'system' // Changed from 'messageType'
+  content_type?: 'text' | 'file' | 'audio' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
   attachment_ids?: string[] // IDs of pre-uploaded attachments
   thread_id?: string // Changed from 'parentMessageId'
