@@ -359,7 +359,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     resumeRecording,
     cancelRecording,
     resetRecording,
-    formatDuration
+    formatDuration,
+    checkPermission,
+    requestPermission
   }
 }
 
