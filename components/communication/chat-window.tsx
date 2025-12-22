@@ -155,21 +155,18 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
         throw new Error(uploadResult.error || 'Upload failed')
       }
       
-      // Send message with audio URL
+      // Send message with audio attachment
       await sendMessage({
         channel_id: channelId,
         content: '🎤 Voice message',
         content_type: 'audio',
-        attachments: [{
-          id: crypto.randomUUID(),
-          message_id: '',
-          file_name: 'Voice Message',
+        audio_attachment: {
           file_url: uploadResult.url,
+          file_name: 'Voice Message',
           file_size: audioBlob.size,
           file_type: audioBlob.type,
-          durationSeconds: duration,
-          created_at: new Date().toISOString()
-        }]
+          duration_seconds: duration
+        }
       })
       
       handleStopTyping()

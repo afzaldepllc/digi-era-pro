@@ -97,12 +97,20 @@ export const channelIdSchema = z.object({
 export const baseMessageSchema = z.object({
   channel_id: z.string().uuid('Invalid channel ID'),
   content: z.string().max(5000, 'Message too long').default(''),
-  content_type: z.enum(['text', 'image', 'file', 'system']).default('text'),
+  content_type: z.enum(['text', 'image', 'file', 'audio', 'system']).default('text'),
   thread_id: z.string().uuid().optional(),
   parent_message_id: z.string().uuid().optional(),
   mongo_mentioned_user_ids: z.array(z.string()).default([]),
   // Attachment IDs (if files were uploaded separately first)
   attachment_ids: z.array(z.string().uuid()).optional(),
+  // Audio attachment data for voice messages
+  audio_attachment: z.object({
+    file_url: z.string().url(),
+    file_name: z.string().default('Voice Message'),
+    file_size: z.number().optional(),
+    file_type: z.string().default('audio/webm'),
+    duration_seconds: z.number().optional()
+  }).optional(),
 }).refine(
   (data) => data.content.trim().length > 0 || (data.attachment_ids && data.attachment_ids.length > 0),
   { message: 'Message must have content or at least one attachment' }

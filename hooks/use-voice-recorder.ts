@@ -10,6 +10,7 @@ export interface VoiceRecorderState {
   audioUrl: string | null
   error: string | null
   isSupported: boolean
+  permissionStatus: 'prompt' | 'granted' | 'denied' | 'unknown'
 }
 
 export interface UseVoiceRecorderReturn extends VoiceRecorderState {
@@ -20,9 +21,26 @@ export interface UseVoiceRecorderReturn extends VoiceRecorderState {
   cancelRecording: () => void
   resetRecording: () => void
   formatDuration: (seconds: number) => string
+  checkPermission: () => Promise<PermissionState | null>
+  requestPermission: () => Promise<boolean>
 }
 
 const MAX_RECORDING_DURATION = 300 // 5 minutes max
+
+/**
+ * Check if microphone is available in the permissions policy
+ */
+function checkMicrophonePolicy(): boolean {
+  if (typeof document === 'undefined') return true
+  
+  // Check if we're in a secure context (HTTPS or localhost)
+  if (!window.isSecureContext) {
+    console.warn('Voice recording requires a secure context (HTTPS or localhost)')
+    return false
+  }
+  
+  return true
+}
 
 export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const [state, setState] = useState<VoiceRecorderState>({
@@ -32,7 +50,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     audioBlob: null,
     audioUrl: null,
     error: null,
-    isSupported: typeof window !== 'undefined' && 'MediaRecorder' in window
+    isSupported: typeof window !== 'undefined' && 'MediaRecorder' in window && 'mediaDevices' in navigator,
+    permissionStatus: 'unknown'
   })
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -41,6 +60,11 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
   const pausedDurationRef = useRef<number>(0)
+
+  // Check permission status on mount
+  useEffect(() => {
+    checkPermission()
+  }, [])
 
   // Clean up on unmount
   useEffect(() => {
@@ -62,6 +86,71 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }, [])
+
+  // Check microphone permission status
+  const checkPermission = useCallback(async (): Promise<PermissionState | null> => {
+    try {
+      if (!navigator.permissions) {
+        // Permissions API not supported, assume unknown
+        setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
+        return null
+      }
+      
+      const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
+      
+      // Listen for permission changes
+      result.onchange = () => {
+        setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
+      }
+      
+      return result.state
+    } catch (error) {
+      // Some browsers don't support microphone permission query
+      console.debug('Permission query not supported:', error)
+      setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
+      return null
+    }
+  }, [])
+
+  // Request microphone permission without starting recording
+  const requestPermission = useCallback(async (): Promise<boolean> => {
+    try {
+      // Check permissions policy first
+      if (!checkMicrophonePolicy()) {
+        setState(prev => ({ 
+          ...prev, 
+          error: 'Voice recording requires HTTPS or localhost. Please use a secure connection.',
+          permissionStatus: 'denied'
+        }))
+        return false
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Permission granted - stop the stream immediately
+      stream.getTracks().forEach(track => track.stop())
+      setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
+      return true
+    } catch (error: any) {
+      let errorMessage = 'Microphone permission denied'
+      let permissionStatus: 'denied' | 'prompt' = 'denied'
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage = 'Microphone access was denied. Please allow microphone access in your browser settings and refresh the page.'
+        permissionStatus = 'denied'
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage = 'No microphone found. Please connect a microphone and try again.'
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = 'Microphone is being used by another application. Please close other apps and try again.'
+      } else if (error.name === 'SecurityError') {
+        errorMessage = 'Voice recording is not allowed due to security restrictions. Please use HTTPS.'
+        permissionStatus = 'denied'
+      }
+      
+      setState(prev => ({ ...prev, error: errorMessage, permissionStatus }))
+      return false
+    }
   }, [])
 
   // Start recording

@@ -135,6 +135,14 @@ export interface CreateMessageData {
   content_type?: 'text' | 'file' | 'audio' | 'system' // Changed from 'messageType'
   attachments?: string[] // array of attachment URLs or attachment ids (depends on upload flow)
   attachment_ids?: string[] // IDs of pre-uploaded attachments
+  // Audio attachment data for voice messages
+  audio_attachment?: {
+    file_url: string
+    file_name?: string
+    file_size?: number
+    file_type?: string
+    duration_seconds?: number
+  }
   thread_id?: string // Changed from 'parentMessageId'
   parent_message_id?: string // For replies
   mongo_mentioned_user_ids?: string[] // Mentioned users

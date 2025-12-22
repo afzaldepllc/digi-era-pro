@@ -257,6 +257,27 @@ export async function POST(request: NextRequest) {
       sender_role: senderRole,
     })
 
+    // Handle audio attachment for voice messages
+    let attachments: any[] = []
+    if (validatedData.audio_attachment && validatedData.content_type === 'audio') {
+      const audioAttachment = await prisma.attachments.create({
+        data: {
+          message_id: message.id,
+          channel_id: validatedData.channel_id,
+          mongo_uploader_id: session.user.id,
+          file_name: validatedData.audio_attachment.file_name || 'Voice Message',
+          file_url: validatedData.audio_attachment.file_url,
+          file_size: validatedData.audio_attachment.file_size,
+          file_type: validatedData.audio_attachment.file_type || 'audio/webm',
+        }
+      })
+      
+      attachments.push({
+        ...audioAttachment,
+        durationSeconds: validatedData.audio_attachment.duration_seconds
+      })
+    }
+
     // Update channel's last_message_at
     await prisma.channels.update({
       where: { id: validatedData.channel_id },
@@ -264,7 +285,10 @@ export async function POST(request: NextRequest) {
     })
 
     // Transform message to include sender object (for frontend compatibility)
-    const messageWithSender = transformMessageWithSender(message)
+    const messageWithSender = {
+      ...transformMessageWithSender(message),
+      attachments
+    }
 
     // Broadcast the message with sender data to realtime subscribers
     try {
