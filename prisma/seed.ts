@@ -6,7 +6,8 @@ import { config } from 'dotenv'
 // Load environment variables
 config({ path: '.env.local' })
 
-const connectionString = process.env.DATABASE_URL!
+// Use direct connection for seeding (not pooled)
+const connectionString = process.env.DIRECT_DATABASE_URL!
 const pool = new Pool({ connectionString })
 const adapter = new PrismaPg(pool)
 
