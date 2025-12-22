@@ -7,9 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   pool: Pool | undefined
 }
 
-// Use pooled connection for better performance
-// const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL!
-const connectionString = process.env.DATABASE_URL 
+const connectionString = process.env.DATABASE_URL
 const pool = globalForPrisma.pool ?? new Pool({ connectionString })
 const adapter = new PrismaPg(pool)
 

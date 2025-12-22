@@ -8,7 +8,6 @@ import User from '../models/User'
 // Load environment variables
 config({ path: '.env.local' })
 
-// Use direct connection for seeding
 const connectionString = process.env.DATABASE_URL!
 const pool = new Pool({ connectionString })
 const adapter = new PrismaPg(pool)
