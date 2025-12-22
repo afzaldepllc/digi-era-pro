@@ -19,6 +19,7 @@ interface MessageInputProps {
   channelId: string
   onSend: (data: CreateMessageData) => void
   onSendWithFiles?: (data: CreateMessageData, files: File[], onProgress?: (progress: number) => void) => Promise<any>
+  onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
   onEdit?: (messageId: string, data: CreateMessageData) => Promise<void>
   disabled?: boolean
   placeholder?: string
@@ -34,6 +35,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   channelId,
   onSend,
   onSendWithFiles,
+  onSendVoice,
   onEdit,
   disabled = false,
   placeholder = "Type a message...",
@@ -168,6 +170,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
               onTyping={onTyping}
               onStopTyping={onStopTyping}
               onSend={handleSendFromEditor}
+              onSendVoice={onSendVoice}
               channelMembers={channelMembers}
               replyTo={replyTo}
               editMessage={editMessage}

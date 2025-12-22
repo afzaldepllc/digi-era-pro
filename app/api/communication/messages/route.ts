@@ -198,6 +198,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = createMessageSchema.parse(body)
 
+    // Get channel to check settings
+    const channel = await prisma.channels.findUnique({
+      where: { id: validatedData.channel_id },
+      select: { id: true, admin_only_post: true }
+    })
+
+    if (!channel) {
+      return createErrorResponse('Channel not found', 404)
+    }
+
     // Check if user is member of the channel
     const membership = await prisma.channel_members.findFirst({
       where: {
@@ -208,6 +218,13 @@ export async function POST(request: NextRequest) {
 
     if (!membership) {
       return createErrorResponse('Access denied to this channel', 403)
+    }
+
+    // Check admin-only-post restriction
+    if (channel.admin_only_post) {
+      if (membership.role !== 'admin' && membership.role !== 'owner') {
+        return createErrorResponse('Only admins can post messages in this channel', 403)
+      }
     }
 
     // Fetch sender info ONCE from MongoDB (this is the only MongoDB call needed)

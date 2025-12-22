@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Edit, Settings, Share2, MoreVertical, Clock, DollarSign, Users, Target, Archive, Trash2, Plus, Building2, AlertTriangle, Loader2 } from "lucide-react";
+import { ArrowLeft, Edit, Settings, Share2, MoreVertical, Clock, DollarSign, Users, Target, Archive, Trash2, Plus, Building2, AlertTriangle, Loader2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
 import { ProjectCategorization } from "@/components/projects/ProjectCategorization";
 import { ProjectEditTab } from "@/components/projects/ProjectEditTab";
+import { ProjectChannelButton } from "@/components/projects/project-channel-button";
 import { useNavigation } from "@/components/providers/navigation-provider";
 import { Project } from "@/types";
 import HtmlTextRenderer from "@/components/shared/html-text-renderer";
@@ -331,6 +332,12 @@ export default function ProjectDetailsPage() {
         showAddButton={false}
         actions={
           <div className="flex items-center gap-2">
+            <ProjectChannelButton
+              projectId={projectId}
+              projectName={project.name}
+              variant="outline"
+              size="sm"
+            />
             <Button variant="outline" size="sm">
               <Share2 className="h-4 w-4 mr-1" />
               Share

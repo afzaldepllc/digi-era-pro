@@ -36,7 +36,7 @@ export interface ICommunication {
 // Channels table interface
 export interface IChannel {
   id: string // Supabase UUID
-  type: 'dm' | 'group' | 'department' | 'project' | 'client-support' // Channel type
+  type: 'dm' | 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support' // Channel type
   name?: string // Channel name (optional for DMs)
   avatar_url?: string // Channel avatar URL
   mongo_department_id?: string // MongoDB department reference
@@ -47,6 +47,11 @@ export interface IChannel {
   last_message_at?: string // Last message timestamp
   created_at: string // Creation timestamp
   updated_at: string // Update timestamp
+  // Advanced Channel Settings (Phase 2)
+  auto_sync_enabled: boolean // Auto-add new dept members/assignees
+  allow_external_members: boolean // Allow members outside dept/project
+  admin_only_post: boolean // Only admins can send messages
+  admin_only_add: boolean // Only admins can add new members
   // Archive fields (Phase 2)
   is_archived?: boolean // Whether the channel is archived
   archived_at?: string // Archive timestamp
@@ -63,10 +68,12 @@ export interface IChannelMember {
   id: string // Supabase UUID
   channel_id: string // Supabase channel UUID
   mongo_member_id: string // MongoDB user ID
-  channelRole: 'admin' | 'member' // Channel role (renamed from role)
+  channelRole: 'owner' | 'admin' | 'member' // Channel role (owner = creator)
   joined_at: string // Join timestamp
   last_seen_at?: string // Last seen timestamp
   notifications_enabled: boolean // Notification preference
+  added_by?: string // MongoDB user ID who added this member
+  added_via?: 'creation' | 'auto_sync' | 'manual_add' | 'invitation' // How the member was added
   
   // Enriched user fields
   userRole: string // User role from MongoDB

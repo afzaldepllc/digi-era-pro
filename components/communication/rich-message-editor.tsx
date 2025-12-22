@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote, Reply } from "lucide-react"
+import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote, Reply, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEditor, EditorContent } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
@@ -24,6 +24,7 @@ import ListItem from '@tiptap/extension-list-item'
 import HardBreak from '@tiptap/extension-hard-break'
 import { InlineEmojiPicker } from './emoji-picker'
 import { MentionPicker } from './mention-picker'
+import { VoiceRecorder } from './voice-recorder'
 import { ICommunication, IChannelMember } from '@/types/communication'
 
 export interface RichMessageEditorRef {
@@ -42,6 +43,8 @@ interface RichMessageEditorProps {
     onStopTyping?: () => void
     // Called when editor requests a send. Should resolve true on success.
     onSend?: (html: string, text: string, files: File[], mentionedUserIds: string[], replyToId?: string, editMessageId?: string) => Promise<boolean>
+    // Called when voice message is sent
+    onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
     className?: string
     channelMembers?: IChannelMember[] // For @mentions
     replyTo?: ICommunication | null // Reply to message
@@ -51,7 +54,7 @@ interface RichMessageEditorProps {
 }
 
 const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProps>(
-    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, className, channelMembers = [], replyTo, editMessage, onCancelReply, onCancelEdit }, ref) => {
+    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, onSendVoice, className, channelMembers = [], replyTo, editMessage, onCancelReply, onCancelEdit }, ref) => {
         const contentRef = useRef<HTMLDivElement | null>(null)
         const textareaRef = useRef<HTMLTextAreaElement | null>(null)
         const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -60,6 +63,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const [isFocused, setIsFocused] = useState(false)
         const [attachments, setAttachments] = useState<File[]>([])
         const [showToolbar, setShowToolbar] = useState(true)
+        const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
 
         // Mention state
         const [showMentionPicker, setShowMentionPicker] = useState(false)
@@ -658,7 +662,18 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                                     onClose={() => setShowEmojiPicker(false)}
                                 />
                             )}
-                        </div>  
+                        </div>
+
+                        {/* Voice message button */}
+                        {onSendVoice && (
+                            <button 
+                                className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" 
+                                onClick={() => setShowVoiceRecorder(true)} 
+                                title="Record voice message"
+                            >
+                                <Mic className="h-4 w-4" />
+                            </button>
+                        )}
 
                     </div>
 
@@ -695,6 +710,21 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         </button>
                     </div>
                 </div>
+
+                {/* Voice Recorder Overlay */}
+                {showVoiceRecorder && onSendVoice && (
+                    <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm rounded-lg flex items-center justify-center p-4">
+                        <VoiceRecorder
+                            onSendVoice={async (blob, duration) => {
+                                await onSendVoice(blob, duration)
+                                setShowVoiceRecorder(false)
+                            }}
+                            onCancel={() => setShowVoiceRecorder(false)}
+                            disabled={disabled}
+                            className="w-full"
+                        />
+                    </div>
+                )}
             </div>
         )
     }
