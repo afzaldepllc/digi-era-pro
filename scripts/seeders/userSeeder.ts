@@ -32,18 +32,18 @@ export const userSeeds: IUserSeed[] = [
     name: 'Super Administrator Test',
     email: 'adminali@gmail.com',
     password: 'AdminAli@123',
-    departmentName: 'Web Development',
+    departmentName: 'System',
     roleName: 'super_admin',
     phone: '1234567801',
     status: 'active',
     twoFactorEnabled: false
   },
-// Super Admin
+  // Super Admin
   {
     name: 'Super Administrator Depllc',
     email: 'crmdepllc@gmail.com',
     password: 'Depllc@123',
-    departmentName: 'Web Development',
+    departmentName: 'System',
     roleName: 'super_admin',
     phone: '1234567801',
     status: 'active',
@@ -89,7 +89,7 @@ export const userSeeds: IUserSeed[] = [
     email: 'david.seo@company.com',
     password: 'DeptHead@123',
     departmentName: 'SEO',
-    roleName: 'super_admin',
+    roleName: 'team_lead',
     phone: '1234567806',
     status: 'active',
     twoFactorEnabled: true
@@ -121,14 +121,14 @@ export const userSeeds: IUserSeed[] = [
     email: 'tom.weblead@company.com',
     password: 'TeamLead@123',
     departmentName: 'Web Development',
-    roleName: 'super_admin',
+    roleName: 'team_member',
     phone: '1234567809',
     status: 'active',
     twoFactorEnabled: true
   },
   {
     name: 'Testing user',
-    email: 'test@gmail.com',
+    email: 'bc230202687maf@vu.edu.pk',
     password: 'Test@123',
     departmentName: 'Graphics',
     roleName: 'super_admin',
@@ -141,7 +141,7 @@ export const userSeeds: IUserSeed[] = [
     email: 'mark.sociallead@company.com',
     password: 'TeamLead@123',
     departmentName: 'Social Media',
-    roleName: 'super_admin',
+    roleName: 'team_member',
     phone: '1234567811',
     status: 'active', 
     twoFactorEnabled: true

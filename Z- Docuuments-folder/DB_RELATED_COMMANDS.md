@@ -6,6 +6,9 @@ npm run migrate:new - Migrate only new models
 npm run seed:single [ModelName] - Seed a specific model
 
 
+
+
+
 ## Prisma related db commands 
 Development Workflow:
 
