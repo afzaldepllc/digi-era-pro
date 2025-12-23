@@ -18,7 +18,8 @@ import {
   Pause,
   Maximize2,
   Eye,
-  Mic
+  Mic,
+  FileAudio
 } from "lucide-react"
 import { IAttachment } from "@/types/communication"
 import { formatDistanceToNow } from "date-fns"
@@ -204,7 +205,7 @@ export const AudioPlayer = memo(function AudioPlayer({
   isVoiceMessage = false,
   onDownload
 }: {
-  src?: string
+  src: string
   duration?: number
   className?: string
   isVoiceMessage?: boolean
@@ -215,24 +216,6 @@ export const AudioPlayer = memo(function AudioPlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(initialDuration || 0)
   const [isLoading, setIsLoading] = useState(true)
-
-  // If no src provided, show a placeholder
-  if (!src) {
-    return (
-      <div className={cn(
-        "flex items-center gap-3 p-3 rounded-2xl min-w-[200px] max-w-[280px]",
-        isVoiceMessage 
-          ? "bg-emerald-500/10 border border-emerald-500/20" 
-          : "bg-muted/50 border",
-        className
-      )}>
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Mic className="h-4 w-4" />
-          <span className="text-sm">Audio unavailable</span>
-        </div>
-      </div>
-    )
-  }
 
   // Format time as mm:ss
   const formatTime = (seconds: number) => {
@@ -518,13 +501,20 @@ export const AttachmentPreview = memo(function AttachmentPreview({
                     (attachment as any).isVoiceMessage
 
     return (
-      <AudioPlayer
-        src={attachment.file_url}
-        duration={attachment.durationSeconds}
-        isVoiceMessage={isVoice}
-        onDownload={showDownload ? handleDownload : undefined}
-        className={className}
-      />
+      attachment.file_url ? (
+        <AudioPlayer
+          src={attachment.file_url}
+          duration={attachment.durationSeconds}
+          isVoiceMessage={isVoice}
+          onDownload={showDownload ? handleDownload : undefined}
+          className={className}
+        />
+      ) : (
+        <div className={cn("flex items-center gap-2 p-3 text-muted-foreground", className)}>
+          <FileAudio className="h-4 w-4" />
+          <span className="text-sm">Audio file unavailable</span>
+        </div>
+      )
     )
   }
 

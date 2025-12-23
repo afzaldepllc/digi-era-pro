@@ -1157,17 +1157,12 @@ export function useCommunications() {
         method: 'POST'
       }, false)
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update pin status')
-      }
-
       toastRef.current({
-        title: response.data.is_pinned ? "Channel pinned" : "Channel unpinned",
-        description: response.message,
+        title: response.is_pinned ? "Channel pinned" : "Channel unpinned",
+        description: "Channel pin status updated successfully",
       })
 
-      // Refresh channels to get proper sort order
-      await fetchChannels()
+      // No need to refresh channels - optimistic update and real-time sync handle it
     } catch (error: any) {
       // Revert optimistic update
       dispatch(updateChannel({
@@ -1178,7 +1173,7 @@ export function useCommunications() {
 
       throw error
     }
-  }, [dispatch, sessionUserId, fetchChannels])
+  }, [dispatch, sessionUserId])
 
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
