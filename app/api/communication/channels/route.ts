@@ -116,15 +116,36 @@ export async function GET(request: NextRequest) {
       sortedChannels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
     )
 
-    // Add pin info to each channel for easy access
-    const channelsWithPinInfo = enrichedChannels.map((channel: any) => {
+    // Add pin info and unread count to each channel for easy access
+    const channelsWithPinInfo = await Promise.all(enrichedChannels.map(async (channel: any) => {
       const memberInfo = channel.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      
+      // Calculate unread count
+      let unreadCount = 0
+      try {
+        const totalMessages = channel._count?.messages || 0
+        if (totalMessages > 0) {
+          // Count messages that don't have read receipts from current user
+          const readReceiptsCount = await prisma.read_receipts.count({
+            where: {
+              channel_id: channel.id,
+              mongo_user_id: session.user.id
+            }
+          })
+          unreadCount = Math.max(0, totalMessages - readReceiptsCount)
+        }
+      } catch (error) {
+        logger.warn('Failed to calculate unread count for channel:', channel.id, error)
+        unreadCount = 0
+      }
+      
       return {
         ...channel,
         is_pinned: memberInfo?.is_pinned || false,
-        pinned_at: memberInfo?.pinned_at || null
+        pinned_at: memberInfo?.pinned_at || null,
+        unreadCount
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

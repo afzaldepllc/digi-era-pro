@@ -698,11 +698,44 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed toast from dependencies to prevent infinite loop
 
-  const selectChannel = useCallback((channel_id: string) => {
+  const selectChannel = useCallback(async (channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
     // Clear messages to force re-fetch with enriched data
     dispatch(setMessages({ channelId: channel_id, messages: [] }))
-  }, [dispatch])
+
+    // Mark all messages in this channel as read and reset unread count
+    try {
+      const channelMessages = messages[channel_id] || []
+      const unreadMessageIds = channelMessages
+        .filter(msg => !msg.read_receipts?.some(receipt => receipt.mongo_user_id === sessionUserId))
+        .map(msg => msg.id)
+
+      if (unreadMessageIds.length > 0) {
+        // Mark messages as read via API
+        await Promise.all(unreadMessageIds.map(messageId =>
+          apiRequest('/api/communication/read-receipts', {
+            method: 'POST',
+            body: JSON.stringify({ message_id: messageId, channel_id })
+          })
+        ))
+
+        // Reset unread count for this channel
+        dispatch(updateChannel({
+          id: channel_id,
+          unreadCount: 0
+        }))
+
+        // Broadcast read receipts
+        if (sessionUserId) {
+          await Promise.all(unreadMessageIds.map(messageId =>
+            realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
+          ))
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to mark messages as read when selecting channel:', error)
+    }
+  }, [dispatch, messages, sessionUserId, realtimeManager])
 
   const clearChannel = useCallback(() => {
     dispatch(clearActiveChannel())
@@ -1221,7 +1254,13 @@ export function useCommunications() {
         method: 'POST',
         body: JSON.stringify({ message_id: messageId, channel_id })
       })
-      
+
+      // Update unread count in Redux store
+      dispatch(updateChannel({
+        id: channel_id,
+        unreadCount: (prevChannel: any) => Math.max(0, (prevChannel?.unreadCount || 0) - 1)
+      }))
+
       // Broadcast read receipt to other users in the channel
       if (sessionUserId) {
         await realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
@@ -1229,7 +1268,7 @@ export function useCommunications() {
     } catch (error) {
       logger.error('Failed to mark message as read:', error)
     }
-  }, [realtimeManager, sessionUserId])
+  }, [realtimeManager, sessionUserId, dispatch])
 
   // ============================================
   // Reaction Operations
