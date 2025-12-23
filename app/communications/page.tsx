@@ -257,7 +257,8 @@ export default function CommunicationsPage() {
         <ResizableSidebar
           defaultWidth={300}
           minWidth={200}
-          maxWidth={500}
+          // Convert 50vw to px before passing as maxWidth
+          maxWidth={typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.5) : 500}
           storageKey="communication-sidebar"
           className="hidden lg:flex border-r"
         >
