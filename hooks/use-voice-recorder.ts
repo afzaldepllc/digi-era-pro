@@ -21,8 +21,9 @@ export interface UseVoiceRecorderReturn extends VoiceRecorderState {
   cancelRecording: () => void
   resetRecording: () => void
   formatDuration: (seconds: number) => string
-  checkPermission: () => Promise<PermissionState | null>
+  checkPermission: () => Promise<'prompt' | 'granted' | 'denied' | 'unknown' | null>
   requestPermission: () => Promise<boolean>
+  forcePermissionCheck: () => Promise<void>
 }
 
 const MAX_RECORDING_DURATION = 300 // 5 minutes max
@@ -62,10 +63,23 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const startTimeRef = useRef<number>(0)
   const pausedDurationRef = useRef<number>(0)
 
-  // Check permission status on mount
+  // Load permission status from localStorage on mount
   useEffect(() => {
-    checkPermission()
+    const savedPermission = localStorage.getItem('voice-recorder-permission')
+    if (savedPermission && ['granted', 'denied'].includes(savedPermission)) {
+      setState(prev => ({ ...prev, permissionStatus: savedPermission as 'granted' | 'denied' }))
+    } else {
+      // Only check permissions if we don't have a saved state
+      checkPermission()
+    }
   }, [])
+
+  // Save permission status to localStorage whenever it changes
+  useEffect(() => {
+    if (state.permissionStatus !== 'unknown') {
+      localStorage.setItem('voice-recorder-permission', state.permissionStatus)
+    }
+  }, [state.permissionStatus])
 
   // Clean up on unmount
   useEffect(() => {
@@ -89,28 +103,95 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }, [])
 
-  // Check microphone permission status
-  const checkPermission = useCallback(async (): Promise<PermissionState | null> => {
+  // Check microphone permission status with better production support
+  const checkPermission = useCallback(async (): Promise<'prompt' | 'granted' | 'denied' | 'unknown' | null> => {
     try {
-      if (!navigator.permissions) {
-        // Permissions API not supported (common on mobile Safari, some older browsers)
-        console.debug('Permissions API not supported, will request on first use')
-        setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
-        return null
+      // First check if we have a saved permission state
+      const savedPermission = localStorage.getItem('voice-recorder-permission')
+      if (savedPermission === 'granted') {
+        setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+        return 'granted'
+      }
+      if (savedPermission === 'denied') {
+        setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+        return 'denied'
       }
 
-      const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-      setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
+      // Check Permissions API if available
+      if (navigator.permissions) {
+        try {
+          const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
 
-      // Listen for permission changes
-      result.onchange = () => {
-        setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
+          // Update state based on permission result
+          const permissionState = result.state as 'prompt' | 'granted' | 'denied'
+          setState(prev => ({ ...prev, permissionStatus: permissionState }))
+
+          // Save to localStorage for persistence
+          if (permissionState !== 'prompt') {
+            localStorage.setItem('voice-recorder-permission', permissionState)
+          }
+
+          // Listen for permission changes
+          result.onchange = () => {
+            const newState = result.state as 'prompt' | 'granted' | 'denied'
+            setState(prev => ({ ...prev, permissionStatus: newState }))
+            if (newState !== 'prompt') {
+              localStorage.setItem('voice-recorder-permission', newState)
+            }
+          }
+
+          return result.state
+        } catch (permError) {
+          // Permissions API failed - common in production, try getUserMedia test
+          console.debug('Permissions API failed, testing with getUserMedia:', permError)
+
+          // Try a quick permission test (this will trigger permission prompt if needed)
+          try {
+            const testStream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+            })
+            testStream.getTracks().forEach(track => track.stop())
+
+            setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+            localStorage.setItem('voice-recorder-permission', 'granted')
+            return 'granted'
+          } catch (testError: any) {
+            if (testError.name === 'NotAllowedError' || testError.name === 'PermissionDeniedError') {
+              setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+              localStorage.setItem('voice-recorder-permission', 'denied')
+              return 'denied'
+            }
+            // Other errors - assume prompt state
+            setState(prev => ({ ...prev, permissionStatus: 'prompt' }))
+            return 'prompt'
+          }
+        }
+      } else {
+        // Permissions API not supported - try getUserMedia test
+        console.debug('Permissions API not supported, testing with getUserMedia')
+
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+          })
+          testStream.getTracks().forEach(track => track.stop())
+
+          setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+          localStorage.setItem('voice-recorder-permission', 'granted')
+          return 'granted'
+        } catch (testError: any) {
+          if (testError.name === 'NotAllowedError' || testError.name === 'PermissionDeniedError') {
+            setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+            localStorage.setItem('voice-recorder-permission', 'denied')
+            return 'denied'
+          }
+          // Other errors - assume prompt state
+          setState(prev => ({ ...prev, permissionStatus: 'prompt' }))
+          return 'prompt'
+        }
       }
-
-      return result.state
     } catch (error) {
-      // Some browsers don't support microphone permission query
-      console.debug('Permission query not supported:', error)
+      console.error('Permission check failed:', error)
       setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
       return null
     }
@@ -179,6 +260,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       // Permission granted - stop the stream immediately
       stream.getTracks().forEach(track => track.stop())
       setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
+      localStorage.setItem('voice-recorder-permission', 'granted')
       return true
     } catch (error: any) {
       console.error('Microphone permission error:', error)
@@ -187,6 +269,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage = 'Microphone access was denied. Please click "Allow" when prompted by your browser, or check your browser settings to enable microphone access for this site.'
+        permissionStatus = 'denied'
+        localStorage.setItem('voice-recorder-permission', 'denied')
         permissionStatus = 'denied'
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         errorMessage = 'No microphone found. Please connect a microphone and try again.'
@@ -452,6 +536,14 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }))
   }, [state.audioUrl])
 
+  // Force re-check permissions (useful for production troubleshooting)
+  const forcePermissionCheck = useCallback(async () => {
+    // Clear saved permission state
+    localStorage.removeItem('voice-recorder-permission')
+    // Re-check permissions
+    await checkPermission()
+  }, [checkPermission])
+
   return {
     ...state,
     startRecording,
@@ -462,7 +554,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     resetRecording,
     formatDuration,
     checkPermission,
-    requestPermission
+    requestPermission,
+    forcePermissionCheck
   }
 }
 

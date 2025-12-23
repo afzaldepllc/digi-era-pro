@@ -18,6 +18,7 @@ import {
   Lock
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
 
 interface VoiceRecorderProps {
   onSendVoice: (audioBlob: Blob, duration: number) => Promise<void>
@@ -51,7 +52,8 @@ export function VoiceRecorder({
     resetRecording,
     formatDuration,
     checkPermission,
-    requestPermission
+    requestPermission,
+    forcePermissionCheck
   } = useVoiceRecorder()
 
   const [isSending, setIsSending] = useState(false)
@@ -77,13 +79,15 @@ export function VoiceRecorder({
         toast({
           title: "Microphone Access Required",
           description: "🔒 Click the lock icon in your browser's address bar → Click 'Allow' for microphone → Refresh the page. This is required for voice messages to work.",
-          duration: 15000
+          duration: 15000,
+          action: <ToastAction altText="Try Again" onClick={() => requestPermission()}>Try Again</ToastAction>
         })
       } else {
         toast({
           title: "Microphone Access Required",
-          description: "Please click 'Allow' when your browser asks for microphone permission.",
-          duration: 8000
+          description: "Please click 'Allow' when your browser asks for microphone permission. You may need to refresh the page after granting permission.",
+          duration: 10000,
+          action: <ToastAction altText="Try Again" onClick={() => requestPermission()}>Try Again</ToastAction>
         })
       }
       return
@@ -95,13 +99,14 @@ export function VoiceRecorder({
     }
     
     const granted = await requestPermission()
-    if (!granted && isProduction) {
+    if (!granted && permissionStatus === 'denied') {  
       // Additional guidance for production failures
       setTimeout(() => {
         toast({
-          title: "Still having issues?",
-          description: "Try refreshing the page after granting microphone permission, or use a different browser like Chrome or Firefox.",
-          duration: 10000
+          title: "Permission Still Blocked",
+          description: "If the microphone permission is still blocked, try these steps: 1) Click the lock 🔒 icon in the address bar, 2) Change microphone to 'Allow', 3) Refresh the page.",
+          duration: 15000,
+          action: <ToastAction altText="Refresh Page" onClick={() => window.location.reload()}>Refresh Page</ToastAction>
         })
       }, 3000)
     }
@@ -535,6 +540,27 @@ export function VoiceRecorder({
           <div className="font-semibold mb-1">Microphone Blocked</div>
           <div className="text-xs opacity-90 leading-tight">
             Click the 🔒 lock icon in your browser's address bar and allow microphone access, then refresh the page
+          </div>
+          <div className="mt-2 flex gap-2 justify-center">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                forcePermissionCheck()
+              }}
+              className="text-xs underline hover:no-underline"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                localStorage.removeItem('voice-recorder-permission')
+                window.location.reload()
+              }}
+              className="text-xs underline hover:no-underline"
+            >
+              Reset
+            </button>
           </div>
         </div>
       )}
