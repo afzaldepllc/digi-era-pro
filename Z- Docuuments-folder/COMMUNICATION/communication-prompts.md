@@ -23,7 +23,11 @@ there should be proper channel setting in which user can update the profile pick
 
 5) and in the project task module there should be proper button to create the proect based channel and if exist than button to navigate to that project channel's message lists and in the project overview there should be all attachments shown which are assosiate in that project channel 
 
-6) there should be proper implementation of the voice message within this communication module  according to best practices 
+6) there should be proper implementation of the voice message within this communication module  according to best practices but now there are some issue with the voice message send 
+1) ui should be whatsapp inspired and exast the same with working well flow 
+2) there is the mike permission issue in the local and in the vercel deployed app ( i have depaloyed this complete app on the vercel now )
+3) there should be handle proper send voice message like whatsapp 
+every things should be accoring to the current flow of this app and communication modules and every things should be realtime and working well 
 
 so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method
 

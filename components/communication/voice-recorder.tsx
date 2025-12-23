@@ -14,7 +14,8 @@ import {
   Send, 
   Loader2,
   MicOff,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
@@ -41,18 +42,25 @@ export function VoiceRecorder({
     audioUrl,
     error,
     isSupported,
+    permissionStatus,
     startRecording,
     stopRecording,
     pauseRecording,
     resumeRecording,
     cancelRecording,
     resetRecording,
-    formatDuration
+    formatDuration,
+    requestPermission
   } = useVoiceRecorder()
 
   const [isSending, setIsSending] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const startYRef = useRef<number>(0)
 
   // Show error toast
   useEffect(() => {
@@ -75,24 +83,63 @@ export function VoiceRecorder({
     }
   }, [audioUrl])
 
-  // Handle start recording
-  const handleStartRecording = useCallback(async () => {
+  // Handle touch/mouse events for WhatsApp-style recording
+  const handlePointerDown = useCallback(async (e: React.PointerEvent) => {
+    if (disabled || isRecording) return
+
+    e.preventDefault()
+    startYRef.current = e.clientY
+    setIsDragging(true)
+    setDragOffset(0)
+
+    // Request permission if not granted
+    if (permissionStatus !== 'granted') {
+      const granted = await requestPermission()
+      if (!granted) return
+    }
+
+    // Start recording
     await startRecording()
-  }, [startRecording])
+  }, [disabled, isRecording, permissionStatus, requestPermission, startRecording])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging || !isRecording) return
+
+    const deltaY = startYRef.current - e.clientY
+    setDragOffset(Math.max(0, Math.min(100, deltaY)))
+
+    // Lock recording if dragged up enough
+    if (deltaY > 50 && !isLocked) {
+      setIsLocked(true)
+    }
+  }, [isDragging, isRecording, isLocked])
+
+  const handlePointerUp = useCallback(async () => {
+    if (!isDragging) return
+
+    setIsDragging(false)
+
+    if (isLocked) {
+      // Keep recording, just unlock the drag
+      setIsLocked(false)
+      return
+    }
+
+    if (dragOffset > 80) {
+      // Cancel recording if dragged too far
+      await cancelRecording()
+      setDragOffset(0)
+    } else {
+      // Stop recording and prepare to send
+      await stopRecording()
+      setDragOffset(0)
+    }
+  }, [isDragging, isLocked, dragOffset, cancelRecording, stopRecording])
 
   // Handle stop recording
   const handleStopRecording = useCallback(async () => {
     await stopRecording()
   }, [stopRecording])
-
-  // Handle toggle pause
-  const handleTogglePause = useCallback(() => {
-    if (isPaused) {
-      resumeRecording()
-    } else {
-      pauseRecording()
-    }
-  }, [isPaused, pauseRecording, resumeRecording])
 
   // Handle cancel
   const handleCancel = useCallback(() => {
@@ -154,63 +201,89 @@ export function VoiceRecorder({
     )
   }
 
-  // Recording state - show recording controls
+  // Recording state - WhatsApp style
   if (isRecording) {
     const progressPercent = (duration / maxDuration) * 100
+    const cancelThreshold = 80
+    const isNearCancel = dragOffset > cancelThreshold
 
     return (
-      <div className={cn(
-        "flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20",
-        className
-      )}>
-        {/* Recording indicator */}
-        <div className="relative">
-          <div className={cn(
-            "h-3 w-3 rounded-full bg-red-500",
-            !isPaused && "animate-pulse"
-          )} />
-        </div>
-
-        {/* Duration and progress */}
-        <div className="flex-1 space-y-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-red-500">
-              {isPaused ? 'Paused' : 'Recording...'}
-            </span>
-            <span className="tabular-nums">{formatDuration(duration)}</span>
+      <div 
+        ref={containerRef}
+        className={cn(
+          "fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm",
+          className
+        )}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <div className="flex flex-col items-center gap-6 p-8 bg-background rounded-2xl shadow-2xl max-w-sm mx-4">
+          {/* Recording indicator */}
+          <div className="relative">
+            <div className={cn(
+              "h-20 w-20 rounded-full bg-red-500 flex items-center justify-center transition-all duration-200",
+              isNearCancel && "bg-red-700 scale-110",
+              isLocked && "bg-blue-500"
+            )}>
+              {isLocked ? (
+                <Lock className="h-8 w-8 text-white" />
+              ) : (
+                <Mic className={cn(
+                  "h-8 w-8 text-white",
+                  !isPaused && "animate-pulse"
+                )} />
+              )}
+            </div>
+            
+            {/* Drag indicator */}
+            {isDragging && !isLocked && (
+              <div 
+                className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-8 bg-white rounded-full transition-all"
+                style={{ transform: `translateX(-50%) translateY(${dragOffset * 0.5}px)` }}
+              />
+            )}
           </div>
-          <Progress value={progressPercent} className="h-1" />
+
+          {/* Duration and status */}
+          <div className="text-center">
+            <div className="text-2xl font-mono font-bold text-foreground mb-2">
+              {formatDuration(duration)}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {isLocked ? 'Recording locked - release to stop' : 
+               isNearCancel ? 'Release to cancel' : 
+               isPaused ? 'Recording paused' : 'Recording...'}
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full">
+            <Progress value={progressPercent} className="h-2" />
+          </div>
+
+          {/* Instructions */}
+          <div className="text-center text-xs text-muted-foreground">
+            {!isLocked && (
+              <div>Slide up to lock • Slide down to cancel</div>
+            )}
+            {isLocked && (
+              <div>Tap the mic to stop recording</div>
+            )}
+          </div>
+
+          {/* Stop button (only when locked) */}
+          {isLocked && (
+            <Button
+              variant="destructive"
+              size="lg"
+              className="rounded-full h-12 w-12 p-0"
+              onClick={handleStopRecording}
+            >
+              <Square className="h-6 w-6" />
+            </Button>
+          )}
         </div>
-
-        {/* Pause/Resume button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleTogglePause}
-        >
-          {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-        </Button>
-
-        {/* Stop button */}
-        <Button
-          variant="secondary"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleStopRecording}
-        >
-          <Square className="h-4 w-4" />
-        </Button>
-
-        {/* Cancel button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          onClick={handleCancel}
-        >
-          <X className="h-4 w-4" />
-        </Button>
       </div>
     )
   }
@@ -219,7 +292,7 @@ export function VoiceRecorder({
   if (audioBlob && audioUrl) {
     return (
       <div className={cn(
-        "flex items-center gap-3 p-3 rounded-lg bg-primary/5 border",
+        "flex items-center gap-3 p-4 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20",
         className
       )}>
         {/* Hidden audio element */}
@@ -229,34 +302,37 @@ export function VoiceRecorder({
         <Button
           variant="outline"
           size="icon"
-          className="h-10 w-10 rounded-full"
+          className="h-12 w-12 rounded-full border-2"
           onClick={handleTogglePlayback}
         >
-          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
         </Button>
 
-        {/* Duration info */}
-        <div className="flex-1">
-          <p className="text-sm font-medium">Voice Message</p>
-          <p className="text-xs text-muted-foreground">{formatDuration(duration)}</p>
+        {/* Waveform visualization placeholder */}
+        <div className="flex-1 flex items-center gap-1 px-2">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-8 w-1 bg-primary/60 rounded-full animate-pulse"
+              style={{
+                animationDelay: `${i * 0.1}s`,
+                height: `${Math.random() * 20 + 8}px`
+              }}
+            />
+          ))}
         </div>
 
-        {/* Delete button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          onClick={handleDelete}
-          disabled={isSending}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {/* Duration */}
+        <div className="text-sm font-medium min-w-[40px] text-center">
+          {formatDuration(duration)}
+        </div>
 
         {/* Send button */}
         <Button
           size="sm"
           onClick={handleSend}
           disabled={isSending || disabled}
+          className="rounded-full px-4"
         >
           {isSending ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -265,22 +341,49 @@ export function VoiceRecorder({
           )}
           Send
         </Button>
+
+        {/* Delete button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+          onClick={handleDelete}
+          disabled={isSending}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     )
   }
 
-  // Default state - show record button
+  // Default state - WhatsApp style mic button
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className={cn("h-9 w-9", className)}
-      onClick={handleStartRecording}
-      disabled={disabled}
-      title="Record voice message"
-    >
-      <Mic className="h-5 w-5" />
-    </Button>
+    <div className={cn("relative", className)}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn(
+          "h-12 w-12 rounded-full transition-all duration-200",
+          permissionStatus === 'granted' ? "hover:bg-red-500/10 hover:text-red-500" : "hover:bg-muted",
+          disabled && "opacity-50 cursor-not-allowed"
+        )}
+        onPointerDown={handlePointerDown}
+        disabled={disabled}
+        title={permissionStatus === 'granted' ? "Hold to record voice message" : "Click to enable microphone"}
+      >
+        <Mic className={cn(
+          "h-6 w-6 transition-colors",
+          permissionStatus === 'granted' && "text-red-500"
+        )} />
+      </Button>
+      
+      {/* Permission hint */}
+      {permissionStatus !== 'granted' && (
+        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md whitespace-nowrap">
+          Click to enable microphone
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -319,16 +422,18 @@ export function CompactVoiceRecorder({
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className={cn("h-9 w-9", className)}
-      onClick={() => setIsExpanded(true)}
-      disabled={disabled}
-      title="Record voice message"
-    >
-      <Mic className="h-5 w-5" />
-    </Button>
+    <div className={cn("relative", className)}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        onClick={() => setIsExpanded(true)}
+        disabled={disabled}
+        title="Record voice message"
+      >
+        <Mic className="h-5 w-5" />
+      </Button>
+    </div>
   )
 }
 

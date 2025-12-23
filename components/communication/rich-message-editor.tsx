@@ -666,7 +666,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         </div>
 
                         {/* Voice message button */}
-                        {onSendVoice && (
+                        {onSendVoice && !showVoiceRecorder && (
                             <button 
                                 className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" 
                                 onClick={() => setShowVoiceRecorder(true)} 
@@ -712,19 +712,16 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     </div>
                 </div>
 
-                {/* Voice Recorder Overlay */}
+                {/* Voice Recorder - now handles its own overlay */}
                 {showVoiceRecorder && onSendVoice && (
-                    <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm rounded-lg flex items-center justify-center p-4">
-                        <VoiceRecorder
-                            onSendVoice={async (blob, duration) => {
-                                await onSendVoice(blob, duration)
-                                setShowVoiceRecorder(false)
-                            }}
-                            onCancel={() => setShowVoiceRecorder(false)}
-                            disabled={disabled}
-                            className="w-full"
-                        />
-                    </div>
+                    <VoiceRecorder
+                        onSendVoice={async (blob, duration) => {
+                            await onSendVoice(blob, duration)
+                            setShowVoiceRecorder(false)
+                        }}
+                        onCancel={() => setShowVoiceRecorder(false)}
+                        disabled={disabled}
+                    />
                 )}
             </div>
         )

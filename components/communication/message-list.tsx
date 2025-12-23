@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment, IGroupedReaction } from "@/types/communication"
 import { AttachmentGrid } from "./attachment-preview"
+import { AudioPlayer } from "./attachment-preview"
 import { QuickReactionBar, MessageReactions } from "./reaction-picker"
 import { formatDistanceToNow, format } from "date-fns"
 import {
@@ -472,19 +473,45 @@ export function MessageList({
                 </button>
               )}
               
-              <HtmlTextRenderer
-              content={message.content}
-              fallbackText="No description"
-              showFallback={true}
-              renderAsHtml={true}
-              className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
-              truncateHtml={false}
-              />
+              {/* Render content based on type */}
+              {message.content_type === 'audio' && message.attachments && message.attachments.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Voice message content */}
+                  {message.content && message.content !== '🎤 Voice message' && (
+                    <HtmlTextRenderer
+                      content={message.content}
+                      fallbackText=""
+                      showFallback={false}
+                      renderAsHtml={true}
+                      className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
+                      truncateHtml={false}
+                    />
+                  )}
+                  {/* Audio player for voice messages */}
+                  <AudioPlayer
+                    src={message.attachments[0].file_url}
+                    duration={message.attachments[0].durationSeconds}
+                    className="max-w-xs"
+                    isVoiceMessage={true}
+                  />
+                </div>
+              ) : (
+                <>
+                  <HtmlTextRenderer
+                    content={message.content}
+                    fallbackText="No description"
+                    showFallback={true}
+                    renderAsHtml={true}
+                    className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
+                    truncateHtml={false}
+                  />
 
-            {/* Attachments */}
-            {message.attachments && message.attachments.length > 0 && 
-              renderAttachments(message.attachments)
-            }
+                  {/* Attachments */}
+                  {message.attachments && message.attachments.length > 0 && 
+                    renderAttachments(message.attachments)
+                  }
+                </>
+              )}
             
             {/* Quick reaction bar (visible on hover) */}
             {onReaction && (
