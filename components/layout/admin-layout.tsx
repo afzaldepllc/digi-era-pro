@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { RouteGuard } from "../auth/route-guard"
 import { usePathname } from "next/navigation"
+import { ResizableSidebar } from "../communication/resizable-sidebar"
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -52,7 +53,9 @@ export const AdminLayout = memo(function AdminLayout({ children }: AdminLayoutPr
   return (
     <ProfessionalAuthGuard>
       <div className="flex min-h-screen bg-background">
-        <Sidebar />
+       
+          <Sidebar />
+
         <div className="flex flex-1 flex-col min-w-0">
           <Header />
           <main className={`flex-1 overflow-y-auto relative ${isCommunicationsRoute ? 'p-0' : 'p-4 lg:p-6 lg:pt-6 pt-16'}`}>

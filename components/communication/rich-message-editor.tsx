@@ -226,6 +226,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     activeReplyTo?.id,
                     activeEditMessage?.id
                 )
+                console.log("Send requested from editor, success:", success)
                 if (success) {
                     editor.commands.setContent('')
                     setAttachments([])

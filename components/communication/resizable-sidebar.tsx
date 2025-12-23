@@ -45,6 +45,13 @@ export function ResizableSidebar({
     }
   }, [storageKey, minWidth, maxWidth])
 
+  // Update width when props change
+  useEffect(() => {
+    const clampedWidth = Math.max(minWidth, Math.min(maxWidth, defaultWidth))
+    setWidth(clampedWidth)
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${storageKey}`, String(clampedWidth))
+  }, [defaultWidth, minWidth, maxWidth, storageKey])
+
   // Save width to localStorage when it changes
   const saveWidth = useCallback((newWidth: number) => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${storageKey}`, String(newWidth))
