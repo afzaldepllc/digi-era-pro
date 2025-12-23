@@ -88,6 +88,7 @@ export function VoiceRecorder({
     if (disabled || isRecording) return
 
     e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
     startYRef.current = e.clientY
     setIsDragging(true)
     setDragOffset(0)
@@ -95,28 +96,40 @@ export function VoiceRecorder({
     // Request permission if not granted
     if (permissionStatus !== 'granted') {
       const granted = await requestPermission()
-      if (!granted) return
+      if (!granted) {
+        setIsDragging(false)
+        return
+      }
     }
 
     // Start recording
-    await startRecording()
+    try {
+      await startRecording()
+    } catch (error) {
+      console.error('Failed to start recording:', error)
+      setIsDragging(false)
+    }
   }, [disabled, isRecording, permissionStatus, requestPermission, startRecording])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !isRecording) return
 
     const deltaY = startYRef.current - e.clientY
-    setDragOffset(Math.max(0, Math.min(100, deltaY)))
+    const clampedOffset = Math.max(-100, Math.min(100, deltaY))
+    setDragOffset(clampedOffset)
 
     // Lock recording if dragged up enough
     if (deltaY > 50 && !isLocked) {
       setIsLocked(true)
+    } else if (deltaY < 30 && isLocked) {
+      setIsLocked(false)
     }
   }, [isDragging, isRecording, isLocked])
 
-  const handlePointerUp = useCallback(async () => {
+  const handlePointerUp = useCallback(async (e: React.PointerEvent) => {
     if (!isDragging) return
 
+    e.currentTarget.releasePointerCapture(e.pointerId)
     setIsDragging(false)
 
     if (isLocked) {
@@ -125,8 +138,9 @@ export function VoiceRecorder({
       return
     }
 
-    if (dragOffset > 80) {
-      // Cancel recording if dragged too far
+    const cancelThreshold = 80
+    if (dragOffset > cancelThreshold) {
+      // Cancel recording if dragged too far down
       await cancelRecording()
       setDragOffset(0)
     } else {
@@ -205,94 +219,135 @@ export function VoiceRecorder({
   if (isRecording) {
     const progressPercent = (duration / maxDuration) * 100
     const cancelThreshold = 80
+    const lockThreshold = 50
     const isNearCancel = dragOffset > cancelThreshold
+    const isNearLock = dragOffset < -lockThreshold
 
     return (
       <div 
         ref={containerRef}
         className={cn(
-          "fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm",
+          "fixed inset-0 z-50 flex items-center justify-center",
+          "bg-black/60 backdrop-blur-sm",
           className
         )}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        <div className="flex flex-col items-center gap-6 p-8 bg-background rounded-2xl shadow-2xl max-w-sm mx-4">
-          {/* Recording indicator */}
-          <div className="relative">
+        <div className="flex flex-col items-center gap-8 p-8">
+          {/* Recording indicator - WhatsApp style */}
+          <div className="relative flex flex-col items-center gap-4">
+            {/* Main recording circle */}
             <div className={cn(
-              "h-20 w-20 rounded-full bg-red-500 flex items-center justify-center transition-all duration-200",
-              isNearCancel && "bg-red-700 scale-110",
-              isLocked && "bg-blue-500"
+              "relative h-24 w-24 rounded-full flex items-center justify-center transition-all duration-200",
+              isNearCancel ? "bg-red-600 scale-110" : 
+              isLocked ? "bg-blue-500" : "bg-red-500"
             )}>
+              {/* Pulsing rings */}
+              {!isPaused && !isNearCancel && !isLocked && (
+                <>
+                  <div className="absolute inset-0 rounded-full border-4 border-red-500/30 animate-ping" />
+                  <div className="absolute inset-2 rounded-full border-2 border-red-500/20 animate-ping" style={{ animationDelay: '0.5s' }} />
+                </>
+              )}
+              
+              {/* Icon */}
               {isLocked ? (
-                <Lock className="h-8 w-8 text-white" />
+                <Lock className="h-10 w-10 text-white" />
+              ) : isNearCancel ? (
+                <X className="h-10 w-10 text-white" />
               ) : (
                 <Mic className={cn(
-                  "h-8 w-8 text-white",
+                  "h-10 w-10 text-white",
                   !isPaused && "animate-pulse"
                 )} />
               )}
             </div>
-            
-            {/* Drag indicator */}
+
+            {/* Drag indicators */}
             {isDragging && !isLocked && (
-              <div 
-                className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-8 bg-white rounded-full transition-all"
-                style={{ transform: `translateX(-50%) translateY(${dragOffset * 0.5}px)` }}
-              />
+              <>
+                {/* Lock indicator (slide up) */}
+                <div className={cn(
+                  "absolute -top-16 left-1/2 transform -translate-x-1/2 transition-all duration-200 flex flex-col items-center gap-1",
+                  dragOffset < -20 ? "opacity-100 scale-100" : "opacity-50 scale-75"
+                )}>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                    <Lock className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="text-xs text-white/60">Lock</div>
+                </div>
+
+                {/* Cancel indicator (slide down) */}
+                <div className={cn(
+                  "absolute -bottom-16 left-1/2 transform -translate-x-1/2 transition-all duration-200 flex flex-col items-center gap-1",
+                  dragOffset > 20 ? "opacity-100 scale-100" : "opacity-50 scale-75"
+                )}>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                    <X className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="text-xs text-white/60">Cancel</div>
+                </div>
+              </>
+            )}
+
+            {/* Unlock indicator (when locked, slide down to unlock) */}
+            {isDragging && isLocked && (
+              <div className={cn(
+                "absolute -bottom-16 left-1/2 transform -translate-x-1/2 transition-all duration-200 flex flex-col items-center gap-1",
+                dragOffset > 20 ? "opacity-100 scale-100" : "opacity-50 scale-75"
+              )}>
+                <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                  <Lock className="h-5 w-5 text-white" />
+                </div>
+                <div className="text-xs text-white/60">Unlock</div>
+              </div>
             )}
           </div>
 
           {/* Duration and status */}
           <div className="text-center">
-            <div className="text-2xl font-mono font-bold text-foreground mb-2">
+            <div className="text-3xl font-mono font-bold text-white mb-2 drop-shadow-lg">
               {formatDuration(duration)}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {isLocked ? 'Recording locked - release to stop' : 
+            <div className="text-white/80 text-sm drop-shadow">
+              {isLocked ? 'Slide down to unlock' : 
                isNearCancel ? 'Release to cancel' : 
+               isNearLock ? 'Release to lock' :
                isPaused ? 'Recording paused' : 'Recording...'}
             </div>
           </div>
 
           {/* Progress bar */}
-          <div className="w-full">
-            <Progress value={progressPercent} className="h-2" />
+          <div className="w-64">
+            <Progress 
+              value={progressPercent} 
+              className="h-1 bg-white/20 [&>div]:bg-white" 
+            />
           </div>
 
           {/* Instructions */}
-          <div className="text-center text-xs text-muted-foreground">
-            {!isLocked && (
+          {!isLocked && (
+            <div className="text-center text-xs text-white/60 drop-shadow">
               <div>Slide up to lock • Slide down to cancel</div>
-            )}
-            {isLocked && (
-              <div>Tap the mic to stop recording</div>
-            )}
-          </div>
-
-          {/* Stop button (only when locked) */}
+            </div>
+          )}
           {isLocked && (
-            <Button
-              variant="destructive"
-              size="lg"
-              className="rounded-full h-12 w-12 p-0"
-              onClick={handleStopRecording}
-            >
-              <Square className="h-6 w-6" />
-            </Button>
+            <div className="text-center text-xs text-white/60 drop-shadow">
+              <div>Slide down to unlock and stop</div>
+            </div>
           )}
         </div>
       </div>
     )
   }
 
-  // Preview state - show recorded audio
+  // Preview state - show recorded audio (WhatsApp style)
   if (audioBlob && audioUrl) {
     return (
       <div className={cn(
-        "flex items-center gap-3 p-4 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20",
+        "flex items-center gap-3 p-4 rounded-2xl bg-primary/5 border border-primary/20",
         className
       )}>
         {/* Hidden audio element */}
@@ -302,56 +357,64 @@ export function VoiceRecorder({
         <Button
           variant="outline"
           size="icon"
-          className="h-12 w-12 rounded-full border-2"
+          className="h-12 w-12 rounded-full border-2 hover:bg-primary hover:text-primary-foreground transition-colors"
           onClick={handleTogglePlayback}
         >
           {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
         </Button>
 
-        {/* Waveform visualization placeholder */}
-        <div className="flex-1 flex items-center gap-1 px-2">
-          {Array.from({ length: 20 }).map((_, i) => (
+        {/* Waveform visualization */}
+        <div className="flex-1 flex items-center gap-0.5 px-2 min-w-0">
+          {Array.from({ length: 30 }).map((_, i) => (
             <div
               key={i}
-              className="h-8 w-1 bg-primary/60 rounded-full animate-pulse"
+              className={cn(
+                "flex-1 bg-primary/60 rounded-full transition-all duration-200",
+                isPlaying && "animate-pulse"
+              )}
               style={{
-                animationDelay: `${i * 0.1}s`,
-                height: `${Math.random() * 20 + 8}px`
+                height: `${Math.sin(i * 0.5) * 8 + 12}px`,
+                minHeight: '4px',
+                animationDelay: `${i * 0.05}s`
               }}
             />
           ))}
         </div>
 
         {/* Duration */}
-        <div className="text-sm font-medium min-w-[40px] text-center">
+        <div className="text-sm font-medium min-w-[40px] text-center text-muted-foreground">
           {formatDuration(duration)}
         </div>
 
-        {/* Send button */}
-        <Button
-          size="sm"
-          onClick={handleSend}
-          disabled={isSending || disabled}
-          className="rounded-full px-4"
-        >
-          {isSending ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4 mr-2" />
-          )}
-          Send
-        </Button>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          {/* Delete button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            onClick={handleDelete}
+            disabled={isSending}
+            title="Delete recording"
+          >
+            <Trash2 className="h-5 w-5" />
+          </Button>
 
-        {/* Delete button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
-          onClick={handleDelete}
-          disabled={isSending}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          {/* Send button */}
+          <Button
+            size="sm"
+            onClick={handleSend}
+            disabled={isSending || disabled}
+            className="rounded-full px-6 bg-primary hover:bg-primary/90"
+          >
+            {isSending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            Send
+          </Button>
+        </div>
       </div>
     )
   }
@@ -364,22 +427,38 @@ export function VoiceRecorder({
         size="icon"
         className={cn(
           "h-12 w-12 rounded-full transition-all duration-200",
-          permissionStatus === 'granted' ? "hover:bg-red-500/10 hover:text-red-500" : "hover:bg-muted",
+          permissionStatus === 'granted' 
+            ? "hover:bg-red-500/10 active:bg-red-500/20" 
+            : "hover:bg-muted active:bg-muted/80",
           disabled && "opacity-50 cursor-not-allowed"
         )}
         onPointerDown={handlePointerDown}
         disabled={disabled}
-        title={permissionStatus === 'granted' ? "Hold to record voice message" : "Click to enable microphone"}
+        title={
+          permissionStatus === 'denied' 
+            ? "Microphone access denied. Click to retry." 
+            : permissionStatus === 'granted' 
+              ? "Hold to record voice message" 
+              : "Click to enable microphone"
+        }
       >
         <Mic className={cn(
           "h-6 w-6 transition-colors",
-          permissionStatus === 'granted' && "text-red-500"
+          permissionStatus === 'granted' && "text-red-500",
+          permissionStatus === 'denied' && "text-muted-foreground"
         )} />
       </Button>
       
-      {/* Permission hint */}
-      {permissionStatus !== 'granted' && (
-        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md whitespace-nowrap">
+      {/* Permission status indicator */}
+      {permissionStatus === 'denied' && (
+        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+          <MicOff className="h-3 w-3 inline mr-1" />
+          Microphone blocked
+        </div>
+      )}
+      
+      {permissionStatus === 'unknown' && (
+        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
           Click to enable microphone
         </div>
       )}

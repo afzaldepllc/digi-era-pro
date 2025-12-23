@@ -193,6 +193,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       } else if (error.name === 'AbortError') {
         errorMessage = 'Microphone access was interrupted. Please try again.'
         permissionStatus = 'prompt'
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage = 'Voice recording is not supported in this browser. Please try a different browser.'
+        permissionStatus = 'denied'
       }
 
       setState(prev => ({ ...prev, error: errorMessage, permissionStatus }))
