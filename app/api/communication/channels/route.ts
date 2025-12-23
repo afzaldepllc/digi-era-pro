@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
         try {
           await supabase.channel(`user:${memberId}:channels`).send({
             type: 'broadcast',
-            event: 'channel_update',
+            event: 'new_channel',
             payload: {
               id: enrichedChannel.id,
               type: 'new_channel',

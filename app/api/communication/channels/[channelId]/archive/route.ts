@@ -84,7 +84,7 @@ export async function POST(
 
       // Broadcast channel update to all members for real-time sync
       try {
-        const rtChannel = supabase.channel(`channel:${channelId}`)
+        const rtChannel = supabase.channel(`rt_${channelId}`)
         await rtChannel.send({
           type: 'broadcast',
           event: 'channel_update',
@@ -132,7 +132,7 @@ export async function POST(
 
       // Broadcast channel update to all members for real-time sync
       try {
-        const rtChannel = supabase.channel(`channel:${channelId}`)
+        const rtChannel = supabase.channel(`rt_${channelId}`)
         await rtChannel.send({
           type: 'broadcast',
           event: 'channel_update',

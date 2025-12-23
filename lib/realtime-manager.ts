@@ -401,8 +401,8 @@ export class RealtimeManager {
       this.userChannelsChannel = supabase.channel(`user:${userId}:channels`)
 
       this.userChannelsChannel
-        .on('broadcast', { event: 'channel_update' }, (payload) => {
-          console.log('📢 Received channel update:', payload.payload)
+        .on('broadcast', { event: 'new_channel' }, (payload) => {
+          console.log('📢 Received new channel:', payload.payload)
           this.eventHandlers.onChannelUpdate?.(payload.payload)
         })
 
@@ -516,6 +516,11 @@ export class RealtimeManager {
         })
         .on('broadcast', { event: 'channel_update' }, (payload) => {
           console.log('🔔 Realtime: Channel update', payload)
+          this.eventHandlers.onChannelUpdate?.(payload.payload)
+        })
+        .on('broadcast', { event: 'member_update' }, (payload) => {
+          console.log('👥 Realtime: Member update', payload)
+          // Handle member updates (add/remove) - can use the same handler
           this.eventHandlers.onChannelUpdate?.(payload.payload)
         })
         .on('broadcast', { event: 'message_read' }, (payload) => {

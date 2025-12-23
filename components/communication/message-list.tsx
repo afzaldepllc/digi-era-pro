@@ -488,12 +488,14 @@ export function MessageList({
                     />
                   )}
                   {/* Audio player for voice messages */}
-                  <AudioPlayer
-                    src={message.attachments[0].file_url}
-                    duration={message.attachments[0].durationSeconds}
-                    className="max-w-xs"
-                    isVoiceMessage={true}
-                  />
+                  {message.attachments[0].file_url && (
+                    <AudioPlayer
+                      src={message.attachments[0].file_url}
+                      duration={message.attachments[0].durationSeconds}
+                      className="max-w-xs"
+                      isVoiceMessage={true}
+                    />
+                  )}
                 </div>
               ) : (
                 <>

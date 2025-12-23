@@ -332,10 +332,13 @@ export function useCommunications() {
   // Handle channel update (archive/unarchive, settings changes, new channels, etc.)
   const onChannelUpdate = useCallback((data: {
     id: string;
-    type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel';
+    type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel' | 'channel_removed' | 'member_added' | 'member_removed';
     channel?: any;
     member_id?: string;
     members?: any[];
+    channelId?: string;
+    memberId?: string;
+    user?: any;
   }) => {
     logger.debug('🔄 Channel update received:', data)
     
@@ -360,8 +363,34 @@ export function useCommunications() {
       } else {
         logger.debug('⚠️ User is not a member of this channel, skipping')
       }
+    } else if (data.type === 'channel_removed') {
+      // Current user was removed from channel
+      dispatch(removeChannel(data.id))
+      // Update cache
+      communicationCache.removeChannelFromCache(data.id)
+      toastRef.current({
+        title: "Removed from Channel",
+        description: `You've been removed from a channel`,
+        variant: "destructive"
+      })
+      logger.debug('👋 Current user removed from channel:', data.id)
+    } else if (data.type === 'member_added' && data.memberId === sessionUserId) {
+      // Current user was added to channel
+      // Note: This should be handled by the 'new_channel' event, but as backup
+      logger.debug('➕ Current user added to channel:', data.channelId)
+    } else if (data.type === 'member_removed' && data.memberId === sessionUserId) {
+      // Current user was removed from channel
+      dispatch(removeChannel(data.channelId || data.id))
+      // Update cache
+      communicationCache.removeChannelFromCache(data.channelId || data.id)
+      toastRef.current({
+        title: "Removed from Channel",
+        description: `You've been removed from a channel`,
+        variant: "destructive"
+      })
+      logger.debug('👋 Current user removed from channel:', data.channelId || data.id)
     } else if (data.type === 'member_left' && data.member_id === sessionUserId) {
-      // Current user was removed or left - remove channel from list
+      // Current user left channel
       dispatch(removeChannel(data.id))
       // Update cache
       communicationCache.removeChannelFromCache(data.id)
@@ -593,6 +622,9 @@ export function useCommunications() {
     if (sessionUserId) {
       realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
         logger.error('Failed to subscribe to notifications:', err)
+      })
+      realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
+        logger.error('Failed to subscribe to user channels:', err)
       })
     }
     
