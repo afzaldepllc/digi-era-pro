@@ -32,7 +32,7 @@ export function CreateChannelModal({
 }: CreateChannelModalProps) {
   const [channelType, setChannelType] = useState<ChannelType>('group')
   const [channelName, setChannelName] = useState('')
-  const [isPrivate, setIsPrivate] = useState(false)
+  const [isPrivate, setIsPrivate] = useState(true)
   const [selectedDepartment, setSelectedDepartment] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<DepartmentCategory>('sales')
   const [selectedCategories, setSelectedCategories] = useState<DepartmentCategory[]>([])
@@ -156,7 +156,7 @@ export function CreateChannelModal({
 
       // Reset form
       setChannelName('')
-      setIsPrivate(false)
+      setIsPrivate(true)
       setSelectedDepartment('')
       setSelectedCategory('sales')
       setSelectedCategories([])
@@ -315,7 +315,7 @@ export function CreateChannelModal({
             </div>
 
             {/* Privacy Setting */}
-            <div className="flex items-center space-x-2">
+            {/* <div className="flex items-center space-x-2">
               <Checkbox
                 id="private"
                 checked={isPrivate}
@@ -324,7 +324,7 @@ export function CreateChannelModal({
               <Label htmlFor="private" className="cursor-pointer font-normal">
                 Private Channel (hidden from non-members)
               </Label>
-            </div>
+            </div> */}
 
             {/* Type-Specific Fields */}
             {channelType === 'group' && (
