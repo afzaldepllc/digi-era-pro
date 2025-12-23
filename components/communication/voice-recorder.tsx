@@ -56,6 +56,9 @@ export function VoiceRecorder({
     forcePermissionCheck
   } = useVoiceRecorder()
 
+  // Explicitly type permissionStatus to ensure TypeScript understands all possible values
+  const typedPermissionStatus: 'prompt' | 'granted' | 'denied' | 'unknown' = permissionStatus
+
   const [isSending, setIsSending] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
@@ -73,7 +76,7 @@ export function VoiceRecorder({
                        !window.location.hostname.includes('10.') &&
                        !window.location.hostname.includes('172.')
     
-    if (permissionStatus === 'denied') {
+    if (typedPermissionStatus === 'denied') {
       // Provide specific guidance for both development and production
       if (isProduction) {
         toast({
@@ -110,7 +113,7 @@ export function VoiceRecorder({
         })
       }, 3000)
     }
-  }, [permissionStatus, requestPermission])
+  }, [typedPermissionStatus, requestPermission])
 
   // Check permissions on mount and when component becomes visible
   useEffect(() => {
@@ -177,7 +180,7 @@ export function VoiceRecorder({
     setDragOffset(0)
 
     // Request permission if not granted
-    if (permissionStatus !== 'granted') {
+    if (typedPermissionStatus !== 'granted') {
       const granted = await requestPermission()
       if (!granted) {
         setIsDragging(false)
@@ -510,31 +513,31 @@ export function VoiceRecorder({
         size="icon"
         className={cn(
           "h-12 w-12 rounded-full transition-all duration-200",
-          permissionStatus === 'granted' 
+          typedPermissionStatus === 'granted' 
             ? "hover:bg-red-500/10 active:bg-red-500/20" 
             : "hover:bg-muted active:bg-muted/80",
           disabled && "opacity-50 cursor-not-allowed"
         )}
-        onPointerDown={permissionStatus === 'granted' ? handlePointerDown : undefined}
-        onClick={permissionStatus !== 'granted' ? handlePermissionRequest : undefined}
+        onPointerDown={typedPermissionStatus === 'granted' ? handlePointerDown : undefined}
+        onClick={typedPermissionStatus !== 'granted' ? handlePermissionRequest : undefined}
         disabled={disabled}
         title={
-          permissionStatus === 'denied' 
+          typedPermissionStatus === 'denied' 
             ? "Microphone access denied. Click to retry." 
-            : permissionStatus === 'granted' 
+            : typedPermissionStatus === 'granted' 
               ? "Hold to record voice message" 
               : "Click to enable microphone"
         }
       >
         <Mic className={cn(
           "h-6 w-6 transition-colors",
-          permissionStatus === 'granted' && "text-red-500",
-          permissionStatus === 'denied' && "text-muted-foreground"
+          typedPermissionStatus === 'granted' && "text-red-500",
+          typedPermissionStatus === 'denied' && "text-muted-foreground"
         )} />
       </Button>
       
       {/* Permission status indicator */}
-      {permissionStatus === 'denied' && (
+      {typedPermissionStatus === 'denied' && (
         <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-4 py-3 rounded-lg shadow-lg whitespace-nowrap max-w-xs text-center border">
           <MicOff className="h-4 w-4 inline mr-2" />
           <div className="font-semibold mb-1">Microphone Blocked</div>
@@ -565,7 +568,7 @@ export function VoiceRecorder({
         </div>
       )}
       
-      {permissionStatus === 'unknown' && (
+      {typedPermissionStatus === 'unknown' && (
         <div className="absolute -top-14 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-2 rounded-lg shadow-lg whitespace-nowrap">
           <Mic className="h-3 w-3 inline mr-1" />
           Click to enable microphone
