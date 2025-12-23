@@ -8,6 +8,13 @@ import {
   CommunicationSort
 } from '@/types/communication'
 
+// Type for updateChannel payload that allows functions for numeric fields
+type UpdateChannelPayload = {
+  id: string;
+} & Partial<{
+  [K in keyof IChannel]: IChannel[K] | ((prev: IChannel[K]) => IChannel[K])
+}>
+
 // State interface
 interface CommunicationState {
   // Channel management
@@ -543,13 +550,33 @@ const communicationSlice = createSlice({
     },
     
     // Update an existing channel (real-time)
-    updateChannel: (state, action: PayloadAction<Partial<IChannel> & { id: string }>) => {
+    updateChannel: (state, action: PayloadAction<UpdateChannelPayload>) => {
       const index = state.channels.findIndex(c => c.id === action.payload.id)
       if (index !== -1) {
-        state.channels[index] = { ...state.channels[index], ...action.payload }
+        const channel = state.channels[index]
+        Object.keys(action.payload).forEach(key => {
+          if (key !== 'id') {
+            const value = (action.payload as any)[key]
+            if (typeof value === 'function') {
+              (channel as any)[key] = value((channel as any)[key])
+            } else {
+              (channel as any)[key] = value
+            }
+          }
+        })
         // Also update selectedChannel if it's the same
         if (state.selectedChannel?.id === action.payload.id) {
-          state.selectedChannel = { ...state.selectedChannel, ...action.payload }
+          const selectedChannel = state.selectedChannel
+          Object.keys(action.payload).forEach(key => {
+            if (key !== 'id') {
+              const value = (action.payload as any)[key]
+              if (typeof value === 'function') {
+                (selectedChannel as any)[key] = value((selectedChannel as any)[key])
+              } else {
+                (selectedChannel as any)[key] = value
+              }
+            }
+          })
         }
       }
     },

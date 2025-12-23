@@ -67,6 +67,20 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
     )
   }, [users, (session?.user as any)?.id]);
   
+  const getUserUnreadCount = (user: User) => {
+    const currentUserId = (session?.user as any)?.id
+    if (!currentUserId) return 0
+    
+    // Find DM channel with this user
+    const dmChannel = channels.find(channel => {
+      if (channel.type !== 'dm') return false
+      const memberIds = channel.channel_members.map(m => m.mongo_member_id)
+      return memberIds.includes(currentUserId) && memberIds.includes(user._id.toString())
+    })
+    
+    return dmChannel ? (dmChannel.unreadCount || 0) : 0
+  }
+  
   // Sort users by recent message activity
   // Users with recent DM messages appear first
   const sortedUsers = useMemo(() => {
@@ -101,8 +115,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
       
-      const aHasUnread = getUserHasUnread(a)
-      const bHasUnread = getUserHasUnread(b)
+      const aHasUnread = getUserUnreadCount(a) > 0
+      const bHasUnread = getUserUnreadCount(b) > 0
       
       // Users with unread messages come next
       if (aHasUnread && !bHasUnread) return -1
@@ -212,20 +226,6 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
     return onlineUserIds.includes(user._id.toString()) ? 'online' : 'offline'
   }
 
-  const getUserHasUnread = (user: User) => {
-    const currentUserId = (session?.user as any)?.id
-    if (!currentUserId) return false
-    
-    // Find DM channel with this user
-    const dmChannel = channels.find(channel => {
-      if (channel.type !== 'dm') return false
-      const memberIds = channel.channel_members.map(m => m.mongo_member_id)
-      return memberIds.includes(currentUserId) && memberIds.includes(user._id.toString())
-    })
-    
-    return dmChannel ? (dmChannel.unreadCount || 0) > 0 : false
-  }
-
   const getRoleColor = (role?: string | any) => {
     const roleStr = typeof role === 'string' ? role : 'user'
     switch (roleStr?.toLowerCase()) {
@@ -273,7 +273,8 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
             {/* <div className="space-y-1"> */}
               {filteredUsers.map((user) => {
                 const isPinned = pinnedUsers.has(user._id.toString())
-                const hasUnread = getUserHasUnread(user)
+                const unreadCount = getUserUnreadCount(user)
+                const hasUnread = unreadCount > 0
                 const isPinLoading = pinLoading === user._id.toString()
                 
                 return (
@@ -307,7 +308,9 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                       )} />
                       {/* Unread badge */}
                       {hasUnread && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-background" />
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center border border-background px-1">
+                          {unreadCount}
+                        </div>
                       )}
                     </div>
 

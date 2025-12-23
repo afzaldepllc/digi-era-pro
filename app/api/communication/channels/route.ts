@@ -128,7 +128,9 @@ export async function GET(request: NextRequest) {
           // Count messages that don't have read receipts from current user
           const readReceiptsCount = await prisma.read_receipts.count({
             where: {
-              channel_id: channel.id,
+              messages: {
+                channel_id: channel.id
+              },
               mongo_user_id: session.user.id
             }
           })
