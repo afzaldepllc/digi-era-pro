@@ -275,23 +275,28 @@ export async function POST(request: NextRequest) {
     const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
 
     // Broadcast new channel to all members for real-time sync
+    // Note: Broadcast happens without subscription in Supabase Realtime (it's a fire-and-forget event)
     try {
       // Broadcast to each member's personal notification channel
       for (const memberId of memberIds) {
-        const rtChannel = supabase.channel(`user:${memberId}:channels`)
-        await rtChannel.send({
-          type: 'broadcast',
-          event: 'channel_update',
-          payload: {
-            id: enrichedChannel.id,
-            type: 'new_channel',
-            channel: enrichedChannel
-          }
-        })
-        await supabase.removeChannel(rtChannel)
+        try {
+          await supabase.channel(`user:${memberId}:channels`).send({
+            type: 'broadcast',
+            event: 'channel_update',
+            payload: {
+              id: enrichedChannel.id,
+              type: 'new_channel',
+              channel: enrichedChannel,
+              members: enrichedChannel.channel_members || []
+            }
+          })
+          logger.debug(`✅ Broadcasted new channel to user ${memberId}`)
+        } catch (memberError) {
+          logger.warn(`⚠️ Failed to broadcast to member ${memberId}:`, memberError)
+        }
       }
     } catch (broadcastError) {
-      logger.warn('Failed to broadcast new channel:', broadcastError)
+      logger.warn('Failed to setup broadcast for new channel:', broadcastError)
     }
 
     return NextResponse.json({

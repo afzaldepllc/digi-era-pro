@@ -23,12 +23,14 @@ interface CreateChannelModalProps {
   isOpen: boolean
   onClose: () => void
   onChannelCreated?: (channel: any) => void
+  onChannelCreatedRaw?: (channel: any) => Promise<void> // Alternative callback for parent to add to store
 }
 
 export function CreateChannelModal({
   isOpen,
   onClose,
   onChannelCreated,
+  onChannelCreatedRaw,
 }: CreateChannelModalProps) {
   const [channelType, setChannelType] = useState<ChannelType>('group')
   const [channelName, setChannelName] = useState('')
@@ -133,6 +135,7 @@ export function CreateChannelModal({
       }
 
       // Call API
+      console.log('📤 Creating channel with payload:', payload)
       const response = await fetch('/api/communication/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -145,13 +148,33 @@ export function CreateChannelModal({
       }
 
       const data = await response.json()
+      console.log('✅ Channel created response:', data)
+
+      if (!data.success || !data.data) {
+        throw new Error(data.error || 'Failed to create channel - invalid response')
+      }
 
       toast({
         title: 'Success',
-        description: 'Channel created successfully'
+        description: data.message || 'Channel created successfully'
       })
 
-      onChannelCreated?.(data.channel)
+      // Call raw callback first (to add to Redux store immediately - optimistic update)
+      if (onChannelCreatedRaw) {
+        try {
+          await onChannelCreatedRaw(data.data)
+          console.log('✅ Channel added to Redux store via onChannelCreatedRaw callback')
+        } catch (storeError) {
+          console.warn('⚠️ Failed to add channel to store:', storeError)
+        }
+      }
+
+      // Call callback with the created channel data
+      // The channel will be available in Redux store via:
+      // 1. Optimistic update from onChannelCreatedRaw (immediate)
+      // 2. OR realtime update via onChannelUpdate handler (backup)
+      console.log('📢 Calling onChannelCreated callback with channel:', data.data.id)
+      onChannelCreated?.(data.data)
       onClose()
 
       // Reset form
@@ -165,7 +188,7 @@ export function CreateChannelModal({
       setSelectedMembers([])
 
     } catch (error: any) {
-      console.error('Error creating channel:', error)
+      console.error('❌ Error creating channel:', error)
       toast({
         title: 'Error',
         description: error.message || 'Failed to create channel',

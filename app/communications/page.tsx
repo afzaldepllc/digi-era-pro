@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useAppDispatch } from "@/hooks/redux"
+import { addChannel } from "@/store/slices/communicationSlice"
 import { Button } from "@/components/ui/button"
 import { ChatWindow } from "@/components/communication/chat-window"
 import { CommunicationSidebar } from "@/components/communication/communication-sidebar"
@@ -42,6 +44,7 @@ import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/Fulls
 export default function CommunicationsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const dispatch = useAppDispatch()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
   const { canCreate } = usePermissions()
@@ -354,8 +357,15 @@ export default function CommunicationsPage() {
       <CreateChannelModal
         isOpen={isCreateChannelOpen}
         onClose={() => setIsCreateChannelOpen(false)}
+        onChannelCreatedRaw={async (channel) => {
+          // Optimistic update: Add channel to Redux store immediately
+          // This ensures the channel appears in the list instantly without waiting for realtime
+          console.log('🔄 Adding channel to Redux store immediately:', channel.id)
+          dispatch(addChannel(channel))
+        }}
         onChannelCreated={(channel) => {
           if (channel) {
+            console.log('📢 Channel created, selecting channel:', channel.id)
             selectChannel(channel.id)
             // Update URL
             const url = new URL(window.location.href)

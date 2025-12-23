@@ -329,32 +329,43 @@ export function useCommunications() {
   // Channel Real-time Event Handlers (Phase 3)
   // ============================================
 
-  // Handle channel update (archive/unarchive, settings changes, etc.)
+  // Handle channel update (archive/unarchive, settings changes, new channels, etc.)
   const onChannelUpdate = useCallback((data: {
     id: string;
     type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel';
-    channel?: IChannel & { members?: Array<{ user_id: string }> };
+    channel?: any;
     member_id?: string;
+    members?: any[];
   }) => {
-    logger.debug('Channel update received:', data)
+    logger.debug('🔄 Channel update received:', data)
     
     if (data.type === 'new_channel' && data.channel) {
-      // New channel created - add it if current user is a member
-      const isMember = data.channel.members?.some((m: { user_id: string }) => m.user_id === sessionUserId)
+      // New channel created - check if current user is a member
+      const channelMembers = data.channel.channel_members || data.channel.members || []
+      const isMember = channelMembers.some((m: any) => 
+        m.mongo_member_id === sessionUserId || m.user_id === sessionUserId || m.id === sessionUserId
+      )
+      
+      logger.debug('🆕 New channel received, isMember:', isMember, 'userId:', sessionUserId)
+      
       if (isMember) {
         dispatch(addChannel(data.channel as IChannel))
         // Update cache
         communicationCache.addChannelToCache(data.channel)
         toastRef.current({
           title: "New Channel",
-          description: `You've been added to #${data.channel.name}`,
+          description: `You've been added to #${data.channel.name || 'the new channel'}`,
         })
+        logger.debug('✅ Channel added to store and cache')
+      } else {
+        logger.debug('⚠️ User is not a member of this channel, skipping')
       }
     } else if (data.type === 'member_left' && data.member_id === sessionUserId) {
       // Current user was removed or left - remove channel from list
       dispatch(removeChannel(data.id))
       // Update cache
       communicationCache.removeChannelFromCache(data.id)
+      logger.debug('👋 Current user left channel:', data.id)
     } else if (data.channel) {
       // Channel updated (archive/unarchive, name change, etc.)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -365,6 +376,7 @@ export function useCommunications() {
       }))
       // Update cache
       communicationCache.updateChannelInCache(data.id, data.channel)
+      logger.debug('📝 Channel updated:', data.id)
     }
   }, [dispatch, sessionUserId])
 

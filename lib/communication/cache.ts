@@ -83,8 +83,13 @@ class CommunicationCache {
   }
 
   addChannelToCache(channel: any): void {
-    if (!this.channelsCache) return;
-    
+    // If there's no cache yet, initialize it with this channel so
+    // real-time additions are preserved for subsequent reads.
+    if (!this.channelsCache) {
+      this.setChannels([channel])
+      return
+    }
+
     // Add a copy to beginning of list
     this.channelsCache.data = [{ ...channel }, ...this.channelsCache.data];
   }
