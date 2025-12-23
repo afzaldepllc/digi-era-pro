@@ -150,3 +150,13 @@ model read_receipts {
 
   @@unique([message_id, mongo_user_id])
 }
+
+model PinnedUser {
+  id              String   @id @default(cuid())
+  pinner_id       String
+  pinned_user_id  String
+  created_at      DateTime @default(now())
+
+  @@unique([pinner_id, pinned_user_id])
+  @@index([pinner_id])
+}

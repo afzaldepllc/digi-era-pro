@@ -277,6 +277,17 @@ export function useCommunications() {
     })
   }, [dispatch])
 
+  // Handle user pin updates (real-time)
+  const onUserPin = useCallback((data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => {
+    logger.debug('User pin update:', data)
+    // Only process if it's for the current user
+    if (data.pinner_id !== sessionUserId) return
+
+    // For now, we don't have a Redux state for pinned users, so we'll rely on components to refetch
+    // In the future, we could add a pinnedUsers state to the slice
+    console.log(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
+  }, [sessionUserId])
+
   // Handle reaction added (real-time)
   const onReactionAdd = useCallback((data: {
     id: string;
@@ -612,10 +623,11 @@ export function useCommunications() {
       onMentionNotification,
       onReactionAdd,
       onReactionRemove,
-      onChannelUpdate
+      onChannelUpdate,
+      onUserPin
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin])
 
   // Subscribe to notifications when user is logged in
   useEffect(() => {
@@ -1174,6 +1186,34 @@ export function useCommunications() {
       throw error
     }
   }, [dispatch, sessionUserId])
+
+  /**
+   * Toggle pin status for a user
+   * User can pin up to 10 users
+   */
+  const pinUser = useCallback(async (userId: string, currentlyPinned: boolean): Promise<void> => {
+    if (!sessionUserId) {
+      throw new Error('Not authenticated')
+    }
+
+    // Optimistic update - we need to handle this in the component since users are not in Redux
+    // For now, we'll just make the API call and rely on real-time updates
+
+    try {
+      const response = await apiRequest(`/api/communication/users/${userId}/pin`, {
+        method: 'POST'
+      }, false)
+
+      toastRef.current({
+        title: response.is_pinned ? "User pinned" : "User unpinned",
+        description: "User pin status updated successfully",
+      })
+
+      // Real-time sync will handle the update
+    } catch (error: any) {
+      throw error
+    }
+  }, [sessionUserId])
 
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
@@ -1863,6 +1903,7 @@ export function useCommunications() {
     selectChannel,
     clearActiveChannel: clearChannel,
     pinChannel,
+    pinUser,
 
     // Message operations
     fetchMessages,

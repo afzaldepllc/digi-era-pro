@@ -45,6 +45,7 @@ export interface RealtimeEventHandlers {
     content_preview: string
     created_at: string
   }) => void
+  onUserPin?: (data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => void
 }
 
 export interface PresenceState {
@@ -404,6 +405,10 @@ export class RealtimeManager {
         .on('broadcast', { event: 'new_channel' }, (payload) => {
           console.log('📢 Received new channel:', payload.payload)
           this.eventHandlers.onChannelUpdate?.(payload.payload)
+        })
+        .on('broadcast', { event: 'user_pin_update' }, (payload) => {
+          console.log('📌 Received user pin update:', payload.payload)
+          this.eventHandlers.onUserPin?.(payload.payload)
         })
 
       this.userChannelsChannel.subscribe((status, err) => {
