@@ -92,7 +92,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       }
     })
     
-    // Sort users: pinned first, then those with recent messages, then by online status, then alphabetically
+    // Sort users: pinned first, then those with unread messages, then those with recent messages, then by online status, then alphabetically
     return [...activeUsers].sort((a, b) => {
       const aPinned = pinnedUsers.has(a._id.toString())
       const bPinned = pinnedUsers.has(b._id.toString())
@@ -100,6 +100,13 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       // Pinned users come first
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
+      
+      const aHasUnread = getUserHasUnread(a)
+      const bHasUnread = getUserHasUnread(b)
+      
+      // Users with unread messages come next
+      if (aHasUnread && !bHasUnread) return -1
+      if (!aHasUnread && bHasUnread) return 1
       
       const aTime = userLastMessageMap.get(a._id.toString())
       const bTime = userLastMessageMap.get(b._id.toString())

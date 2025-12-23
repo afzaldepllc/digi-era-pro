@@ -7,7 +7,7 @@ import { getClientInfo } from '@/lib/security/error-handler'
 import { apiLogger as logger } from '@/lib/logger'
 
 // Maximum number of users a user can pin
-const MAX_PINNED_USERS = 10
+const MAX_PINNED_USERS = 5
 
 // Helper to create consistent error responses
 function createErrorResponse(message: string, status: number, details?: any) {
