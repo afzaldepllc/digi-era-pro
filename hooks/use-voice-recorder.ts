@@ -34,7 +34,8 @@ function checkMicrophonePolicy(): boolean {
   if (typeof document === 'undefined') return true
 
   // Check if we're in a secure context (HTTPS or localhost)
-  if (!window.isSecureContext) {
+  // Note: Vercel serves over HTTPS, so this should pass in production
+  if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
     console.warn('Voice recording requires a secure context (HTTPS or localhost)')
     return false
   }
@@ -118,17 +119,17 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   // Request microphone permission without starting recording
   const requestPermission = useCallback(async (): Promise<boolean> => {
     try {
-      // Check permissions policy first
+      // Check permissions policy first (relaxed for production)
       if (!checkMicrophonePolicy()) {
         setState(prev => ({
           ...prev,
-          error: 'Voice recording requires HTTPS or localhost. Please ensure you are using a secure connection.',
+          error: 'Voice recording requires HTTPS. Please ensure you are using a secure connection.',
           permissionStatus: 'denied'
         }))
         return false
       }
 
-      // Check if we can query permissions first
+      // Check if we can query permissions first (with better error handling for production)
       if (navigator.permissions) {
         try {
           const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
@@ -139,18 +140,31 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
           if (result.state === 'denied') {
             setState(prev => ({
               ...prev,
-              error: 'Microphone permission was previously denied. Please enable it in your browser settings and refresh the page.',
+              error: 'Microphone access was denied. Please click the lock icon in your browser address bar and allow microphone access, then refresh the page.',
               permissionStatus: 'denied'
             }))
             return false
           }
+          // result.state === 'prompt' - continue to request access
         } catch (permError) {
-          console.debug('Permission query failed, proceeding with getUserMedia:', permError)
+          // Permission query failed - this is common in production, continue with getUserMedia
+          console.debug('Permission query failed (normal in production):', permError)
         }
       }
 
       // Request microphone access with optimized constraints for better compatibility
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Use more conservative constraints for production environments
+      const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+      const audioConstraints = isProduction ? {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          // Use more conservative settings for production
+          sampleRate: 16000,
+          channelCount: 1
+        }
+      } : {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -158,7 +172,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
           sampleRate: 44100,
           channelCount: 1
         }
-      })
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(audioConstraints)
 
       // Permission granted - stop the stream immediately
       stream.getTracks().forEach(track => track.stop())
@@ -170,32 +186,44 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       let permissionStatus: 'denied' | 'prompt' = 'denied'
 
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage = 'Microphone access was denied. Please click "Allow" when prompted, or enable microphone access in your browser settings.'
+        errorMessage = 'Microphone access was denied. Please click "Allow" when prompted by your browser, or check your browser settings to enable microphone access for this site.'
         permissionStatus = 'denied'
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         errorMessage = 'No microphone found. Please connect a microphone and try again.'
+        permissionStatus = 'prompt'
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
         errorMessage = 'Microphone is being used by another application. Please close other apps using the microphone and try again.'
+        permissionStatus = 'prompt'
       } else if (error.name === 'OverconstrainedError') {
         errorMessage = 'Microphone does not support the required audio format. Trying with basic settings...'
-        // Retry with minimal constraints
+        // Retry with minimal constraints (more aggressive fallback for production)
         try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          })
           fallbackStream.getTracks().forEach(track => track.stop())
           setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
           return true
-        } catch (fallbackError) {
-          errorMessage = 'Microphone setup failed. Please try a different browser or device.'
+        } catch (fallbackError: any) {
+          console.error('Fallback microphone access failed:', fallbackError)
+          errorMessage = 'Microphone setup failed. Please try refreshing the page or using a different browser.'
         }
       } else if (error.name === 'SecurityError') {
-        errorMessage = 'Voice recording requires a secure connection (HTTPS). Please ensure you are on a secure website.'
+        errorMessage = 'Voice recording requires a secure connection. This may be a browser security restriction.'
         permissionStatus = 'denied'
       } else if (error.name === 'AbortError') {
         errorMessage = 'Microphone access was interrupted. Please try again.'
         permissionStatus = 'prompt'
       } else if (error.name === 'NotSupportedError') {
-        errorMessage = 'Voice recording is not supported in this browser. Please try a different browser.'
+        errorMessage = 'Voice recording is not supported in this browser. Please try using Chrome, Firefox, or Safari.'
         permissionStatus = 'denied'
+      } else {
+        // Generic error for production - provide helpful guidance
+        errorMessage = 'Unable to access microphone. Please ensure you have a microphone connected and try refreshing the page.'
       }
 
       setState(prev => ({ ...prev, error: errorMessage, permissionStatus }))

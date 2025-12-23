@@ -50,6 +50,7 @@ export function VoiceRecorder({
     cancelRecording,
     resetRecording,
     formatDuration,
+    checkPermission,
     requestPermission
   } = useVoiceRecorder()
 
@@ -62,13 +63,43 @@ export function VoiceRecorder({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const startYRef = useRef<number>(0)
 
-  // Show error toast
+  // Enhanced permission request with production guidance
+  const handlePermissionRequest = useCallback(async () => {
+    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+    
+    if (permissionStatus === 'denied' && isProduction) {
+      // Provide specific guidance for production
+      toast({
+        title: "Microphone Access Required",
+        description: "Click the lock icon 🔒 in your browser's address bar, then click 'Allow' for microphone access. Refresh the page after granting permission.",
+        duration: 10000
+      })
+      return
+    }
+    
+    await requestPermission()
+  }, [permissionStatus, requestPermission])
+
+  // Check permissions on mount and when component becomes visible
+  useEffect(() => {
+    // Only check permissions if we're not currently recording
+    if (!isRecording) {
+      checkPermission()
+    }
+  }, [checkPermission, isRecording])
+
+  // Show error toast with production-specific guidance
   useEffect(() => {
     if (error) {
+      const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+      
       toast({
         title: "Recording Error",
-        description: error,
-        variant: "destructive"
+        description: isProduction 
+          ? `${error} If the issue persists, try refreshing the page or using a different browser.`
+          : error,
+        variant: "destructive",
+        duration: 8000 // Longer duration for production errors
       })
     }
   }, [error])
@@ -432,7 +463,8 @@ export function VoiceRecorder({
             : "hover:bg-muted active:bg-muted/80",
           disabled && "opacity-50 cursor-not-allowed"
         )}
-        onPointerDown={handlePointerDown}
+        onPointerDown={permissionStatus === 'granted' ? handlePointerDown : undefined}
+        onClick={permissionStatus !== 'granted' ? handlePermissionRequest : undefined}
         disabled={disabled}
         title={
           permissionStatus === 'denied' 
@@ -451,14 +483,17 @@ export function VoiceRecorder({
       
       {/* Permission status indicator */}
       {permissionStatus === 'denied' && (
-        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+        <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-4 py-2 rounded-lg shadow-lg whitespace-nowrap max-w-xs text-center">
           <MicOff className="h-3 w-3 inline mr-1" />
           Microphone blocked
+          <div className="text-xs opacity-90 mt-1">
+            Click the lock icon in your browser's address bar and allow microphone access
+          </div>
         </div>
       )}
       
       {permissionStatus === 'unknown' && (
-        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
           Click to enable microphone
         </div>
       )}
