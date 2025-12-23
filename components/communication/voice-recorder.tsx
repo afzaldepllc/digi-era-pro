@@ -65,19 +65,46 @@ export function VoiceRecorder({
 
   // Enhanced permission request with production guidance
   const handlePermissionRequest = useCallback(async () => {
-    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+    const isProduction = window.location.hostname !== 'localhost' && 
+                       !window.location.hostname.includes('127.0.0.1') &&
+                       !window.location.hostname.includes('192.168.') &&
+                       !window.location.hostname.includes('10.') &&
+                       !window.location.hostname.includes('172.')
     
-    if (permissionStatus === 'denied' && isProduction) {
-      // Provide specific guidance for production
-      toast({
-        title: "Microphone Access Required",
-        description: "Click the lock icon 🔒 in your browser's address bar, then click 'Allow' for microphone access. Refresh the page after granting permission.",
-        duration: 10000
-      })
+    if (permissionStatus === 'denied') {
+      // Provide specific guidance for both development and production
+      if (isProduction) {
+        toast({
+          title: "Microphone Access Required",
+          description: "🔒 Click the lock icon in your browser's address bar → Click 'Allow' for microphone → Refresh the page. This is required for voice messages to work.",
+          duration: 15000
+        })
+      } else {
+        toast({
+          title: "Microphone Access Required",
+          description: "Please click 'Allow' when your browser asks for microphone permission.",
+          duration: 8000
+        })
+      }
       return
     }
     
-    await requestPermission()
+    // For production, add a small delay to ensure user interaction is registered
+    if (isProduction) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    const granted = await requestPermission()
+    if (!granted && isProduction) {
+      // Additional guidance for production failures
+      setTimeout(() => {
+        toast({
+          title: "Still having issues?",
+          description: "Try refreshing the page after granting microphone permission, or use a different browser like Chrome or Firefox.",
+          duration: 10000
+        })
+      }, 3000)
+    }
   }, [permissionStatus, requestPermission])
 
   // Check permissions on mount and when component becomes visible
@@ -86,6 +113,26 @@ export function VoiceRecorder({
     if (!isRecording) {
       checkPermission()
     }
+  }, [checkPermission, isRecording])
+
+  // Periodic permission check for production environments (permissions can be lost)
+  useEffect(() => {
+    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+    
+    if (!isProduction) return // Only needed for production
+
+    const interval = setInterval(async () => {
+      if (!isRecording && document.visibilityState === 'visible') {
+        try {
+          await checkPermission()
+        } catch (error) {
+          // Silently handle permission check failures
+          console.debug('Periodic permission check failed:', error)
+        }
+      }
+    }, 30000) // Check every 30 seconds
+
+    return () => clearInterval(interval)
   }, [checkPermission, isRecording])
 
   // Show error toast with production-specific guidance
@@ -483,17 +530,18 @@ export function VoiceRecorder({
       
       {/* Permission status indicator */}
       {permissionStatus === 'denied' && (
-        <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-4 py-2 rounded-lg shadow-lg whitespace-nowrap max-w-xs text-center">
-          <MicOff className="h-3 w-3 inline mr-1" />
-          Microphone blocked
-          <div className="text-xs opacity-90 mt-1">
-            Click the lock icon in your browser's address bar and allow microphone access
+        <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-4 py-3 rounded-lg shadow-lg whitespace-nowrap max-w-xs text-center border">
+          <MicOff className="h-4 w-4 inline mr-2" />
+          <div className="font-semibold mb-1">Microphone Blocked</div>
+          <div className="text-xs opacity-90 leading-tight">
+            Click the 🔒 lock icon in your browser's address bar and allow microphone access, then refresh the page
           </div>
         </div>
       )}
       
       {permissionStatus === 'unknown' && (
-        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+        <div className="absolute -top-14 left-1/2 transform -translate-x-1/2 bg-muted text-muted-foreground text-xs px-3 py-2 rounded-lg shadow-lg whitespace-nowrap">
+          <Mic className="h-3 w-3 inline mr-1" />
           Click to enable microphone
         </div>
       )}
