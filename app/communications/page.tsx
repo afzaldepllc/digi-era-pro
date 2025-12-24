@@ -48,7 +48,8 @@ export default function CommunicationsPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
   const { canCreate } = usePermissions()
-  const lastChannelParam = useRef<string | null>(null)
+  // TODO: Implement create channel functionality
+  const hasInitializedChannel = useRef(false)
 
   // Department integration for filtering
   const { allDepartments } = useDepartments()
@@ -76,6 +77,7 @@ export default function CommunicationsPage() {
     unreadCount,
     hasChannels,
     fetchChannels,
+    refreshChannels,
     selectChannel,
     createChannel,
     setError,
@@ -86,16 +88,36 @@ export default function CommunicationsPage() {
     pinChannel
   } = useCommunications()
 
-  // Handle URL params for direct channel access
+  // Update URL when channel changes
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (activeChannelId && typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      const currentChannelParam = url.searchParams.get('channel')
+      if (currentChannelParam !== activeChannelId) {
+        url.searchParams.set('channel', activeChannelId)
+        window.history.replaceState({}, '', url.toString())
+        // Also store in localStorage as backup
+        localStorage.setItem('lastActiveChannel', activeChannelId)
+      }
+    }
+  }, [activeChannelId])
+
+  // Handle URL params and localStorage for channel persistence
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasInitializedChannel.current) return
+
     const url = new URL(window.location.href)
     const channelParam = url.searchParams.get('channel')
-    if (channelParam && channelParam !== lastChannelParam.current && channelParam !== activeChannelId) {
-      lastChannelParam.current = channelParam
-      selectChannel(channelParam)
+    const storedChannel = localStorage.getItem('lastActiveChannel')
+
+    // Priority: URL param > localStorage > none
+    const channelToSelect = channelParam || storedChannel
+
+    if (channelToSelect && channelToSelect !== activeChannelId) {
+      hasInitializedChannel.current = true
+      selectChannel(channelToSelect)
     }
-  }, [activeChannelId, selectChannel])
+  }, []) // Only run once on mount
   const fullscreenRef = useRef<FullscreenToggleRef>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -132,7 +154,7 @@ export default function CommunicationsPage() {
   const handleChannelSelect = useCallback((channelId: string) => {
     selectChannel(channelId)
     setIsMobileMenuOpen(false) // Close mobile menu after selection
-  }, [selectChannel])
+  }, [selectChannel]) 
 
   const handleCreateChannel = useCallback(() => {
     setIsCreateChannelOpen(true)
@@ -141,8 +163,13 @@ export default function CommunicationsPage() {
   }, [])
 
   const handleRefresh = () => {
-    fetchChannels()
+    refreshChannels()
   }
+
+  // Memoize maxWidth to prevent unnecessary re-renders
+  const maxSidebarWidth = useMemo(() => {
+    return typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.5) : 500
+  }, [])
 
   const handleDepartmentFilter = (departmentId: string) => {
     if (departmentId === 'all') {
@@ -152,18 +179,29 @@ export default function CommunicationsPage() {
     }
   }
 
-  const [channelName, setChannelName] = useState("")
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  // const [users, setUsers] = useState<{ _id: string, name: string, email: string }[]>([])
-  const [chat_users, setChatUsers] = useState<any[]>(mockUsers)
-  const [usersLoading, setUsersLoading] = useState(false)
+  // Memoize current user ID to prevent unnecessary re-renders
+  const currentUserId = useMemo(() => mockCurrentUser?._id || '', [mockCurrentUser?._id])
 
-  console.log("fullscreenRef154", fullscreenRef);
-  const handleMemberSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const options = Array.from(e.target.selectedOptions)
-    setSelectedMembers(options.map(opt => opt.value))
-  }
-  console.log("isFullscreen150", isFullscreen)
+  // Memoize sidebar props to prevent unnecessary re-renders
+  const sidebarProps = useMemo(() => ({
+    channels,
+    activeChannelId,
+    onChannelSelect: handleChannelSelect,
+    currentUserId,
+    onlineUserIds,
+    onCreateChannel: handleCreateChannel,
+    onPinChannel: pinChannel,
+    loading
+  }), [
+    channels,
+    activeChannelId,
+    handleChannelSelect,
+    currentUserId,
+    onlineUserIds,
+    handleCreateChannel,
+    pinChannel,
+    loading
+  ])
   return (
     <div className={`${isFullscreen ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
     {/* <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}> */}
@@ -193,14 +231,7 @@ export default function CommunicationsPage() {
                   <SheetDescription>Navigate through your channels and conversations</SheetDescription>
                 </SheetHeader>
                 <CommunicationSidebar
-                  channels={channels}
-                  activeChannelId={activeChannelId}
-                  onChannelSelect={handleChannelSelect}
-                  currentUserId={mockCurrentUser?._id || ''}
-                  onlineUserIds={onlineUserIds}
-                  onCreateChannel={handleCreateChannel}
-                  onPinChannel={pinChannel}
-                  loading={loading}
+                  {...sidebarProps}
                 />
               </SheetContent>
             </Sheet>
@@ -260,20 +291,12 @@ export default function CommunicationsPage() {
         <ResizableSidebar
           defaultWidth={300}
           minWidth={200}
-          // Convert 50vw to px before passing as maxWidth
-          maxWidth={typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.5) : 500}
+          maxWidth={maxSidebarWidth}
           storageKey="communication-sidebar"
           className="hidden lg:flex border-r"
         >
           <CommunicationSidebar
-            channels={channels}
-            activeChannelId={activeChannelId}
-            onChannelSelect={handleChannelSelect}
-            currentUserId={mockCurrentUser?._id || ''}
-            onlineUserIds={onlineUserIds}
-            onCreateChannel={handleCreateChannel}
-            onPinChannel={pinChannel}
-            loading={loading}
+            {...sidebarProps}
           />
         </ResizableSidebar>
 

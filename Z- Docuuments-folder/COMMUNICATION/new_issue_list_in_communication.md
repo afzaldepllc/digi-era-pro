@@ -149,7 +149,7 @@ make sure the message search should be working well in the message chat and also
               now i want to  add these setting for the channel in the creation time also while all the things should be working well 
 
 
-6) now instead of leaving the channel the group admin can remove the any existing member with proper loges 
+6) --resolved-but-synch-issue now instead of leaving the channel the group admin can remove the any existing member with proper loges 
  {/* Leave Channel - Not for owners */}
               {!isOwner && (
                 <Button
@@ -216,4 +216,35 @@ make sure its working well
 
 
 
-9) when refresh the page than there is no stability on the channels , some time all  channel of that login person not shown only one or twon channel seen when refresh the page but i want completely smoothness and working well 
+
+
+9) there are some issue with the channel retriving in which there is no message yet and when refresh the page than sometime load all the  channels having messages or empty channels  but some time only channels load in which the messages are there and those where the  messages not conversation start mean channel with empty message are load with those channel lists and some time viceversa and these are with the channels with type !== dm 
+
+ when refresh the page than there is no stability on the channels , some time all  channel of that login person not shown only one or twon channel seen when refresh the page so check whats the main issue behind it and resolve this one  and i want completely smoothness and working well and every things should be working well according to the current flow of this app and communication module 
+
+and when i have open the channel and than refresh the page than all the channels closes but i want to open that channel which one is open before the refresh the page 
+
+
+10) when new member added in the channel and than  goes to site of login user which is that one who just added in in the channel than this error and need refresh to synch that user in that channel 
+ Console Error
+
+
+❌ RT Channel error for 8200040d-a224-4f3b-a2b3-035e5ac7f2ab
+lib/realtime-manager.ts (570:19) @ <unknown>
+
+
+  568 |           resolve()
+  569 |         } else if (status === 'CHANNEL_ERROR') {
+> 570 |           console.error(`❌ RT Channel error for ${channelId}`)
+      |                   ^
+  571 |           this.subscriptionPromises.delete(channelId)
+  572 |           reject(new Error(`RT Channel error for ${channelId}`))
+  573 |         } else if (status === 'TIMED_OUT') {
+Call Stack
+14
+
+Show 13 ignore-listed frame(s)
+<unknown>
+lib/realtime-manager.ts (570:19)
+1
+2

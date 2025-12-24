@@ -565,15 +565,25 @@ export function useCommunications() {
     fetchAllUsers()
   }, [sessionUserId])
 
-  // Fetch channels on mount - but only if not already initialized globally
+  // Fetch channels on mount - check cache expiry first
   useEffect(() => {
     logger.debug('Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
-    if (sessionUserId && !globalFetchedChannels.get(sessionUserId) && !loading) {
-      globalFetchedChannels.set(sessionUserId, true)
-      hasFetchedChannelsRef.current = true
-      channelsFetchedRef.current = true
-      logger.debug('Fetching channels')
-      fetchChannels()
+    if (sessionUserId && !loading) {
+      // Check if we need to fetch channels
+      const cachedChannels = communicationCache.getChannels()
+      const shouldFetch = !cachedChannels || !globalFetchedChannels.get(sessionUserId)
+      
+      if (shouldFetch) {
+        globalFetchedChannels.set(sessionUserId, true)
+        hasFetchedChannelsRef.current = true
+        channelsFetchedRef.current = true
+        logger.debug('Fetching channels')
+        fetchChannels()
+      } else {
+        logger.debug('Using cached channels, skipping fetch')
+        // Still dispatch cached channels to ensure state is set
+        dispatch(setChannels(cachedChannels))
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId]) // Only depend on sessionUserId
@@ -736,7 +746,7 @@ export function useCommunications() {
     } catch (error) {
       logger.error('Failed to mark messages as read when selecting channel:', error)
     }
-  }, [dispatch, messages, sessionUserId, realtimeManager])
+  }, [dispatch, sessionUserId, realtimeManager])
 
   const clearChannel = useCallback(() => {
     dispatch(clearActiveChannel())
@@ -1731,7 +1741,7 @@ export function useCommunications() {
   }, [dispatch])
 
   const refreshChannels = useCallback(() => {
-    return fetchChannels()
+    return fetchChannels({ forceRefresh: true })
   }, [fetchChannels])
 
   const refreshMessages = useCallback(() => {
