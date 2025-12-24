@@ -257,9 +257,10 @@ const communicationSlice = createSlice({
       }
     },
     
-    // ============================================
-    // Reactions
-    // ============================================
+    // Decrement unread count (when message is marked as read)
+    decrementUnreadCount: (state) => {
+      state.unreadCount = Math.max(0, state.unreadCount - 1)
+    },
     
     addReactionToMessage: (state, action: PayloadAction<{
       channelId: string;
@@ -846,6 +847,7 @@ export const {
   addReactionToMessage,
   removeReactionFromMessage,
   resetState,
+  decrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,

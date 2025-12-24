@@ -369,6 +369,10 @@ export class RealtimeManager {
           console.log('📬 Received mention notification:', payload.payload)
           this.eventHandlers.onMentionNotification?.(payload.payload)
         })
+        .on('broadcast', { event: 'new_message' }, (payload) => {
+          console.log('📨 Received new message notification:', payload.payload)
+          this.eventHandlers.onNewMessage?.(payload.payload.message)
+        })
 
       this.notificationChannel.subscribe((status, err) => {
         if (err) {

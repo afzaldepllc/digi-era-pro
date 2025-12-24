@@ -38,6 +38,7 @@ import {
   clearNotifications,
   setChannelsInitialized,
   resetState,
+  decrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,
@@ -1256,10 +1257,13 @@ export function useCommunications() {
       })
 
       // Update unread count in Redux store
+      const channel = channels.find(c => c.id === channel_id)
+      const newUnreadCount = Math.max(0, (channel?.unreadCount || 0) - 1)
       dispatch(updateChannel({
         id: channel_id,
-        unreadCount: (prevChannel: any) => Math.max(0, (prevChannel?.unreadCount || 0) - 1)
+        unreadCount: newUnreadCount
       }))
+      dispatch(decrementUnreadCount())
 
       // Broadcast read receipt to other users in the channel
       if (sessionUserId) {
@@ -1268,7 +1272,7 @@ export function useCommunications() {
     } catch (error) {
       logger.error('Failed to mark message as read:', error)
     }
-  }, [realtimeManager, sessionUserId, dispatch])
+  }, [channels, dispatch, realtimeManager, sessionUserId])
 
   // ============================================
   // Reaction Operations

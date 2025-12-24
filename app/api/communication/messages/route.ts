@@ -332,6 +332,32 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if broadcast fails
     }
 
+    // Broadcast new message notification to all channel members except sender
+    try {
+      const members = await prisma.channel_members.findMany({
+        where: { channel_id: validatedData.channel_id },
+        select: { mongo_member_id: true }
+      })
+
+      for (const member of members) {
+        if (member.mongo_member_id !== session.user.id) {
+          try {
+            const userChannel = supabaseAdmin.channel(`notifications_${member.mongo_member_id}`)
+            await userChannel.send({
+              type: 'broadcast',
+              event: 'new_message',
+              payload: { message: messageWithSender }
+            })
+            logger.debug('New message notification sent to user:', member.mongo_member_id)
+          } catch (notifError) {
+            logger.error('Failed to send new message notification to:', member.mongo_member_id, notifError)
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to broadcast new message notifications:', error)
+    }
+
     return NextResponse.json({
       success: true,
       data: messageWithSender,
