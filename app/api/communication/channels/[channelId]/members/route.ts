@@ -17,6 +17,11 @@ const addMemberSchema = z.object({
   role: z.enum(['admin', 'member']).default('member')
 })
 
+const addMembersSchema = z.object({
+  member_ids: z.array(z.string().min(1)).min(1, 'At least one member ID is required'),
+  role: z.enum(['admin', 'member']).default('member')
+})
+
 const updateMemberSchema = z.object({
   memberId: z.string().min(1, 'Member ID is required'),
   role: z.enum(['admin', 'member'])
@@ -101,7 +106,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { channelId } = await params
     const body = await request.json()
     
-    const validation = addMemberSchema.safeParse(body)
+    const validation = addMembersSchema.safeParse(body)
     if (!validation.success) {
       return createErrorResponse('Invalid request data', 400, { errors: validation.error.errors })
     }
@@ -135,71 +140,78 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Filter out existing members
+    const existingMemberIds = channel.channel_members.map((m: any) => m.mongo_member_id)
+    const newMemberIds = validated.member_ids.filter(id => !existingMemberIds.includes(id))
+
+    if (newMemberIds.length === 0) {
+      return createErrorResponse('All specified users are already members of this channel', 400)
+    }
+
     // Check if allow_external_members is disabled
     if (channelAny.allow_external_members === false && (channel.mongo_department_id || channel.mongo_project_id)) {
-      // Verify user belongs to same department/project
-      const newUser = await executeGenericDbQuery(async () => {
-        return await User.findById(validated.userId).select('department').lean()
-      }) as any
+      // Get all new users
+      const newUsers = await executeGenericDbQuery(async () => {
+        return await User.find({ _id: { $in: newMemberIds } }).select('department').lean()
+      }) as any[]
 
-      if (channel.mongo_department_id) {
-        if (newUser?.department?.toString() !== channel.mongo_department_id) {
-          return createErrorResponse('External members are not allowed in this channel', 403)
+      for (const user of newUsers) {
+        if (channel.mongo_department_id) {
+          if (user?.department?.toString() !== channel.mongo_department_id) {
+            return createErrorResponse('External members are not allowed in this channel', 403)
+          }
         }
       }
     }
 
-    // Check if already a member
-    const existingMember = channel.channel_members.find(
-      (m: any) => m.mongo_member_id === validated.userId
-    )
-    
-    if (existingMember) {
-      return createErrorResponse('User is already a member of this channel', 400)
-    }
-
-    // Get user data
-    const user = await executeGenericDbQuery(async () => {
-      return await User.findById(validated.userId)
+    // Get user data for all new members
+    const users = await executeGenericDbQuery(async () => {
+      return await User.find({ _id: { $in: newMemberIds } })
         .select('_id name email avatar role')
         .lean()
-    }) as any
+    }) as any[]
 
-    if (!user) {
-      return createErrorResponse('User not found', 404)
+    if (users.length !== newMemberIds.length) {
+      return createErrorResponse('One or more users not found', 404)
     }
 
-    // Add member - use any to bypass type checking until migration is run
-    const member = await prisma.channel_members.create({
-      data: {
-        id: crypto.randomUUID(),
-        channel_id: channelId,
-        mongo_member_id: validated.userId,
-        role: validated.role,
-        joined_at: new Date(),
-        added_by: session.user.id,
-        added_via: 'manual_add'
-      } as any
-    })
+    // Add members - use any to bypass type checking until migration is run
+    const members = await prisma.$transaction(
+      newMemberIds.map(memberId => 
+        prisma.channel_members.create({
+          data: {
+            id: crypto.randomUUID(),
+            channel_id: channelId,
+            mongo_member_id: memberId,
+            role: validated.role,
+            joined_at: new Date(),
+            added_by: session.user.id,
+            added_via: 'manual_add'
+          } as any
+        })
+      )
+    )
 
     // Update member count
     await prisma.channels.update({
       where: { id: channelId },
       data: { 
-        member_count: { increment: 1 },
+        member_count: { increment: newMemberIds.length },
         updated_at: new Date()
       }
     })
 
-    // Broadcast to new member
+    // Broadcast to new members
     try {
-      const rtUserChannel = supabase.channel(`user:${validated.userId}:channels`)
-      await rtUserChannel.send({
-        type: 'broadcast',
-        event: 'channel_update',
-        payload: { id: channelId, type: 'new_channel' }
-      })
-      await supabase.removeChannel(rtUserChannel)
+      for (const memberId of newMemberIds) {
+        const rtUserChannel = supabase.channel(`user:${memberId}:channels`)
+        await rtUserChannel.send({
+          type: 'broadcast',
+          event: 'channel_update',
+          payload: { id: channelId, type: 'new_channel' }
+        })
+        await supabase.removeChannel(rtUserChannel)
+      }
 
       // Broadcast to channel
       const rtChannel = supabase.channel(`rt_${channelId}`)
@@ -208,14 +220,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         event: 'member_update',
         payload: {
           channelId,
-          memberId: validated.userId,
-          type: 'member_added',
-          user: {
+          memberIds: newMemberIds,
+          type: 'members_added',
+          users: users.map(user => ({
             mongo_member_id: user._id.toString(),
             name: user.name,
             email: user.email,
             avatar: user.avatar
-          }
+          }))
         }
       })
       await supabase.removeChannel(rtChannel)
@@ -225,8 +237,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      data: { ...member, user },
-      message: 'Member added successfully'
+      data: { members, users },
+      message: `${newMemberIds.length} member(s) added successfully`
     })
   } catch (error: any) {
     logger.error('Error adding channel member:', error)

@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, Users, Building, FolderKanban, UserCheck, Hash, Check } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Loader2, Users, Building, FolderKanban, UserCheck, Hash, Check, RefreshCw, UserPlus, MessageSquareOff, UserCog } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -16,7 +17,7 @@ import { useProjects } from "@/hooks/use-projects";
 import { useUsers } from "@/hooks/use-users";
 import { useClients } from '@/hooks/use-clients'
 
-type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support'
+type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support' | 'dm'
 type DepartmentCategory = 'sales' | 'support' | 'it' | 'management'
 
 interface CreateChannelModalProps {
@@ -43,6 +44,12 @@ export function CreateChannelModal({
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
+
+  // Channel settings
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true)
+  const [allowExternalMembers, setAllowExternalMembers] = useState(false)
+  const [adminOnlyPost, setAdminOnlyPost] = useState(false)
+  const [adminOnlyAdd, setAdminOnlyAdd] = useState(false)
 
   // Use standard hooks for data
   const { allDepartments } = useDepartments();
@@ -84,7 +91,11 @@ export function CreateChannelModal({
       const payload: any = {
         type: channelType,
         name: channelName || undefined,
-        is_private: isPrivate
+        is_private: isPrivate,
+        auto_sync_enabled: autoSyncEnabled,
+        allow_external_members: allowExternalMembers,
+        admin_only_post: adminOnlyPost,
+        admin_only_add: adminOnlyAdd
       }
 
       // Add type-specific fields
@@ -186,6 +197,10 @@ export function CreateChannelModal({
       setSelectedProject('')
       setSelectedClient('')
       setSelectedMembers([])
+      setAutoSyncEnabled(true)
+      setAllowExternalMembers(false)
+      setAdminOnlyPost(false)
+      setAdminOnlyAdd(false)
 
     } catch (error: any) {
       console.error('❌ Error creating channel:', error)
@@ -218,127 +233,127 @@ export function CreateChannelModal({
       }
     >
       <div className="space-y-6">
-            {/* Channel Type Selection */}
-            <div className="space-y-3">
-              <Label>Channel Type</Label>
-              <div className="space-y-2">
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'group' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('group')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'group' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'group' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <Users className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Group Channel - Select specific members</span>
-                </div>
-                
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'department' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('department')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'department' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'department' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <Building className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Department Channel - All users in a department</span>
-                </div>
-                
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'department-category' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('department-category')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'department-category' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'department-category' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <Hash className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Category Channel - All users with same category</span>
-                </div>
-                
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'multi-category' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('multi-category')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'multi-category' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'multi-category' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <Hash className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Multi-Category Channel - Users from multiple categories</span>
-                </div>
-                
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'project' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('project')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'project' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'project' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <FolderKanban className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Project Channel - All project collaborators</span>
-                </div>
-                
-                <div 
-                  className={cn(
-                    "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
-                    channelType === 'client-support' ? "bg-primary/10 border-primary" : "hover:bg-accent"
-                  )}
-                  onClick={() => setChannelType('client-support')}
-                >
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    channelType === 'client-support' ? "border-primary" : "border-muted-foreground"
-                  )}>
-                    {channelType === 'client-support' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                  </div>
-                  <UserCheck className="h-4 w-4 shrink-0" />
-                  <span className="font-normal text-sm">Client Support - Client + support team</span>
-                </div>
+        {/* Channel Type Selection */}
+        <div className="space-y-3">
+          <Label>Channel Type</Label>
+          <div className="space-y-2">
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'group' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('group')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'group' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'group' && <div className="w-3 h-3 rounded-full bg-primary" />}
               </div>
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Group Channel - Select specific members</span>
             </div>
 
-            {/* Channel Name */}
-            <div className="space-y-2">
-              <Label htmlFor="name">Channel Name (Optional)</Label>
-              <Input
-                id="name"
-                value={channelName}
-                onChange={(e) => setChannelName(e.target.value)}
-                placeholder="Leave empty for auto-generated name"
-              />
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'department' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('department')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'department' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'department' && <div className="w-3 h-3 rounded-full bg-primary" />}
+              </div>
+              <Building className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Department Channel - All users in a department</span>
             </div>
 
-            {/* Privacy Setting */}
-            {/* <div className="flex items-center space-x-2">
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'department-category' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('department-category')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'department-category' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'department-category' && <div className="w-3 h-3 rounded-full bg-primary" />}
+              </div>
+              <Hash className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Category Channel - All users with same category</span>
+            </div>
+
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'multi-category' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('multi-category')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'multi-category' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'multi-category' && <div className="w-3 h-3 rounded-full bg-primary" />}
+              </div>
+              <Hash className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Multi-Category Channel - Users from multiple categories</span>
+            </div>
+
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'project' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('project')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'project' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'project' && <div className="w-3 h-3 rounded-full bg-primary" />}
+              </div>
+              <FolderKanban className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Project Channel - All project collaborators</span>
+            </div>
+
+            <div
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                channelType === 'client-support' ? "bg-primary/10 border-primary" : "hover:bg-accent"
+              )}
+              onClick={() => setChannelType('client-support')}
+            >
+              <div className={cn(
+                "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                channelType === 'client-support' ? "border-primary" : "border-muted-foreground"
+              )}>
+                {channelType === 'client-support' && <div className="w-3 h-3 rounded-full bg-primary" />}
+              </div>
+              <UserCheck className="h-4 w-4 shrink-0" />
+              <span className="font-normal text-sm">Client Support - Client + support team</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Channel Name */}
+        <div className="space-y-2">
+          <Label htmlFor="name">Channel Name (Optional)</Label>
+          <Input
+            id="name"
+            value={channelName}
+            onChange={(e) => setChannelName(e.target.value)}
+            placeholder="Leave empty for auto-generated name"
+          />
+        </div>
+
+        {/* Privacy Setting */}
+        {/* <div className="flex items-center space-x-2">
               <Checkbox
                 id="private"
                 checked={isPrivate}
@@ -349,134 +364,219 @@ export function CreateChannelModal({
               </Label>
             </div> */}
 
-            {/* Type-Specific Fields */}
-            {channelType === 'group' && (
-              <div className="space-y-2">
-                <Label>Select Members ({selectedMembers.length} selected)</Label>
-                <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                  {regularUsers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">No users available</p>
-                  ) : (
-                    regularUsers.map(user => (
-                      <div key={user._id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`user-${user._id}`}
-                          checked={selectedMembers.includes(user._id)}
-                          onCheckedChange={() => handleMemberToggle(user._id)}
-                        />
-                        <Label htmlFor={`user-${user._id}`} className="cursor-pointer flex-1 font-normal">
-                          {user.name} ({user.email})
-                        </Label>
-                      </div>
-                    ))
-                  )}
+        {/* Type-Specific Fields */}
+        {channelType === 'group' && (
+          <div className="space-y-2">
+            <Label>Select Members ({selectedMembers.length} selected)</Label>
+            <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
+              {regularUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No users available</p>
+              ) : (
+                regularUsers.map(user => (
+                  <div key={user._id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`user-${user._id}`}
+                      checked={selectedMembers.includes(user._id)}
+                      onCheckedChange={() => handleMemberToggle(user._id)}
+                    />
+                    <Label htmlFor={`user-${user._id}`} className="cursor-pointer flex-1 font-normal">
+                      {user.name} ({user.email})
+                    </Label>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {channelType === 'department' && (
+          <div className="space-y-2">
+            <Label htmlFor="department">Select Department</Label>
+            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+              <SelectTrigger id="department">
+                <SelectValue placeholder="Choose a department" />
+              </SelectTrigger>
+              <SelectContent>
+                {allDepartments.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">No departments available</div>
+                ) : (
+                  allDepartments.map(dept => (
+                    <SelectItem key={dept._id} value={dept._id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {channelType === 'department-category' && (
+          <div className="space-y-2">
+            <Label htmlFor="category">Select Category</Label>
+            <Select value={selectedCategory} onValueChange={(val) => setSelectedCategory(val as DepartmentCategory)}>
+              <SelectTrigger id="category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(cat => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat.toUpperCase()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {channelType === 'multi-category' && (
+          <div className="space-y-2">
+            <Label>Select Categories ({selectedCategories.length} selected)</Label>
+            <div className="border rounded-md p-4 space-y-2">
+              {categories.map(cat => (
+                <div key={cat} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`cat-${cat}`}
+                    checked={selectedCategories.includes(cat)}
+                    onCheckedChange={() => handleCategoryToggle(cat)}
+                  />
+                  <Label htmlFor={`cat-${cat}`} className="cursor-pointer font-normal">
+                    {cat.toUpperCase()}
+                  </Label>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+          </div>
+        )}
 
-            {channelType === 'department' && (
-              <div className="space-y-2">
-                <Label htmlFor="department">Select Department</Label>
-                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                  <SelectTrigger id="department">
-                    <SelectValue placeholder="Choose a department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allDepartments.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">No departments available</div>
-                    ) : (
-                      allDepartments.map(dept => (
-                        <SelectItem key={dept._id} value={dept._id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+        {channelType === 'project' && (
+          <div className="space-y-2">
+            <Label htmlFor="project">Select Project</Label>
+            <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <SelectTrigger id="project">
+                <SelectValue placeholder="Choose a project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">No projects available</div>
+                ) : (
+                  projects.map(proj => (
+                    <SelectItem key={proj._id} value={proj._id}>
+                      {proj.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-            {channelType === 'department-category' && (
-              <div className="space-y-2">
-                <Label htmlFor="category">Select Category</Label>
-                <Select value={selectedCategory} onValueChange={(val) => setSelectedCategory(val as DepartmentCategory)}>
-                  <SelectTrigger id="category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat.toUpperCase()}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+        {channelType === 'client-support' && (
+          <div className="space-y-2">
+            <Label htmlFor="client">Select Client</Label>
+            <Select value={selectedClient} onValueChange={setSelectedClient}>
+              <SelectTrigger id="client">
+                <SelectValue placeholder="Choose a client" />
+              </SelectTrigger>
+              <SelectContent>
+                {clientUsers.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">No clients available</div>
+                ) : (
+                  clientUsers.map(client => (
+                    <SelectItem key={client._id} value={client._id}>
+                      {client.name} ({client.email})
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-            {channelType === 'multi-category' && (
-              <div className="space-y-2">
-                <Label>Select Categories ({selectedCategories.length} selected)</Label>
-                <div className="border rounded-md p-4 space-y-2">
-                  {categories.map(cat => (
-                    <div key={cat} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`cat-${cat}`}
-                        checked={selectedCategories.includes(cat)}
-                        onCheckedChange={() => handleCategoryToggle(cat)}
-                      />
-                      <Label htmlFor={`cat-${cat}`} className="cursor-pointer font-normal">
-                        {cat.toUpperCase()}
-                      </Label>
-                    </div>
-                  ))}
+        {/* Channel Settings - Only show for applicable channel types */}
+        {channelType !== 'dm' && (
+          <div className="space-y-4">
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-4">Channel Settings</h3>
+
+              {/* Auto Sync Setting */}
+              <div className="flex items-center justify-between p-4 rounded-lg border mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10">
+                    <RefreshCw className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Auto-Sync Members</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically add new department members or project assignees
+                    </p>
+                  </div>
                 </div>
+                <Switch
+                  checked={autoSyncEnabled}
+                  onCheckedChange={setAutoSyncEnabled}
+                />
               </div>
-            )}
 
-            {channelType === 'project' && (
-              <div className="space-y-2">
-                <Label htmlFor="project">Select Project</Label>
-                <Select value={selectedProject} onValueChange={setSelectedProject}>
-                  <SelectTrigger id="project">
-                    <SelectValue placeholder="Choose a project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">No projects available</div>
-                    ) : (
-                      projects.map(proj => (
-                        <SelectItem key={proj._id} value={proj._id}>
-                          {proj.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+              {/* Allow External Members */}
+              <div className="flex items-center justify-between p-4 rounded-lg border mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-green-500/10">
+                    <UserPlus className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Allow External Members</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Allow members from outside the department/project
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={allowExternalMembers}
+                  onCheckedChange={setAllowExternalMembers}
+                />
               </div>
-            )}
 
-            {channelType === 'client-support' && (
-              <div className="space-y-2">
-                <Label htmlFor="client">Select Client</Label>
-                <Select value={selectedClient} onValueChange={setSelectedClient}>
-                  <SelectTrigger id="client">
-                    <SelectValue placeholder="Choose a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clientUsers.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">No clients available</div>
-                    ) : (
-                      clientUsers.map(client => (
-                        <SelectItem key={client._id} value={client._id}>
-                          {client.name} ({client.email})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+              {/* Admin Only Post */}
+              <div className="flex items-center justify-between p-4 rounded-lg border mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500/10">
+                    <MessageSquareOff className="h-5 w-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Admin-Only Posting</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Only admins can send messages (announcement mode)
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={adminOnlyPost}
+                  onCheckedChange={setAdminOnlyPost}
+                />
               </div>
-            )}
+
+              {/* Admin Only Add Members */}
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-purple-500/10">
+                    <UserCog className="h-5 w-5 text-purple-500" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Admin-Only Add Members</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Only admins can add new members to this channel
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={adminOnlyAdd}
+                  onCheckedChange={setAdminOnlyAdd}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </CustomModal>
   )

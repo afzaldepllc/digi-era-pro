@@ -10,7 +10,7 @@ and also  In localhost the message sent is not working well while in the live in
 there should be proper implementation of this one and make sure every things should be working well without anu error
 
 
-3) --working in the message-list , the messages search is not working well
+3) --resolved  in the message-list , the messages search is not working well
 <input
                     type="text"
                     value={searchQuery}
@@ -52,4 +52,101 @@ make sure the message search should be working well in the message chat and also
 
 
 
-4) when send the message than its takes 
+4) --pending  when send the message than its takes time it should be fast with proper message send quick loading 
+
+
+5) --working  <>
+                {/* Auto Sync Setting */}
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <RefreshCw className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Auto-Sync Members</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Automatically add new department members or project assignees
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.auto_sync_enabled}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, auto_sync_enabled: checked }))}
+                  />
+                </div>
+
+                {/* Allow External Members */}
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <UserPlus className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Allow External Members</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Allow members from outside the department/project
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.allow_external_members}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, allow_external_members: checked }))}
+                  />
+                </div>
+
+                {/* Admin Only Post */}
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/10">
+                      <MessageSquareOff className="h-5 w-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Admin-Only Posting</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Only admins can send messages (announcement mode)
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.admin_only_post}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, admin_only_post: checked }))}
+                  />
+                </div>
+
+                {/* Admin Only Add Members */}
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <UserCog className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Admin-Only Add Members</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Only admins can add new members to this channel
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.admin_only_add}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, admin_only_add: checked }))}
+                  />
+                </div>
+
+                {/* Save Button */}
+                {hasChanges && (
+                  <Button
+                    className="w-full"
+                    onClick={handleSaveSettings}
+                    disabled={isSavingSettings}
+                  >
+                    {isSavingSettings && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Save Permission Settings
+                  </Button>
+                )}
+              </>
+
+
+              now i want to  add these setting for the channel in the creation time also while all the things should be working well 
+
+
+6) now instead of leaving the channel the group admin can remove the any existing member with proper loges 

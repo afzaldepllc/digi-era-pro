@@ -63,6 +63,11 @@ export const baseChannelSchema = z.object({
   is_private: z.boolean().default(false),
   categories: z.array(z.enum(CHANNEL_CONSTANTS.DEPARTMENT_CATEGORY.VALUES)).default([]),
   client_id: z.string().optional(),
+  // Channel settings
+  auto_sync_enabled: z.boolean().default(true),
+  allow_external_members: z.boolean().default(false),
+  admin_only_post: z.boolean().default(false),
+  admin_only_add: z.boolean().default(false),
 })
 
 // Create channel schema

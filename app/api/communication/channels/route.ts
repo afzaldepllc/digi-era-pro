@@ -274,6 +274,11 @@ export async function POST(request: NextRequest) {
         member_count: memberIds.length,
         created_at: new Date(),
         updated_at: new Date(),
+        // Channel settings
+        auto_sync_enabled: validatedData.auto_sync_enabled ?? true,
+        allow_external_members: validatedData.allow_external_members ?? false,
+        admin_only_post: validatedData.admin_only_post ?? false,
+        admin_only_add: validatedData.admin_only_add ?? false,
       },
     })
 
