@@ -62,7 +62,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
 
         const [isFocused, setIsFocused] = useState(false)
         const [attachments, setAttachments] = useState<File[]>([])
-        const [showToolbar, setShowToolbar] = useState(true)
+        const [showToolbar, setShowToolbar] = useState(false)
         const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
 
         // Mention state
