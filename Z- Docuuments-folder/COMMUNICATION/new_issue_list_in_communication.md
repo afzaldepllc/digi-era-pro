@@ -212,3 +212,8 @@ while make sure every things should be wokring well but owner cannot be removed 
 }
 
 make sure its working well 
+
+
+
+
+9) when refresh the page than there is no stability on the channels , some time all  channel of that login person not shown only one or twon channel seen when refresh the page but i want completely smoothness and working well 

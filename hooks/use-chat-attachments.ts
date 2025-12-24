@@ -191,13 +191,10 @@ export function useChatAttachments() {
         throw new Error(data.error || 'Download URL not available')
       }
 
-      // Use anchor tag with the fresh download URL
+      // Create download link with the signed URL
       const a = document.createElement('a')
       a.href = data.downloadUrl
       a.download = attachment.file_name
-      a.target = '_blank'
-      a.rel = 'noopener noreferrer'
-      
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
