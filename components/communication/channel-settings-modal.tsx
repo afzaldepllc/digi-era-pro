@@ -342,17 +342,21 @@ export function ChannelSettingsModal({
         throw new Error(error.error || 'Failed to remove member')
       }
 
+      const data = await response.json()
+      if (data.success && data.channel) {
+        // Update channel data immediately
+        onSettingsUpdate?.(data.channel)
+      } else {
+        // Fallback to refresh if no channel data returned
+        onSettingsUpdate?.({})
+      }
+
       toast({
         title: "Member removed",
         description: "The member has been removed from this channel"
       })
 
       setShowRemoveMemberConfirm(null)
-
-      // Trigger channel refresh
-      if (onSettingsUpdate) {
-        onSettingsUpdate({})
-      }
     } catch (error: any) {
       console.error('Remove member error:', error)
       toast({
@@ -397,7 +401,7 @@ export function ChannelSettingsModal({
       const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ member_ids: selectedUsersToAdd })
+        body: JSON.stringify({ userId: selectedUsersToAdd })
       })
 
       if (!response.ok) {

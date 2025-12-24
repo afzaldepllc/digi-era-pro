@@ -18,7 +18,7 @@ const addMemberSchema = z.object({
 })
 
 const addMembersSchema = z.object({
-  member_ids: z.array(z.string().min(1)).min(1, 'At least one member ID is required'),
+  userId: z.array(z.string().min(1)).min(1, 'At least one user ID is required'),
   role: z.enum(['admin', 'member']).default('member')
 })
 
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Filter out existing members
     const existingMemberIds = channel.channel_members.map((m: any) => m.mongo_member_id)
-    const newMemberIds = validated.member_ids.filter(id => !existingMemberIds.includes(id))
+    const newMemberIds = validated.userId.filter(id => !existingMemberIds.includes(id))
 
     if (newMemberIds.length === 0) {
       return createErrorResponse('All specified users are already members of this channel', 400)
@@ -235,9 +235,54 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       logger.warn('Failed to broadcast member add:', broadcastError)
     }
 
+    // Get updated channel with members
+    const updatedChannel = await prisma.channels.findUnique({
+      where: { id: channelId },
+      include: {
+        channel_members: {
+          orderBy: [
+            { role: 'asc' },
+            { joined_at: 'asc' }
+          ]
+        }
+      }
+    })
+
+    if (!updatedChannel) {
+      return createErrorResponse('Channel not found after update', 500)
+    }
+
+    // Enrich members with user data
+    const memberIds = updatedChannel.channel_members.map(m => m.mongo_member_id)
+    const enrichedUsers = await executeGenericDbQuery(async () => {
+      return await User.find({ _id: { $in: memberIds } }).select('_id name email avatar department position role isClient')
+    })
+
+    const userMap = (enrichedUsers as Array<{ _id: string | { toString(): string }, [key: string]: any }>).reduce<Record<string, any>>((acc, user) => {
+      const id = typeof user._id === 'string' ? user._id : user._id?.toString?.() ?? ''
+      if (id) {
+        acc[id] = user
+      }
+      return acc
+    }, {})
+
+    const enrichedMembers = updatedChannel.channel_members.map(member => ({
+      ...member,
+      name: userMap[member.mongo_member_id]?.name || 'Unknown User',
+      email: userMap[member.mongo_member_id]?.email || '',
+      avatar: userMap[member.mongo_member_id]?.avatar || '',
+      userRole: userMap[member.mongo_member_id]?.role || 'member',
+      department: userMap[member.mongo_member_id]?.department || null,
+      position: userMap[member.mongo_member_id]?.position || '',
+      isClient: userMap[member.mongo_member_id]?.isClient || false
+    }))
+
     return NextResponse.json({
       success: true,
-      data: { members, users },
+      channel: {
+        ...updatedChannel,
+        channel_members: enrichedMembers
+      },
       message: `${newMemberIds.length} member(s) added successfully`
     })
   } catch (error: any) {
@@ -333,10 +378,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const { channelId } = await params
     const { searchParams } = new URL(request.url)
-    const memberId = searchParams.get('memberId')
+    const memberId = searchParams.get('mongo_member_id')
 
     if (!memberId) {
-      return createErrorResponse('memberId query parameter is required', 400)
+      return createErrorResponse('mongo_member_id query parameter is required', 400)
     }
 
     const channel = await prisma.channels.findUnique({ where: { id: channelId } })
@@ -375,6 +420,48 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       data: { member_count: { decrement: 1 } }
     })
 
+    // Get updated channel with members
+    const updatedChannel = await prisma.channels.findUnique({
+      where: { id: channelId },
+      include: {
+        channel_members: {
+          orderBy: [
+            { role: 'asc' },
+            { joined_at: 'asc' }
+          ]
+        }
+      }
+    })
+
+    if (!updatedChannel) {
+      return createErrorResponse('Channel not found after update', 500)
+    }
+
+    // Enrich members with user data
+    const memberIds = updatedChannel.channel_members.map(m => m.mongo_member_id)
+    const users = await executeGenericDbQuery(async () => {
+      return await User.find({ _id: { $in: memberIds } }).select('_id name email avatar department position role isClient')
+    })
+
+    const userMap: Record<string, any> = users.reduce((acc: Record<string, any>, user: any) => {
+      const id = typeof user._id === 'string' ? user._id : user._id?.toString?.() ?? ''
+      if (id) {
+        acc[id] = user
+      }
+      return acc
+    }, {})
+
+    const enrichedMembers = updatedChannel.channel_members.map(member => ({
+      ...member,
+      name: userMap[member.mongo_member_id]?.name || 'Unknown User',
+      email: userMap[member.mongo_member_id]?.email || '',
+      avatar: userMap[member.mongo_member_id]?.avatar || '',
+      userRole: userMap[member.mongo_member_id]?.role || 'member',
+      department: userMap[member.mongo_member_id]?.department || null,
+      position: userMap[member.mongo_member_id]?.position || '',
+      isClient: userMap[member.mongo_member_id]?.isClient || false
+    }))
+
     // Broadcast to removed user
     try {
       const rtUserChannel = supabase.channel(`user:${memberId}:channels`)
@@ -397,9 +484,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       logger.warn('Failed to broadcast member removal:', broadcastError)
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Member removed successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Member removed successfully',
+      channel: {
+        ...updatedChannel,
+        channel_members: enrichedMembers
+      }
     })
   } catch (error: any) {
     logger.error('Error removing channel member:', error)

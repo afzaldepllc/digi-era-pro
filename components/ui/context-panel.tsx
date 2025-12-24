@@ -20,7 +20,8 @@ import {
   Archive,
   Loader2,
   Download,
-  Eye
+  Eye,
+  UserMinus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant, IAttachment } from "@/types/communication"
@@ -32,12 +33,26 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useChatAttachments } from "@/hooks/use-chat-attachments"
+import { useCommunications } from "@/hooks/use-communications"
+import { useSession } from "next-auth/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { 
   getFileCategory, 
   getFileIcon, 
   getExtensionColor, 
   formatFileSize 
 } from "@/components/communication/attachment-preview"
+import { updateChannel } from "@/store/slices/communicationSlice"
+import { useAppDispatch } from "@/hooks/redux"
 
 interface AttachmentWithUploader extends IAttachment {
   uploaded_by?: string
@@ -65,7 +80,15 @@ export function ContextPanel({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [showAllAttachments, setShowAllAttachments] = useState(false)
   
+  // Remove member state
+  const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState<string | null>(null)
+  const [isRemovingMember, setIsRemovingMember] = useState(false)
+  
   const { fetchChannelAttachments, downloadAttachment, previewAttachment } = useChatAttachments()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id
+  const { actionLoading } = useCommunications()
+  const dispatch = useAppDispatch()
 
   // Fetch attachments when channel changes
   useEffect(() => {
@@ -102,6 +125,48 @@ export function ContextPanel({
   const handlePreview = useCallback((attachment: IAttachment) => {
     previewAttachment(attachment)
   }, [previewAttachment])
+
+  // Get current user's membership and permissions
+  const currentMembership = channel?.channel_members.find(
+    m => m.mongo_member_id === currentUserId
+  )
+  
+  const isOwner = currentMembership?.channelRole === 'owner' || channel?.mongo_creator_id === currentUserId
+  const isAdmin = isOwner || currentMembership?.channelRole === 'admin'
+
+  // Handle remove member
+  const handleRemoveMember = useCallback(async (memberId: string) => {
+    if (!channel) return
+
+    setIsRemovingMember(true)
+    try {
+      const response = await fetch(`/api/communication/channels/${channel.id}/members?mongo_member_id=${memberId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to remove member')
+      }
+
+      const data = await response.json()
+      if (data.success && data.channel) {
+        // Update channel data immediately
+        dispatch(updateChannel({ id: channel.id, ...data.channel }))
+      }
+
+      // Close confirmation dialog
+      setShowRemoveMemberConfirm(null)
+
+      // Note: Real-time updates will handle UI refresh for other users
+      // The channel data has been updated immediately for current user
+    } catch (error: any) {
+      console.error('Remove member error:', error)
+      // Could add toast notification here if needed
+    } finally {
+      setIsRemovingMember(false)
+    }
+  }, [channel])
 
   if (!isVisible || !channel) {
     return null
@@ -352,43 +417,62 @@ export function ContextPanel({
               </div>
 
               <div className="space-y-2">
-                {channel.channel_members.map((participant) => (
-                  <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                    <div className="relative">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={participant.avatar} alt={participant.name} />
-                        <AvatarFallback className="text-xs">
-                          {participant.name
-                            ? (() => {
-                              const parts = participant.name.trim().split(' ');
-                              if (parts.length === 1) {
-                                return parts[0][0].toUpperCase();
-                              }
-                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                            })()
-                            : ''}
-                        </AvatarFallback>
-                      </Avatar>
-                      {participant.isOnline && (
-                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                {channel.channel_members.map((participant) => {
+                  const isCurrentUser = participant.mongo_member_id === currentUserId
+                  const isMemberOwner = participant.channelRole === 'owner' || participant.mongo_member_id === channel.mongo_creator_id
+                  const canRemoveMember = isAdmin && !isMemberOwner && !isCurrentUser
+                  
+                  return (
+                    <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 group">
+                      <div className="relative">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={participant.avatar} alt={participant.name} />
+                          <AvatarFallback className="text-xs">
+                            {participant.name
+                              ? (() => {
+                                const parts = participant.name.trim().split(' ');
+                                if (parts.length === 1) {
+                                  return parts[0][0].toUpperCase();
+                                }
+                                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                              })()
+                              : ''}
+                          </AvatarFallback>
+                        </Avatar>
+                        {participant.isOnline && (
+                          <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{participant.name}</p>
+                        <div className="flex items-center gap-2">
+                          {participant.channelRole && (
+                            <Badge variant="outline" className="text-xs">
+                              {participant.channelRole}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="text-xs">
+                            {participant.userType}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Remove member button for admins */}
+                      {canRemoveMember && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setShowRemoveMemberConfirm(participant.mongo_member_id)}
+                          disabled={isRemovingMember}
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{participant.name}</p>
-                      <div className="flex items-center gap-2">
-                        {participant.channelRole && (
-                          <Badge variant="outline" className="text-xs">
-                            {participant.channelRole}
-                          </Badge>
-                        )}
-                        <Badge variant="secondary" className="text-xs">
-                          {participant.userType}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
@@ -480,6 +564,30 @@ export function ContextPanel({
           </div>
         </ScrollArea>
       </div>
+
+      {/* Remove Member Confirmation Dialog */}
+      <AlertDialog open={!!showRemoveMemberConfirm} onOpenChange={() => setShowRemoveMemberConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this member from the channel?
+              They will no longer be able to see messages or participate in this channel.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingMember}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => showRemoveMemberConfirm && handleRemoveMember(showRemoveMemberConfirm)}
+              disabled={isRemovingMember}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isRemovingMember && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Remove Member
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   )
 }

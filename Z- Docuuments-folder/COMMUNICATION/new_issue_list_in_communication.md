@@ -55,7 +55,7 @@ make sure the message search should be working well in the message chat and also
 4) --pending  when send the message than its takes time it should be fast with proper message send quick loading 
 
 
-5) --working  <>
+5) --resolved  <>
                 {/* Auto Sync Setting */}
                 <div className="flex items-center justify-between p-4 rounded-lg border">
                   <div className="flex items-center gap-3">
@@ -150,3 +150,65 @@ make sure the message search should be working well in the message chat and also
 
 
 6) now instead of leaving the channel the group admin can remove the any existing member with proper loges 
+ {/* Leave Channel - Not for owners */}
+              {!isOwner && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-destructive hover:text-destructive"
+                  onClick={() => setShowLeaveConfirm(true)}
+                  disabled={actionLoading}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Leave Channel
+                </Button>
+              )}
+in the components\ui\context-panel.tsx
+ {/* Members */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                <h4 className="font-medium">Members ({channel.channel_members.length})</h4>
+              </div>
+
+              <div className="space-y-2">
+                {channel.channel_members.map((participant) => (
+                  <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                    <div className="relative">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={participant.avatar} alt={participant.name} />
+                        <AvatarFallback className="text-xs">
+while make sure every things should be wokring well but owner cannot be removed from the channel and just admin can be remove the member from the channel
+
+7) now when new member added to channel than need refresh to synch those members 
+
+
+8) when give the admin permission to any member than  this error given 
+
+{
+    "success": false,
+    "error": "Invalid request data",
+    "details": {
+        "errors": [
+            {
+                "code": "invalid_type",
+                "expected": "string",
+                "received": "undefined",
+                "path": [
+                    "memberId"
+                ],
+                "message": "Required"
+            },
+            {
+                "expected": "'admin' | 'member'",
+                "received": "undefined",
+                "code": "invalid_type",
+                "path": [
+                    "role"
+                ],
+                "message": "Required"
+            }
+        ]
+    }
+}
+
+make sure its working well 
