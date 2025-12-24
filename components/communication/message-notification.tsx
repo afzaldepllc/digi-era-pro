@@ -146,12 +146,16 @@ export function MessageNotification({
             <div className="space-y-1 p-2">
               {/* Recent notifications */}
               {notifications.slice(0, 3).map((notification) => {
-                const sender = getUserInfo(notification.message.mongo_sender_id)
+                const sender = notification.message 
+                  ? getUserInfo(notification.message.mongo_sender_id)
+                  : { name: notification.title?.replace('Mention from ', '') || 'System', avatar: undefined };
+                const content = notification.message?.content || notification.preview || '';
+                const messageId = notification.message?.id;
 
                 return (
                   <div
                     key={notification.id}
-                    onClick={() => handleNotificationClick(notification.channelId, notification.message.id)}
+                    onClick={() => handleNotificationClick(notification.channelId, messageId)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
                     <Avatar className="h-8 w-8 mt-0.5">
@@ -176,7 +180,7 @@ export function MessageNotification({
                       </div>
 
                       <p className="text-sm text-muted-foreground line-clamp-2">
-                        {notification.message.content}
+                        {content}
                       </p>
 
                       <div className="flex items-center gap-2 mt-1">
