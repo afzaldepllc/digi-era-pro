@@ -116,6 +116,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         }
       } else {
         // Handle new message without files
+        console.log("Sending message data 119:", messageData);
         await onSend(messageData)
       }
 
