@@ -248,3 +248,13 @@ Show 13 ignore-listed frame(s)
 lib/realtime-manager.ts (570:19)
 1
 2
+
+
+
+11) when click on the same channel list than why this one 
+
+No messages yet
+
+Start the conversation!
+
+instead of showing the fresh data or same data 
