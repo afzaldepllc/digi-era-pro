@@ -799,19 +799,16 @@ export function useCommunications() {
   // Search messages in a channel
   const searchMessages = useCallback(async (channelId: string, query: string, limit = 20, offset = 0) => {
     try {
-      const queryParams = new URLSearchParams({
-        channel_id: channelId,
-        query,
-        limit: limit.toString(),
-        offset: offset.toString()
-      })
-      
-      const response = await apiRequest(`/api/communication/messages/search?${queryParams.toString()}`)
-      
-      return {
-        messages: response.data || [],
-        total: response.meta?.total || 0,
-        hasMore: response.meta?.hasMore || false
+      const response = await fetch(`/api/communication/messages/search?channel_id=${channelId}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
+      const data = await response.json()
+      if (data.success) {
+        return {
+          messages: data.data || [],
+          total: data.meta?.total || 0,
+          hasMore: data.meta?.hasMore || false
+        }
+      } else {
+        return { messages: [], total: 0, hasMore: false }
       }
     } catch (error) {
       logger.error('Failed to search messages:', error)

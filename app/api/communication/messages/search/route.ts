@@ -95,41 +95,36 @@ export async function GET(request: NextRequest) {
     logger.debug('[Search API] Sample messages in channel:', allMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 100) })))
     logger.debug('[Search API] Searching for query:', JSON.stringify(validatedParams.query))
 
-    // Search messages using PostgreSQL full-text search or ILIKE
-    const messages = await prisma.messages.findMany({
-      where: {
-        channel_id: validatedParams.channel_id,
-        content: {
-          contains: validatedParams.query,
-          mode: 'insensitive'
-        }
-      },
-      orderBy: { created_at: 'desc' },
-      take: validatedParams.limit,
-      skip: validatedParams.offset,
-      include: {
-        read_receipts: true,
-        attachments: true
-      }
-    })
+    // Search messages using raw SQL for case-insensitive substring search (ILIKE)
+    const messages = await prisma.$queryRaw<any[]>`
+      SELECT m.*,
+        COALESCE(json_agg(DISTINCT r) FILTER (WHERE r.id IS NOT NULL), '[]'::json) as read_receipts,
+        COALESCE(json_agg(DISTINCT a) FILTER (WHERE a.id IS NOT NULL), '[]'::json) as attachments
+      FROM messages m
+      LEFT JOIN read_receipts r ON r.message_id = m.id
+      LEFT JOIN attachments a ON a.message_id = m.id
+      WHERE m.channel_id = ${validatedParams.channel_id}
+      AND m.content ILIKE ${'%' + validatedParams.query + '%'}
+      GROUP BY m.id
+      ORDER BY m.created_at DESC
+      LIMIT ${validatedParams.limit}
+      OFFSET ${validatedParams.offset}
+    `
     
     logger.debug('[Search API] Found messages count:', messages.length)
     if (messages.length > 0) {
       logger.debug('[Search API] First match:', messages[0].content?.substring(0, 100))
     }
 
-    // Get total count for pagination
-    const totalCount = await prisma.messages.count({
-      where: {
-        channel_id: validatedParams.channel_id,
-        content: {
-          contains: validatedParams.query,
-          mode: 'insensitive'
-        }
-      }
-    })
+    // Get total count for pagination using raw SQL
+    const totalResult = await prisma.$queryRaw<any[]>`
+      SELECT COUNT(*) as count FROM messages
+      WHERE channel_id = ${validatedParams.channel_id}
+      AND content ILIKE ${'%' + validatedParams.query + '%'}
+    `
+    const totalCount = parseInt(totalResult[0].count)
 
-    // Transform messages
+    // Transform messages (no need to parse, as json_agg returns arrays)
     const transformedMessages = messages.map(msg => transformMessageWithSender(msg)).filter(Boolean)
 
     return NextResponse.json({

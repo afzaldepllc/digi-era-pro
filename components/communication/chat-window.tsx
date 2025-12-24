@@ -249,6 +249,15 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     setHasMoreMessages(true)
   }, [channelId])
 
+  // Reset search when channel changes
+  useEffect(() => {
+    setSearchQuery("")
+    setSearchResults([])
+    setSearchTotal(0)
+    setSearchIndex(0)
+    setIsSearching(false)
+  }, [channelId])
+
   // Search messages with debounce
   const handleSearchChange = useCallback((query: string) => {
     setSearchQuery(query)
