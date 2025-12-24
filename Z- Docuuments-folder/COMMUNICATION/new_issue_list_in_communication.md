@@ -279,3 +279,6 @@ instead of showing the fresh data or same data
 19) there is the proper implementation of the synch member with the realtime experience 
 
 20) new message notification issue when message seen and  reload page than again those messages shown as a notification in the header and channel_lists  
+
+
+21) for  the message auditlog, there should be proper separate ui proffessionaly 
