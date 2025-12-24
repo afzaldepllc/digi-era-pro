@@ -429,13 +429,7 @@ export function ContextPanel({
                           <AvatarImage src={participant.avatar} alt={participant.name} />
                           <AvatarFallback className="text-xs">
                             {participant.name
-                              ? (() => {
-                                const parts = participant.name.trim().split(' ');
-                                if (parts.length === 1) {
-                                  return parts[0][0].toUpperCase();
-                                }
-                                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                              })()
+                              ? participant.name.split(' ').map(n => n[0]).join('').toUpperCase()
                               : ''}
                           </AvatarFallback>
                         </Avatar>
