@@ -218,7 +218,7 @@ make sure its working well
 
 
 
-9) there are some issue with the channel retriving in which there is no message yet and when refresh the page than sometime load all the  channels having messages or empty channels  but some time only channels load in which the messages are there and those where the  messages not conversation start mean channel with empty message are load with those channel lists and some time viceversa and these are with the channels with type !== dm 
+9) -- almost-resolved there are some issue with the channel retriving in which there is no message yet and when refresh the page than sometime load all the  channels having messages or empty channels  but some time only channels load in which the messages are there and those where the  messages not conversation start mean channel with empty message are load with those channel lists and some time viceversa and these are with the channels with type !== dm 
 
  when refresh the page than there is no stability on the channels , some time all  channel of that login person not shown only one or twon channel seen when refresh the page so check whats the main issue behind it and resolve this one  and i want completely smoothness and working well and every things should be working well according to the current flow of this app and communication module 
 
@@ -258,3 +258,24 @@ No messages yet
 Start the conversation!
 
 instead of showing the fresh data or same data 
+
+
+12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error 
+
+13) there should be proper role base permission for every action of the communication which should be dynamic 
+
+14) now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
+
+
+15) When message send than it takes time and wait to message api response but make sure this api should be call in the background and in the there should be completely realtime experiaence
+
+16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
+
+
+17)  now the menti is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
+
+18) when message goes to trach than the attchment and other things along with the message content should be proper delete and restore in the well and professional way 
+
+19) there is the proper implementation of the synch member with the realtime experience 
+
+20) new message notification issue when message seen and  reload page than again those messages shown as a notification in the header and channel_lists  
