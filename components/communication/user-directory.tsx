@@ -5,7 +5,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Search,
   MessageSquare,
@@ -259,7 +258,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       </div>
 
       {/* User List */}
-      <ScrollArea>
+      <div className="flex-1 overflow-auto">
         <div className="p-2">
           {filteredUsers.length === 0 ? (
             <div className="text-center py-8">
@@ -350,7 +349,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Footer */}
       <div className="p-4 border-t bg-muted/30">

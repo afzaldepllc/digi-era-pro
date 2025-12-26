@@ -258,8 +258,14 @@ const communicationSlice = createSlice({
     },
     
     // Decrement unread count (when message is marked as read)
-    decrementUnreadCount: (state) => {
-      state.unreadCount = Math.max(0, state.unreadCount - 1)
+    decrementUnreadCount: (state, action: PayloadAction<number | undefined>) => {
+      const decrement = action.payload ?? 1
+      state.unreadCount = Math.max(0, state.unreadCount - decrement)
+    },
+
+    incrementUnreadCount: (state, action: PayloadAction<number | undefined>) => {
+      const increment = action.payload ?? 1
+      state.unreadCount += increment
     },
     
     addReactionToMessage: (state, action: PayloadAction<{
@@ -534,6 +540,10 @@ const communicationSlice = createSlice({
     
     clearNotifications: (state) => {
       state.notifications = []
+    },
+
+    removeNotification: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(n => n.id !== action.payload)
     },
     
     // ============================================
@@ -843,11 +853,13 @@ export const {
   setError,
   addNotification,
   clearNotifications,
+  removeNotification,
   setChannelsInitialized,
   addReactionToMessage,
   removeReactionFromMessage,
   resetState,
   decrementUnreadCount,
+  incrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,

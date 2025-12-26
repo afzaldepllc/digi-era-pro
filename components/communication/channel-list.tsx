@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { 
   Search, 
   Hash, 
@@ -432,7 +431,7 @@ export const ChannelList = memo(function ChannelList({
         </div>
 
         {/* Channel list */}
-        <ScrollArea className="flex-1 w-full max-w-full overflow-hidden">
+        <div className="flex-1 w-full max-w-full overflow-auto">
           <div className="p-3 space-y-2 w-full max-w-full">
             {filteredChannels.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -535,7 +534,7 @@ export const ChannelList = memo(function ChannelList({
               </>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     </TooltipProvider>
   )

@@ -46,6 +46,7 @@ export interface RealtimeEventHandlers {
     created_at: string
   }) => void
   onUserPin?: (data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => void
+  onNewMessageNotification?: (data: { message: any }) => void
 }
 
 export interface PresenceState {
@@ -371,7 +372,7 @@ export class RealtimeManager {
         })
         .on('broadcast', { event: 'new_message' }, (payload) => {
           console.log('📨 Received new message notification:', payload.payload)
-          this.eventHandlers.onNewMessage?.(payload.payload.message)
+          this.eventHandlers.onNewMessageNotification?.(payload.payload)
         })
 
       this.notificationChannel.subscribe((status, err) => {

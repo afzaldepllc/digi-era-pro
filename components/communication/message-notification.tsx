@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, memo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Bell,
   MessageSquare,
@@ -29,7 +28,7 @@ interface MessageNotificationProps {
   showBadge?: boolean
 }
 
-export function MessageNotification({
+export const MessageNotification = memo(function MessageNotification({
   className,
   showBadge = true
 }: MessageNotificationProps) {
@@ -41,6 +40,7 @@ export function MessageNotification({
     notifications,
     selectChannel,
     clearNotifications,
+    removeNotification,
     markAsRead
   } = useCommunications()
 
@@ -51,6 +51,9 @@ export function MessageNotification({
     selectChannel(channelId)
     if (messageId) {
       markAsRead(messageId, channelId)
+      // Remove the notification for this message
+      const notificationId = `mention_${messageId}`
+      removeNotification(notificationId)
     }
     setIsOpen(false)
   }
@@ -136,7 +139,7 @@ export function MessageNotification({
           </div>
         </div>
 
-        <ScrollArea className="max-h-96">
+        <div className="max-h-96 overflow-auto">
           {unreadChannels.length === 0 && notifications.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -262,7 +265,7 @@ export function MessageNotification({
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {(unreadChannels.length > 0 || notifications.length > 0) && (
           <div className="border-t p-3">
@@ -296,4 +299,4 @@ export function MessageNotification({
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
+})

@@ -10,7 +10,9 @@ and also  In localhost the message sent is not working well while in the live in
 there should be proper implementation of this one and make sure every things should be working well without anu error
 and make sure to handle the notification professionaly and corresctally when successfully read the notification than notification should be clean and there is the professional and proper implementation of the message read which should be completely realtime and every things should be working well and according to the current flow of this app 
 
-
+now issue is that when when i open the channel in the reciver side and than send the message to this channel from sender side than the messages are not the realtime and not the message notification is not the  realtime at all now   when message send and now need refresh to show the notification in the reciever side but i want the completely realtime notification for all those channels which are not open yet or the user is not in the /communications route and all the other things are working well also as of now 
+whats the hell man 
+now again need refresh the pahe to show the notification but  i want the completely realtime message notification while all the other things should be wokring well 
 3) --resolved  in the message-list , the messages search is not working well
 <input
                     type="text"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import { useSession } from 'next-auth/react'
 import type { User } from '@/types'
+import { useUsers } from './use-users'
 import {
   setActiveChannel,
   clearActiveChannel,
@@ -36,9 +37,11 @@ import {
   setError,
   addNotification,
   clearNotifications,
+  removeNotification,
   setChannelsInitialized,
   resetState,
   decrementUnreadCount,
+  incrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,
@@ -79,6 +82,7 @@ export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
+  const { users: allUsers, loading: usersLoading } = useUsers()
   const realtimeManager = useMemo(() => getRealtimeManager(), [])
   const hasInitialized = useRef(false)  
   const hasUsersInitialized = useRef(false)
@@ -93,10 +97,6 @@ export function useCommunications() {
     toastRef.current = toast
   }, [toast])
   
-  // State for real users data
-  const [allUsers, setAllUsers] = useState<User[]>([])
-  const [usersLoading, setUsersLoading] = useState(false)
-
   const {
     channels,
     activeChannelId,
@@ -124,6 +124,19 @@ export function useCommunications() {
     trashedMessagesLoading,
     trashedMessagesPagination
   } = useAppSelector((state) => state.communications)
+
+  // Refs to get current values without causing re-renders
+  const currentMessagesRef = useRef(messages)
+  const currentChannelsRef = useRef(channels)
+  
+  // Update refs when values change
+  useEffect(() => {
+    currentMessagesRef.current = messages
+  }, [messages])
+  
+  useEffect(() => {
+    currentChannelsRef.current = channels
+  }, [channels])
 
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
@@ -562,28 +575,6 @@ export function useCommunications() {
     }
   }, [sessionUserId, sessionUserName, sessionUserAvatar, realtimeManager])
 
-  // Fetch all users
-  useEffect(() => {
-    const fetchAllUsers = async () => {
-      if (sessionUserId && !globalFetchedUsers.get(sessionUserId) && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
-        globalFetchedUsers.set(sessionUserId, true)
-        hasFetchedUsersRef.current = true
-        hasUsersInitialized.current = true
-        try {
-          setUsersLoading(true)
-          const response = await apiRequest('/api/users')
-          setAllUsers(response.users || [])
-        } catch (error) {
-          logger.error('Failed to fetch users:', error)
-        } finally {
-          setUsersLoading(false)
-        }
-      }
-    }
-    
-    fetchAllUsers()
-  }, [sessionUserId])
-
   // Fetch channels on mount - check cache expiry first
   useEffect(() => {
     logger.debug('Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
@@ -736,37 +727,56 @@ export function useCommunications() {
 
     // Mark all messages in this channel as read and reset unread count
     try {
-      const channelMessages = messages[channel_id] || []
+      // Use current state values via refs to avoid dependency issues
+      const currentMessages = currentMessagesRef.current
+      const currentChannels = currentChannelsRef.current
+      
+      const channelMessages = currentMessages[channel_id] || []
       const unreadMessageIds = channelMessages
         .filter(msg => !msg.read_receipts?.some(receipt => receipt.mongo_user_id === sessionUserId))
         .map(msg => msg.id)
 
       if (unreadMessageIds.length > 0) {
-        // Mark messages as read via API
-        await Promise.all(unreadMessageIds.map(messageId =>
-          apiRequest('/api/communication/read-receipts', {
-            method: 'POST',
-            body: JSON.stringify({ message_id: messageId, channel_id })
-          })
-        ))
-
-        // Reset unread count for this channel
+        // Optimistically reset unread count
+        const channel = currentChannels.find(c => c.id === channel_id)
+        const currentUnread = channel?.unreadCount || 0
         dispatch(updateChannel({
           id: channel_id,
           unreadCount: 0
         }))
+        dispatch(decrementUnreadCount(currentUnread))
 
-        // Broadcast read receipts
-        if (sessionUserId) {
+        try {
+          // Mark messages as read via API
           await Promise.all(unreadMessageIds.map(messageId =>
-            realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
+            apiRequest('/api/communication/read-receipts', {
+              method: 'POST',
+              body: JSON.stringify({ message_id: messageId, channel_id })
+            })
           ))
+
+          // Broadcast read receipts
+          if (sessionUserId) {
+            await Promise.all(unreadMessageIds.map(messageId =>
+              realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
+            ))
+          }
+        } catch (apiError) {
+          // Revert optimistic update
+          dispatch(updateChannel({
+            id: channel_id,
+            unreadCount: currentUnread
+          }))
+          dispatch(incrementUnreadCount(currentUnread))
+          logger.error('Failed to mark messages as read when selecting channel:', apiError)
+          // Optionally refetch channels to get correct unread count
+          fetchChannels({ forceRefresh: true })
         }
       }
     } catch (error) {
       logger.error('Failed to mark messages as read when selecting channel:', error)
     }
-  }, [dispatch, sessionUserId, realtimeManager])
+  }, [dispatch, sessionUserId, realtimeManager, fetchChannels])
 
   const clearChannel = useCallback(() => {
     dispatch(clearActiveChannel())
@@ -1290,7 +1300,7 @@ export function useCommunications() {
         id: channel_id,
         unreadCount: newUnreadCount
       }))
-      dispatch(decrementUnreadCount())
+      dispatch(decrementUnreadCount(1))
 
       // Broadcast read receipt to other users in the channel
       if (sessionUserId) {
@@ -1755,6 +1765,10 @@ export function useCommunications() {
     dispatch(clearNotifications())
   }, [dispatch])
 
+  const handleRemoveNotification = useCallback((notificationId: string) => {
+    dispatch(removeNotification(notificationId))
+  }, [dispatch])
+
   // Utility operations
   const handleResetState = useCallback(() => {
     dispatch(resetState())
@@ -2017,6 +2031,7 @@ export function useCommunications() {
     // Notifications
     addNotification: handleAddNotification,
     clearNotifications: handleClearNotifications,
+    removeNotification: handleRemoveNotification,
 
     // Utility operations
     resetState: handleResetState,

@@ -123,27 +123,27 @@ export async function GET(request: NextRequest) {
       // Calculate unread count
       let unreadCount = 0
       try {
-        // Count non-trashed messages not sent by current user
-        const messagesNotFromUser = await prisma.messages.count({
+        // Get all message ids in the channel not from user and not trashed
+        const messageIds = await prisma.messages.findMany({
           where: {
             channel_id: channel.id,
             mongo_sender_id: { not: session.user.id },
             is_trashed: false
-          }
+          },
+          select: { id: true }
         })
-        if (messagesNotFromUser > 0) {
-          // Count read receipts for current user on those messages
+        
+        const messageIdsArray = messageIds.map(m => m.id)
+        
+        if (messageIdsArray.length > 0) {
+          // Count read receipts for those message ids
           const readReceiptsCount = await prisma.read_receipts.count({
             where: {
-              messages: {
-                channel_id: channel.id,
-                mongo_sender_id: { not: session.user.id },
-                is_trashed: false
-              },
+              message_id: { in: messageIdsArray },
               mongo_user_id: session.user.id
             }
           })
-          unreadCount = Math.max(0, messagesNotFromUser - readReceiptsCount)
+          unreadCount = Math.max(0, messageIdsArray.length - readReceiptsCount)
         }
       } catch (error) {
         logger.warn('Failed to calculate unread count for channel:', channel.id, error)
