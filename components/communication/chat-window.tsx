@@ -119,13 +119,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }
 
   // Handle sending messages
-  const handleSendMessage = async (messageData: CreateMessageData) => {
-    try {
-      await sendMessage(messageData)
-      handleStopTyping() // Stop typing indicator after sending
-    } catch (error) {
-      // Error is handled by the sendMessage function
-    }
+  const handleSendMessage = (messageData: CreateMessageData): Promise<void> => {
+    handleStopTyping() // Stop typing indicator after sending
+    return sendMessage(messageData)
   }
 
   // Handle sending voice messages

@@ -17,7 +17,7 @@ export interface MessageInputRef {
 
 interface MessageInputProps {
   channelId: string
-  onSend: (data: CreateMessageData) => void
+  onSend: (data: CreateMessageData) => Promise<void>
   onSendWithFiles?: (data: CreateMessageData, files: File[], onProgress?: (progress: number) => void) => Promise<any>
   onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
   onEdit?: (messageId: string, data: CreateMessageData) => Promise<void>
@@ -100,32 +100,43 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
       }
 
       if (editMessageId && onEdit) {
-        // Handle edit
+        // Handle edit - await for synchronous update
         await onEdit(editMessageId, messageData)
+        // Clear state
+        setReplyTo(null)
+        setEditMessage(null)
+        return true
       } else if (files.length > 0 && onSendWithFiles) {
-        // Handle new message with files
+        // Handle new message with files - await for upload
         setIsUploading(true)
         setUploadProgress(0)
         try {
           await onSendWithFiles(messageData, files, (progress) => {
             setUploadProgress(progress)
           })
+          // Clear state
+          setReplyTo(null)
+          setEditMessage(null)
+          return true
         } finally {
           setIsUploading(false)
           setUploadProgress(0)
         }
       } else {
-        // Handle new message without files
-        console.log("Sending message data 119:", messageData);
-        await onSend(messageData)
+        // Handle new text message - send in background for realtime experience
+        onSend(messageData).catch((_error) => {
+          toast({
+            title: "Error",
+            description: "Failed to send message",
+            variant: "destructive"
+          })
+        })
+        // Clear state immediately
+        setReplyTo(null)
+        setEditMessage(null)
+        return true
       }
-
-      // Clear state
-      setReplyTo(null)
-      setEditMessage(null)
-
-      return true
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: editMessageId ? "Failed to update message" : "Failed to send message",
