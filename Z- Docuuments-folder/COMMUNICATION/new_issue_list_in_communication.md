@@ -300,3 +300,7 @@ instead of showing the fresh data or same data but i want to when click again an
 }
 
 and after some time the api give the correct response after giving this error from the supabase but in  the mongodb there is no issue and every things working well without any connection issue (as there are two db are using in this app , mongoDB for the main db handling all the things related to users, leads, clients, projects, tasks and supabase handles communication related things like messages, channels) check why this issue with the supabase connection or  due to another reason.
+
+
+
+23) when message send with the file than some time its not showing the uploading files and than need refresh the page than show the uploading files preview (files are handled using the  s3 )
