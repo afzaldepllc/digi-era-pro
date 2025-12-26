@@ -8,6 +8,7 @@ and also  In localhost the message sent is not working well while in the live in
 
 2) --not-resolved In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 
 there should be proper implementation of this one and make sure every things should be working well without anu error
+and make sure to handle the notification professionaly and corresctally when successfully read the notification than notification should be clean and there is the professional and proper implementation of the message read which should be completely realtime and every things should be working well and according to the current flow of this app 
 
 
 3) --resolved  in the message-list , the messages search is not working well
@@ -52,7 +53,7 @@ make sure the message search should be working well in the message chat and also
 
 
 
-4) --pending  when send the message than its takes time it should be fast with proper message send quick loading 
+4) --resolved-working-well  when send the message than its takes time it should be fast with proper message send quick loading 
  When message send than it takes time and wait to message api response but make sure this api should be call in the background and there should be completely realtime experiaence and when send the message than user can send another message imidiatly while send message api call in the background but all the things should be working well without any error and every things should be completely realtime 
 
 5) --resolved  <>
@@ -270,7 +271,7 @@ instead of showing the fresh data or same data but i want to when click again an
 16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
 
 
-17)  now the menti is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
+17)  now the mention is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
 
 18) when message goes to trach than the attchment and other things along with the message content should be proper delete and restore in the well and professional way 
 
