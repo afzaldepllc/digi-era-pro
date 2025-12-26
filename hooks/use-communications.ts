@@ -37,6 +37,7 @@ import {
   setError,
   addNotification,
   clearNotifications,
+  clearNotificationsForChannel,
   removeNotification,
   setChannelsInitialized,
   resetState,
@@ -722,6 +723,7 @@ export function useCommunications() {
 
   const selectChannel = useCallback(async (channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
+    dispatch(clearNotificationsForChannel(channel_id))
     // Clear messages to force re-fetch with enriched data
     dispatch(setMessages({ channelId: channel_id, messages: [] }))
 
@@ -1292,6 +1294,9 @@ export function useCommunications() {
         method: 'POST',
         body: JSON.stringify({ message_id: messageId, channel_id })
       })
+
+      // Remove notification for this message
+      dispatch(removeNotification(`message_${messageId}`))
 
       // Update unread count in Redux store
       const channel = channels.find(c => c.id === channel_id)

@@ -542,6 +542,10 @@ const communicationSlice = createSlice({
       state.notifications = []
     },
 
+    clearNotificationsForChannel: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(n => n.channelId !== action.payload)
+    },
+
     removeNotification: (state, action: PayloadAction<string>) => {
       state.notifications = state.notifications.filter(n => n.id !== action.payload)
     },
@@ -853,6 +857,7 @@ export const {
   setError,
   addNotification,
   clearNotifications,
+  clearNotificationsForChannel,
   removeNotification,
   setChannelsInitialized,
   addReactionToMessage,

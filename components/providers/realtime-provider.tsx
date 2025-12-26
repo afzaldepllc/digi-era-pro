@@ -45,6 +45,17 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
               description: message.content?.slice(0, 50) || 'You have a new message',
             })
           }
+
+          // Add to Redux notifications (always, so it appears in the notification dropdown)
+          dispatch(addNotification({
+            id: `message_${message.id}`,
+            type: 'message',
+            title: `New message in ${message.channel_name || 'channel'}`,
+            channelId: message.channel_id,
+            messageId: message.id,
+            preview: message.content?.slice(0, 100) || 'New message',
+            read: false
+          }))
         },
 
         onMentionNotification: (data: any) => {
