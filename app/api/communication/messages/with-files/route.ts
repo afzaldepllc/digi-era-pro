@@ -4,8 +4,6 @@ import { messageOperations } from '@/lib/db-utils'
 import { S3Service } from '@/lib/services/s3-service'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createClient } from '@supabase/supabase-js'
-import { executeGenericDbQuery } from '@/lib/mongodb'
-import { default as User } from '@/models/User'
 import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
@@ -123,13 +121,8 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
-    // Fetch sender info from MongoDB
-    const senderData = await executeGenericDbQuery(async () => {
-      return await User.findById(session.user.id)
-        .select('_id name email avatar isClient role')
-        .populate('role', 'name')
-        .lean() as IMongoUser | null
-    })
+    // Use sender info from middleware (already fetched from MongoDB)
+    const senderData = user
 
     const senderName: string = String(senderData?.name || senderData?.email || 'Unknown User')
     const senderEmail: string = String(senderData?.email || '')
@@ -224,52 +217,8 @@ export async function POST(request: NextRequest) {
       attachments: uploadedAttachments
     }
 
-    // Broadcast via Supabase real-time
-    try {
-      const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SECRET_KEY!
-      )
-
-      const channel = supabaseAdmin.channel(`rt_${channelId}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: messageWithSender
-      })
-      logger.debug('Message with attachments broadcasted to channel:', channelId)
-
-      // Broadcast mention notifications
-      if (parsedMentionedUserIds.length > 0) {
-        const mentionNotification = {
-          type: 'mention',
-          message_id: message.id,
-          channel_id: channelId,
-          sender_name: senderName,
-          sender_avatar: senderAvatar,
-          content_preview: content.replace(/<[^>]*>/g, '').slice(0, 100),
-          has_attachments: uploadedAttachments.length > 0,
-          created_at: message.created_at
-        }
-
-        for (const mentionedUserId of parsedMentionedUserIds) {
-          try {
-            const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
-            await userChannel.send({
-              type: 'broadcast',
-              event: 'mention_notification',
-              payload: mentionNotification
-            })
-          } catch (notifError) {
-            logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
-          }
-        }
-      }
-    } catch (broadcastError) {
-      logger.error('Failed to broadcast message:', broadcastError)
-    }
-
-    return NextResponse.json({
+    // Send response immediately for fast user experience
+    const response = NextResponse.json({
       success: true,
       data: messageWithSender,
       upload_errors: uploadErrors.length > 0 ? uploadErrors : undefined,
@@ -277,6 +226,55 @@ export async function POST(request: NextRequest) {
         ? `Message sent with ${uploadedAttachments.length} files (${uploadErrors.length} failed)`
         : 'Message sent successfully'
     })
+
+    // Broadcast asynchronously (fire-and-forget for performance)
+    setImmediate(async () => {
+      try {
+        const supabaseAdmin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SECRET_KEY!
+        )
+
+        const channel = supabaseAdmin.channel(`rt_${channelId}`)
+        await channel.send({
+          type: 'broadcast',
+          event: 'new_message',
+          payload: messageWithSender
+        })
+        logger.debug('Message with attachments broadcasted to channel:', channelId)
+
+        // Broadcast mention notifications
+        if (parsedMentionedUserIds.length > 0) {
+          const mentionNotification = {
+            type: 'mention',
+            message_id: message.id,
+            channel_id: channelId,
+            sender_name: senderName,
+            sender_avatar: senderAvatar,
+            content_preview: content.slice(0, 100),
+            has_attachments: uploadedAttachments.length > 0,
+            created_at: message.created_at
+          }
+
+          for (const mentionedUserId of parsedMentionedUserIds) {
+            try {
+              const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
+              await userChannel.send({
+                type: 'broadcast',
+                event: 'mention_notification',
+                payload: mentionNotification
+              })
+            } catch (notifError) {
+              logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
+            }
+          }
+        }
+      } catch (broadcastError) {
+        logger.error('Failed to broadcast message:', broadcastError)
+      }
+    })
+
+    return response
 
   } catch (error: unknown) {
     logger.error('Error sending message with files:', error)

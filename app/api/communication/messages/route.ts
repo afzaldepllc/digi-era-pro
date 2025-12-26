@@ -6,9 +6,6 @@ import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { createClient } from '@supabase/supabase-js'
-import { executeGenericDbQuery } from '@/lib/mongodb'
-import { default as User } from '@/models/User'
-import type { IParticipant } from '@/types/communication'
 import { apiLogger as logger } from '@/lib/logger'
 
 // ============================================
@@ -227,13 +224,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch sender info ONCE from MongoDB (this is the only MongoDB call needed)
-    const senderData = await executeGenericDbQuery(async () => {
-      return await User.findById(session.user.id)
-        .select('_id name email avatar isClient role')
-        .populate('role', 'name') // Populate role to get role name if it's a reference
-        .lean() as IMongoUser | null
-    })
+    // Use sender info from middleware (already fetched from MongoDB)
+    const senderData = user
 
     // Extract sender details for denormalization (ensure all values are strings)
     const senderName: string = String(senderData?.name || senderData?.email || 'Unknown User')
@@ -290,79 +282,81 @@ export async function POST(request: NextRequest) {
       attachments
     }
 
-    // Broadcast the message with sender data to realtime subscribers
-    try {
-      const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: messageWithSender
-      })
-      logger.debug('Message broadcasted to channel:', validatedData.channel_id)
-
-      // Broadcast mention notifications to mentioned users
-      if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
-        const mentionNotification = {
-          type: 'mention',
-          message_id: message.id,
-          channel_id: validatedData.channel_id,
-          sender_name: senderName,
-          sender_avatar: senderAvatar,
-          content_preview: validatedData.content.replace(/<[^>]*>/g, '').slice(0, 100),
-          created_at: message.created_at
-        }
-
-        // Broadcast to each mentioned user's personal notification channel
-        for (const mentionedUserId of validatedData.mongo_mentioned_user_ids) {
-          try {
-            const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
-            await userChannel.send({
-              type: 'broadcast',
-              event: 'mention_notification',
-              payload: mentionNotification
-            })
-            logger.debug('Mention notification sent to user:', mentionedUserId)
-          } catch (notifError) {
-            logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
-          }
-        }
-      }
-    } catch (broadcastError) {
-      logger.error('Failed to broadcast message:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
-
-    // Broadcast new message notification to all channel members except sender
-    try {
-      const members = await prisma.channel_members.findMany({
-        where: { channel_id: validatedData.channel_id },
-        select: { mongo_member_id: true }
-      })
-
-      for (const member of members) {
-        if (member.mongo_member_id !== session.user.id) {
-          try {
-            const userChannel = supabaseAdmin.channel(`notifications_${member.mongo_member_id}`)
-            await userChannel.send({
-              type: 'broadcast',
-              event: 'new_message',
-              payload: { message: messageWithSender }
-            })
-            logger.debug('New message notification sent to user:', member.mongo_member_id)
-          } catch (notifError) {
-            logger.error('Failed to send new message notification to:', member.mongo_member_id, notifError)
-          }
-        }
-      }
-    } catch (error) {
-      logger.error('Failed to broadcast new message notifications:', error)
-    }
-
-    return NextResponse.json({
+    // Send response immediately for fast user experience
+    const response = NextResponse.json({
       success: true,
       data: messageWithSender,
       message: 'Message sent successfully'
     })
+
+    // Broadcast asynchronously (fire-and-forget for performance)
+    setImmediate(async () => {
+      try {
+        // Broadcast the message with sender data to realtime subscribers
+        const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
+        await channel.send({
+          type: 'broadcast',
+          event: 'new_message',
+          payload: messageWithSender
+        })
+        logger.debug('Message broadcasted to channel:', validatedData.channel_id)
+
+        // Broadcast mention notifications to mentioned users
+        if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
+          const mentionNotification = {
+            type: 'mention',
+            message_id: message.id,
+            channel_id: validatedData.channel_id,
+            sender_name: senderName,
+            sender_avatar: senderAvatar,
+            content_preview: validatedData.content.slice(0, 100),
+            created_at: message.created_at
+          }
+
+          // Broadcast to each mentioned user's personal notification channel
+          for (const mentionedUserId of validatedData.mongo_mentioned_user_ids) {
+            try {
+              const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
+              await userChannel.send({
+                type: 'broadcast',
+                event: 'mention_notification',
+                payload: mentionNotification
+              })
+              logger.debug('Mention notification sent to user:', mentionedUserId)
+            } catch (notifError) {
+              logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
+            }
+          }
+        }
+
+        // Broadcast new message notification to all channel members except sender
+        const members = await prisma.channel_members.findMany({
+          where: { channel_id: validatedData.channel_id },
+          select: { mongo_member_id: true }
+        })
+
+        for (const member of members) {
+          if (member.mongo_member_id !== session.user.id) {
+            try {
+              const userChannel = supabaseAdmin.channel(`notifications_${member.mongo_member_id}`)
+              await userChannel.send({
+                type: 'broadcast',
+                event: 'new_message',
+                payload: { message: messageWithSender }
+              })
+              logger.debug('New message notification sent to user:', member.mongo_member_id)
+            } catch (notifError) {
+              logger.error('Failed to send new message notification to:', member.mongo_member_id, notifError)
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('Failed to broadcast message:', error)
+        // Don't fail the request if broadcast fails
+      }
+    })
+
+    return response
   } catch (error: unknown) {
     logger.error('Error sending message:', error)
     
