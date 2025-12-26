@@ -6,7 +6,10 @@ and i want to resolve this error forever and every things should be working well
 and also  In localhost the message sent is not working well while in the live in the vercel the same code is working well 
 
 
-2) --not-resolved In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 
+2) --not-resolved
+whats the man why the realtime notification not workign well again and again the issue explian bellow and resolve it professionally 
+
+ In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 
 there should be proper implementation of this one and make sure every things should be working well without anu error
 and make sure to handle the notification professionaly and corresctally when successfully read the notification than notification should be clean and there is the professional and proper implementation of the message read which should be completely realtime and every things should be working well and according to the current flow of this app 
 
