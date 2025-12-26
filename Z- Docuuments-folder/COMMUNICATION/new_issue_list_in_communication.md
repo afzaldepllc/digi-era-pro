@@ -53,7 +53,7 @@ make sure the message search should be working well in the message chat and also
 
 
 4) --pending  when send the message than its takes time it should be fast with proper message send quick loading 
- When message send than it takes time and wait to message api response but make sure this api should be call in the background and there should be completely realtime experiaence and when send the message than user can send another message imidiatly while send message api call in the background
+ When message send than it takes time and wait to message api response but make sure this api should be call in the background and there should be completely realtime experiaence and when send the message than user can send another message imidiatly while send message api call in the background but all the things should be working well without any error and every things should be completely realtime 
 
 5) --resolved  <>
                 {/* Auto Sync Setting */}
