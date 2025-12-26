@@ -441,7 +441,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
   if (!selectedChannel) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/10">
+      <div className="flex-1 flex items-center justify-center bg-muted/10 h-full w-full">
         <div className="text-center space-y-4">
           <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto">
             <Search className="h-8 w-8 text-muted-foreground" />

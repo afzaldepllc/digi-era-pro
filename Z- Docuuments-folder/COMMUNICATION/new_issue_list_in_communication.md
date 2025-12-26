@@ -53,7 +53,7 @@ make sure the message search should be working well in the message chat and also
 
 
 4) --pending  when send the message than its takes time it should be fast with proper message send quick loading 
-
+ When message send than it takes time and wait to message api response but make sure this api should be call in the background and there should be completely realtime experiaence and when send the message than user can send another message imidiatly while send message api call in the background
 
 5) --resolved  <>
                 {/* Auto Sync Setting */}
@@ -253,11 +253,11 @@ lib/realtime-manager.ts (570:19)
 
 11) when click on the same channel list than why this one 
 
-No messages yet
+"No messages yet
 
-Start the conversation!
+Start the conversation!"
 
-instead of showing the fresh data or same data 
+instead of showing the fresh data or same data but i want to when click again and again on the same channel_list than make sure show the fresh data
 
 
 12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error 
@@ -266,8 +266,6 @@ instead of showing the fresh data or same data
 
 14) now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
 
-
-15) When message send than it takes time and wait to message api response but make sure this api should be call in the background and in the there should be completely realtime experiaence
 
 16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
 
@@ -282,3 +280,20 @@ instead of showing the fresh data or same data
 
 
 21) for  the message auditlog, there should be proper separate ui proffessionaly 
+
+
+
+22) most of time when goes to the /communications or refresh the page than this issue occur
+
+{
+    "success": false,
+    "error": "Failed to fetch messages",
+    "details": {
+        "ipAddress": "::1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    },
+    "timestamp": "2025-12-26T13:33:46.853Z",
+    "statusCode": 500
+}
+
+and after some time the api give the correct response after giving this error from the supabase but in  the mongodb there is no issue and every things working well without any connection issue (as there are two db are using in this app , mongoDB for the main db handling all the things related to users, leads, clients, projects, tasks and supabase handles communication related things like messages, channels) check why this issue with the supabase connection or  due to another reason.
