@@ -268,7 +268,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
               </p>
             </div>
           ) : (
-            <div className="space-y-1 max-h-[500px] overflow-y-auto pb-6">
+            <div className="space-y-1 pb-4">
             {/* <div className="space-y-1"> */}
               {filteredUsers.map((user) => {
                 const isPinned = pinnedUsers.has(user._id.toString())
@@ -279,13 +279,13 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                 return (
                   <div
                     key={user._id as string}
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group"
+                    className="flex items-center gap-2 py-2 px-1 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group"
                     onClick={() => !channelLoading && handleStartDM(user)}
                   >
                     {/* Avatar */}
                     <div className="relative">
                       <Avatar className={cn(
-                        "h-10 w-10",
+                        "h-8 w-8",
                         // WhatsApp-style green ring for online users
                         getUserStatus(user) === 'online' && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
                       )}>
@@ -319,11 +319,11 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                         <p className="font-medium text-sm truncate">
                           {user.name || user.email}
                         </p>
-                        {user.role && (
+                        {/* {user.role && (
                           <Badge variant="secondary" className={cn("text-xs", getRoleColor(user.role))}>
                             {typeof user.role === 'string' ? user.role : 'user'}
                           </Badge>
-                        )}
+                        )} */}
                       </div>
                     </div>
 

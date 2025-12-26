@@ -268,7 +268,7 @@ Start the conversation!"
 instead of showing the fresh data or same data but i want to when click again and again on the same channel_list than make sure show the fresh data
 
 
-12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error 
+12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error and every things should be according to the flow of this app 
 
 13) there should be proper role base permission for every action of the communication which should be dynamic 
 

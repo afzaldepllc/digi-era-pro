@@ -806,7 +806,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 onSendWithFiles={sendMessageWithFiles}
                 onSendVoice={handleSendVoice}
                 onEdit={handleEditMessage}
-                disabled={actionLoading}
+                disabled={actionLoading || ((selectedChannel as any)?.admin_only_post && !selectedChannel?.channel_members.some((m) => m.mongo_member_id === mockCurrentUser._id && (m.role === 'admin' || m.role === 'owner')))}
                 placeholder={`Message ${getChannelTitle()}...`}
                 allowAttachments={true}
                 onTyping={handleTyping}
