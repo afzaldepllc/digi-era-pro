@@ -144,88 +144,111 @@ export async function POST(request: NextRequest) {
       sender_role: senderRole,
     })
 
-    // Upload files and create attachment records
-    const uploadedAttachments = []
-    const uploadErrors: string[] = []
-
-    for (const file of files) {
-      try {
-        if (file.size > 25 * 1024 * 1024) {
-          uploadErrors.push(`${file.name}: File too large (max 25MB)`)
-          continue
-        }
-
-        const buffer = Buffer.from(await file.arrayBuffer())
-
-        const uploadResult = await S3Service.uploadFile({
-          file: buffer,
-          fileName: file.name,
-          contentType: file.type,
-          fileType: 'CHAT_ATTACHMENTS',
-          userId: session.user.id,
-          metadata: {
-            channelId,
-            messageId: message.id,
-            uploadSource: 'chat-inline'
-          }
-        })
-
-        if (!uploadResult.success || !uploadResult.data) {
-          uploadErrors.push(`${file.name}: ${uploadResult.error || 'Upload failed'}`)
-          continue
-        }
-
-        const attachment = await prisma.attachments.create({
-          data: {
-            message_id: message.id,
-            channel_id: channelId,
-            mongo_uploader_id: session.user.id,
-            file_name: file.name,
-            file_url: uploadResult.data.url,
-            s3_key: uploadResult.data.key,
-            s3_bucket: process.env.AWS_S3_BUCKET_NAME,
-            file_size: uploadResult.data.size,
-            file_type: uploadResult.data.contentType
-          }
-        })
-
-        uploadedAttachments.push({
-          id: attachment.id,
-          message_id: attachment.message_id,
-          file_name: attachment.file_name,
-          file_url: attachment.file_url,
-          s3_key: attachment.s3_key,
-          file_size: attachment.file_size,
-          file_type: attachment.file_type,
-          created_at: attachment.created_at.toISOString()
-        })
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        uploadErrors.push(`${file.name}: ${errorMessage}`)
-      }
-    }
-
     // Update channel's last_message_at
     await prisma.channels.update({
       where: { id: channelId },
       data: { last_message_at: new Date() },
     })
 
-    // Transform message with sender and attachments
+    // Transform message with sender (attachments will be added later)
     const messageWithSender = {
       ...transformMessageWithSender(message),
-      attachments: uploadedAttachments
+      attachments: [] // Empty initially
     }
 
     // Send response immediately for fast user experience
     const response = NextResponse.json({
       success: true,
       data: messageWithSender,
-      upload_errors: uploadErrors.length > 0 ? uploadErrors : undefined,
-      message: uploadErrors.length > 0
-        ? `Message sent with ${uploadedAttachments.length} files (${uploadErrors.length} failed)`
-        : 'Message sent successfully'
+      message: files.length > 0 ? 'Message sent, uploading files...' : 'Message sent successfully'
     })
+
+    // Upload files asynchronously if any
+    if (files.length > 0) {
+      setImmediate(async () => {
+        const uploadedAttachments = []
+        const uploadErrors: string[] = []
+
+        for (const file of files) {
+          try {
+            if (file.size > 25 * 1024 * 1024) {
+              uploadErrors.push(`${file.name}: File too large (max 25MB)`)
+              continue
+            }
+
+            const buffer = Buffer.from(await file.arrayBuffer())
+
+            const uploadResult = await S3Service.uploadFile({
+              file: buffer,
+              fileName: file.name,
+              contentType: file.type,
+              fileType: 'CHAT_ATTACHMENTS',
+              userId: session.user.id,
+              metadata: {
+                channelId,
+                messageId: message.id,
+                uploadSource: 'chat-inline'
+              }
+            })
+
+            if (!uploadResult.success || !uploadResult.data) {
+              uploadErrors.push(`${file.name}: ${uploadResult.error || 'Upload failed'}`)
+              continue
+            }
+
+            const attachment = await prisma.attachments.create({
+              data: {
+                message_id: message.id,
+                channel_id: channelId,
+                mongo_uploader_id: session.user.id,
+                file_name: file.name,
+                file_url: uploadResult.data.url,
+                s3_key: uploadResult.data.key,
+                s3_bucket: process.env.AWS_S3_BUCKET_NAME,
+                file_size: uploadResult.data.size,
+                file_type: uploadResult.data.contentType
+              }
+            })
+
+            uploadedAttachments.push({
+              id: attachment.id,
+              message_id: attachment.message_id,
+              file_name: attachment.file_name,
+              file_url: attachment.file_url,
+              s3_key: attachment.s3_key,
+              file_size: attachment.file_size,
+              file_type: attachment.file_type,
+              created_at: attachment.created_at.toISOString()
+            })
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            uploadErrors.push(`${file.name}: ${errorMessage}`)
+          }
+        }
+
+        // Broadcast message update with attachments
+        try {
+          const supabaseAdmin = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SECRET_KEY!
+          )
+
+          const channel = supabaseAdmin.channel(`rt_${channelId}`)
+          await channel.send({
+            type: 'broadcast',
+            event: 'message_attachments_added',
+            payload: {
+              messageId: message.id,
+              attachments: uploadedAttachments,
+              uploadErrors: uploadErrors.length > 0 ? uploadErrors : undefined
+            }
+          })
+          logger.debug('Message attachments update broadcasted to channel:', channelId)
+        } catch (broadcastError) {
+          logger.error('Failed to broadcast attachments update:', broadcastError)
+        }
+      })
+    }
 
     // Broadcast asynchronously (fire-and-forget for performance)
     setImmediate(async () => {
@@ -252,7 +275,7 @@ export async function POST(request: NextRequest) {
             sender_name: senderName,
             sender_avatar: senderAvatar,
             content_preview: content.slice(0, 100),
-            has_attachments: uploadedAttachments.length > 0,
+            has_attachments: files.length > 0,
             created_at: message.created_at
           }
 

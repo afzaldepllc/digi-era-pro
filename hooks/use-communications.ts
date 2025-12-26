@@ -421,6 +421,25 @@ export function useCommunications() {
     }
   }, [dispatch, sessionUserId])
 
+  // Handle attachments added to message (real-time)
+  const onAttachmentsAdded = useCallback((data: { channelId: string; messageId?: string; attachments: any[] }) => {
+    logger.debug('📎 Attachments added to message:', data)
+    
+    if (data.messageId && data.attachments?.length > 0) {
+      // Update the message with new attachments
+      dispatch(updateMessage({
+        channelId: data.channelId,
+        messageId: data.messageId,
+        updates: { attachments: data.attachments }
+      }))
+      
+      toastRef.current({
+        title: "Files uploaded",
+        description: `${data.attachments.length} file(s) uploaded successfully`,
+      })
+    }
+  }, [dispatch])
+
   // ============================================
   // Trash-Related Event Handlers (Phase 2)
   // ============================================
@@ -635,10 +654,11 @@ export function useCommunications() {
       onReactionAdd,
       onReactionRemove,
       onChannelUpdate,
-      onUserPin
+      onUserPin,
+      onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
   // Subscribe to notifications when user is logged in
   useEffect(() => {
