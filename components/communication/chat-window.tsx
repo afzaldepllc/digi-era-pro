@@ -7,7 +7,7 @@ import { MessageList } from "@/components/communication/message-list"
 import { MessageInput, MessageInputRef } from "@/components/communication/message-input"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { TypingIndicator } from "@/components/communication/typing-indicator"
-import { ContextPanel } from "@/components/ui/context-panel"
+import { ContextPanel } from "@/components/communication/context-panel"
 import { ChannelSettingsModal } from "@/components/communication/channel-settings-modal"
 import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
 import { 
