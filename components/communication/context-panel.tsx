@@ -10,7 +10,6 @@ import {
   X,
   Users,
   Hash,
-  Calendar,
   FileText,
   ExternalLink,
   Settings,
@@ -21,7 +20,8 @@ import {
   Loader2,
   Download,
   Eye,
-  UserMinus
+  UserMinus,
+  LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant, IAttachment } from "@/types/communication"
@@ -45,14 +45,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { 
-  getFileCategory, 
-  getFileIcon, 
-  getExtensionColor, 
-  formatFileSize 
+import {
+  getFileCategory,
+  getFileIcon,
+  getExtensionColor,
+  formatFileSize
 } from "@/components/communication/attachment-preview"
 import { updateChannel } from "@/store/slices/communicationSlice"
 import { useAppDispatch } from "@/hooks/redux"
+import ChannelSettingsModal from "./channel-settings-modal"
 
 interface AttachmentWithUploader extends IAttachment {
   uploaded_by?: string
@@ -63,6 +64,7 @@ interface ContextPanelProps {
   isVisible: boolean
   onToggle: () => void
   onClose?: () => void
+  onPinChannel?: (channelId: string, isPinned: boolean) => Promise<void>
   className?: string
 }
 
@@ -71,23 +73,28 @@ export function ContextPanel({
   isVisible,
   onToggle,
   onClose,
+  onPinChannel,
   className
 }: ContextPanelProps) {
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(true)
   const [isPinned, setIsPinned] = useState(false)
+  const [pinLoading, setPinLoading] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentWithUploader[]>([])
   const [attachmentsLoading, setAttachmentsLoading] = useState(false)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [showAllAttachments, setShowAllAttachments] = useState(false)
-  
+
   // Remove member state
   const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState<string | null>(null)
   const [isRemovingMember, setIsRemovingMember] = useState(false)
-  
+
+  // Channel settings modal state
+  const [showChannelSettings, setShowChannelSettings] = useState(false)
+
   const { fetchChannelAttachments, downloadAttachment, previewAttachment } = useChatAttachments()
   const { data: session } = useSession()
   const currentUserId = (session?.user as any)?.id
-  const { actionLoading } = useCommunications()
+  const { actionLoading, leaveChannel, archiveChannel } = useCommunications()
   const dispatch = useAppDispatch()
 
   // Fetch attachments when channel changes
@@ -100,7 +107,7 @@ export function ContextPanel({
     const loadAttachments = async () => {
       setAttachmentsLoading(true)
       setAttachmentError(null)
-      
+
       try {
         const result = await fetchChannelAttachments({
           channelId: channel.id,
@@ -118,6 +125,13 @@ export function ContextPanel({
     loadAttachments()
   }, [channel?.id, isVisible, showAllAttachments, fetchChannelAttachments])
 
+  // Sync pinned state with channel
+  useEffect(() => {
+    if (channel) {
+      setIsPinned((channel as any).is_pinned || false)
+    }
+  }, [channel])
+
   const handleDownload = useCallback((attachment: IAttachment) => {
     downloadAttachment(attachment)
   }, [downloadAttachment])
@@ -130,7 +144,7 @@ export function ContextPanel({
   const currentMembership = channel?.channel_members.find(
     m => m.mongo_member_id === currentUserId
   )
-  
+
   const isOwner = currentMembership?.channelRole === 'owner' || channel?.mongo_creator_id === currentUserId
   const isAdmin = isOwner || currentMembership?.channelRole === 'admin'
 
@@ -168,6 +182,24 @@ export function ContextPanel({
     }
   }, [channel])
 
+  // Handle pin toggle
+  const handlePinToggle = useCallback(async () => {
+    if (!channel || !onPinChannel) return
+
+    const currentPinned = (channel as any).is_pinned || false
+    setPinLoading(true)
+
+    try {
+      await onPinChannel(channel.id, currentPinned)
+      setIsPinned(!currentPinned)
+    } catch (error: any) {
+      console.error('Pin toggle error:', error)
+      // Could add toast notification here if needed
+    } finally {
+      setPinLoading(false)
+    }
+  }, [channel, onPinChannel])
+
   if (!isVisible || !channel) {
     return null
   }
@@ -196,8 +228,8 @@ export function ContextPanel({
     const colorClass = getExtensionColor(category)
 
     return (
-      <div 
-        key={attachment.id} 
+      <div
+        key={attachment.id}
         className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer group transition-colors"
       >
         <div className={cn("h-8 w-8 rounded flex items-center justify-center shrink-0", colorClass)}>
@@ -226,9 +258,9 @@ export function ContextPanel({
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-6 w-6 p-0"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -244,9 +276,9 @@ export function ContextPanel({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-6 w-6 p-0"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -268,7 +300,7 @@ export function ContextPanel({
   return (
     <TooltipProvider>
       <div className={cn(
-        "w-80 bg-card border-l flex flex-col h-full",
+        "bg-card flex flex-col h-full",
         className
       )}>
         {/* Header */}
@@ -284,8 +316,8 @@ export function ContextPanel({
           </Button>
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-4">
+        <ScrollArea className="flex-1 pb-4">
+          <div className="pl-2 pr-6 space-y-4">
             {/* Channel Overview */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
@@ -343,26 +375,67 @@ export function ContextPanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsPinned(!isPinned)}
+                      onClick={handlePinToggle}
+                      disabled={pinLoading || !onPinChannel}
                     >
-                      <Pin className={cn("h-4 w-4", isPinned && "text-primary")} />
+                      {pinLoading ? (
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <Pin className={cn("h-4 w-4", isPinned && "text-primary")} />
+                      )}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>{isPinned ? 'Unpin' : 'Pin'} channel</p>
                   </TooltipContent>
                 </Tooltip>
+                {channel.type !== 'dm' && (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" onClick={() => setShowChannelSettings(true)}>
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Channel settings</p>
+                      </TooltipContent>
+                    </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Channel settings</p>
-                  </TooltipContent>
-                </Tooltip>
+
+                    {/* <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => leaveChannel(channel.id)}
+                          className="text-orange-600"
+                        >
+                          <LogOut className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Leave channel</p>
+                      </TooltipContent>
+                    </Tooltip> */}
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => archiveChannel(channel.id, (channel as any).is_archived ? 'unarchive' : 'archive')}
+                          className="text-destructive"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{(channel as any).is_archived ? 'Unarchive' : 'Archive'} channel</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
               </div>
             </div>
 
@@ -421,7 +494,7 @@ export function ContextPanel({
                   const isCurrentUser = participant.mongo_member_id === currentUserId
                   const isMemberOwner = participant.channelRole === 'owner' || participant.mongo_member_id === channel.mongo_creator_id
                   const canRemoveMember = isAdmin && !isMemberOwner && !isCurrentUser
-                  
+
                   return (
                     <div key={participant.mongo_member_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 group">
                       <div className="relative">
@@ -487,8 +560,8 @@ export function ContextPanel({
                   </h4>
                 </div>
                 {attachments.length > 3 && !showAllAttachments && (
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => setShowAllAttachments(true)}
                   >
@@ -496,8 +569,8 @@ export function ContextPanel({
                   </Button>
                 )}
                 {showAllAttachments && (
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => setShowAllAttachments(false)}
                   >
@@ -527,34 +600,6 @@ export function ContextPanel({
                 )}
               </div>
             </div>
-
-            <Separator />
-
-            {/* Channel Settings */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Channel Settings</h4>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Notifications</span>
-                  <Badge variant={isNotificationEnabled ? "default" : "secondary"}>
-                    {isNotificationEnabled ? "On" : "Off"}
-                  </Badge>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Pinned</span>
-                  <Badge variant={isPinned ? "default" : "secondary"}>
-                    {isPinned ? "Yes" : "No"}
-                  </Badge>
-                </div>
-              </div>
-
-              <Button variant="outline" size="sm" className="w-full">
-                <Archive className="h-4 w-4 mr-2" />
-                Archive Channel
-              </Button>
-            </div>
           </div>
         </ScrollArea>
       </div>
@@ -582,6 +627,15 @@ export function ContextPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Channel Settings Modal */}
+      {channel && (
+        <ChannelSettingsModal
+          isOpen={showChannelSettings}
+          onClose={() => setShowChannelSettings(false)}
+          channel={channel}
+        />
+      )}
     </TooltipProvider>
   )
 }

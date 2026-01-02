@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import MessageAuditLog from '@/models/MessageAuditLog'
 import mongoose from 'mongoose'
+import { S3Service } from "@/lib/services/s3-service"
 
 // Delete types for the trash system
 type DeleteType = 'trash' | 'self' | 'permanent'
@@ -77,10 +78,6 @@ export async function PUT(
     // Validate message ID
     const validatedParams = messageIdSchema.parse(params)
 
-    // Parse and validate request body
-    const body = await request.json()
-    const validatedData = updateMessageSchema.parse(body)
-
     // Check if user owns the message
     const message = await prisma.messages.findUnique({
       where: { id: validatedParams.messageId },
@@ -94,12 +91,126 @@ export async function PUT(
       return createErrorResponse('Access denied - you can only edit your own messages', 403)
     }
 
+    // Check if request has form data (for file uploads) or JSON
+    const contentType = request.headers.get('content-type') || ''
+    let validatedData: any
+    let files: File[] = []
+
+    if (contentType.includes('multipart/form-data')) {
+      // Handle form data with potential file uploads
+      const formData = await request.formData()
+      const content = formData.get('content') as string
+      const attachmentsToRemove = formData.get('attachments_to_remove') as string
+      files = formData.getAll('files') as File[]
+
+      // Parse attachments to remove
+      let parsedAttachmentsToRemove: string[] = []
+      if (attachmentsToRemove) {
+        try {
+          parsedAttachmentsToRemove = JSON.parse(attachmentsToRemove)
+        } catch {
+          // If not JSON, try comma-separated
+          parsedAttachmentsToRemove = attachmentsToRemove.split(',').map(id => id.trim()).filter(Boolean)
+        }
+      }
+
+      validatedData = {
+        content: content || '',
+        attachments_to_remove: parsedAttachmentsToRemove
+      }
+    } else {
+      // Handle JSON data
+      const body = await request.json()
+      validatedData = updateMessageSchema.parse(body)
+    }
+
+    // Handle attachment removal if specified
+    if (validatedData.attachments_to_remove && validatedData.attachments_to_remove.length > 0) {
+      // Delete attachments from database and S3
+      for (const attachmentId of validatedData.attachments_to_remove) {
+        try {
+          // Get attachment details
+          const attachment = await prisma.attachments.findUnique({
+            where: { id: attachmentId }
+          })
+
+          if (attachment && attachment.message_id === validatedParams.messageId) {
+            // Delete from S3
+            if (attachment.s3_key) {
+              await S3Service.deleteFile(attachment.s3_key)
+            }
+
+            // Delete from database
+            await prisma.attachments.delete({
+              where: { id: attachmentId }
+            })
+          }
+        } catch (error) {
+          logger.error(`Failed to delete attachment ${attachmentId}:`, error)
+          // Continue with other attachments
+        }
+      }
+    }
+
+    // Handle new file uploads if any
+    const uploadedAttachments = []
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          // Validate file size
+          if (file.size > 25 * 1024 * 1024) {
+            return createErrorResponse(`${file.name}: File too large (max 25MB)`, 400)
+          }
+
+          // Upload to S3
+          const uploadResult = await S3Service.uploadFile({
+            file: Buffer.from(await file.arrayBuffer()),
+            fileName: file.name,
+            contentType: file.type,
+            fileType: 'CHAT_ATTACHMENTS',
+            userId: session.user.id,
+          })
+
+          // Create attachment record
+          const attachment = await prisma.attachments.create({
+            data: {
+              id: crypto.randomUUID(),
+              message_id: validatedParams.messageId,
+              file_name: file.name,
+              file_url: uploadResult.url,
+              s3_key: uploadResult.key,
+              file_size: file.size,
+              file_type: file.type,
+              uploaded_by: session.user.id,
+            }
+          })
+
+          uploadedAttachments.push(attachment)
+        } catch (error) {
+          logger.error(`Failed to upload file ${file.name}:`, error)
+          return createErrorResponse(`Failed to upload ${file.name}`, 500)
+        }
+      }
+    }
+
     // Update message using messageOperations
     const updatedMessage = await messageOperations.update(validatedParams.messageId, validatedData.content)
 
+    // Broadcast message update
+    await broadcastMessageEvent(message.channel_id, 'message_updated', {
+      messageId: validatedParams.messageId,
+      channelId: message.channel_id,
+      content: validatedData.content,
+      attachmentsAdded: uploadedAttachments.length,
+      attachmentsRemoved: validatedData.attachments_to_remove?.length || 0
+    })
+
     return NextResponse.json({
       success: true,
-      data: updatedMessage,
+      data: {
+        ...updatedMessage,
+        attachments: uploadedAttachments
+      },
       message: 'Message updated successfully'
     })
   } catch (error: any) {
@@ -244,6 +355,30 @@ export async function DELETE(
         return createErrorResponse('Only trashed messages can be permanently deleted', 403)
       }
 
+      // Get all attachments for this message before deleting
+      const attachments = await prisma.attachments.findMany({
+        where: { message_id: messageId },
+        select: { id: true, s3_key: true, file_name: true }
+      })
+
+      // Delete files from S3
+      const s3DeletePromises = attachments
+        .filter(att => att.s3_key) // Only delete if s3_key exists
+        .map(att => S3Service.deleteFile(att.s3_key!))
+
+      const s3DeleteResults = await Promise.allSettled(s3DeletePromises)
+      const s3DeleteErrors = s3DeleteResults
+        .filter(result => result.status === 'rejected')
+        .map((result, index) => ({
+          file: attachments.filter(att => att.s3_key)[index]?.file_name || 'unknown',
+          error: (result as PromiseRejectedResult).reason
+        }))
+
+      // Log S3 deletion errors but don't fail the operation
+      if (s3DeleteErrors.length > 0) {
+        logger.warn('Some files could not be deleted from S3 during message permanent deletion:', s3DeleteErrors)
+      }
+
       // Create final audit log before permanent deletion
       await executeGenericDbQuery(async () => {
         return await MessageAuditLog.create({
@@ -262,7 +397,9 @@ export async function DELETE(
             message_created_at: message.created_at,
             sender_mongo_id: message.mongo_sender_id,
             sender_name: message.sender_name,
-            sender_email: message.sender_email
+            sender_email: message.sender_email,
+            attachments_deleted: attachments.length,
+            s3_delete_errors: s3DeleteErrors.length
           }
         })
       })
@@ -280,7 +417,9 @@ export async function DELETE(
       return NextResponse.json({
         success: true,
         deleteType: 'permanent',
-        message: 'Message permanently deleted'
+        message: 'Message permanently deleted',
+        attachmentsDeleted: attachments.length,
+        s3DeleteErrors: s3DeleteErrors.length > 0 ? s3DeleteErrors : undefined
       })
     }
 

@@ -125,6 +125,7 @@ export const createMessageSchema = baseMessageSchema
 
 export const updateMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required').max(5000, 'Message too long'),
+  attachments_to_remove: z.array(z.string().uuid()).optional(),
 })
 
 // Message query schema

@@ -472,7 +472,7 @@ export class RealtimeManager {
       const rtChannel = supabase.channel(`rt_${channelId}`, {
         config: {
           broadcast: {
-            self: false, // Prevent sender from receiving own broadcasts
+            self: true, // Allow sender to receive own broadcasts for attachments updates
           },
         },
       })
@@ -543,7 +543,11 @@ export class RealtimeManager {
         })
         .on('broadcast', { event: 'attachments_added' }, (payload) => {
           console.log('📎 Realtime: Attachments added', payload)
-          this.eventHandlers.onAttachmentsAdded?.(payload.payload)
+          // Add channelId to payload since it's not included in the broadcast
+          this.eventHandlers.onAttachmentsAdded?.({
+            ...payload.payload,
+            channelId
+          })
         })
         .on('broadcast', { event: 'reaction_added' }, (payload) => {
           console.log('👍 Realtime: Reaction added', payload)

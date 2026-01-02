@@ -52,14 +52,31 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     
+    console.log('🔍 [Reactions API] Received request body:', body)
+    
     // Validate request body
     const validationResult = addReactionSchema.safeParse(body)
     if (!validationResult.success) {
-      return createErrorResponse('Invalid request data', 400, validationResult.error.flatten())
+      console.error('❌ [Reactions API] Validation failed:', validationResult.error)
+      return createErrorResponse('Invalid request data', 400, validationResult.error)
     }
 
     const { message_id, channel_id, emoji } = validationResult.data
     const userId = session.user.id
+    
+    console.log('📋 [Reactions API] Validated data:', { message_id, channel_id, emoji, userId })
+    
+    // Additional emoji validation to prevent UUID corruption
+    if (!emoji || emoji.length > 10 || emoji.includes('-')) {
+      console.error('❌ [Reactions API] Invalid emoji detected:', {
+        emoji,
+        length: emoji?.length,
+        containsDash: emoji?.includes('-'),
+        isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji || '')
+      })
+      logger.error('Invalid emoji received in API:', emoji)
+      return createErrorResponse('Invalid emoji provided', 400, { receivedEmoji: emoji })
+    }
 
     // Check if user is member of the channel
     const membership = await prisma.channel_members.findFirst({
@@ -130,7 +147,8 @@ export async function POST(request: NextRequest) {
 
     // Add new reaction
     // Get user info for storing (denormalized)
-    const userName = (session.user as any)?.name || 'Unknown'
+    const userName = (session.user as any)?.name || (session.user as any)?.email || 'Unknown'
+    const userEmail = (session.user as any)?.email || ''
     
     const newReaction = await prisma.reactions.create({
       data: {
@@ -167,7 +185,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       action: 'added',
-      data: newReaction,
+      data: {
+        ...newReaction,
+        user_info: {
+          id: userId,
+          name: userName,
+          email: userEmail
+        }
+      },
       message: 'Reaction added successfully'
     })
 

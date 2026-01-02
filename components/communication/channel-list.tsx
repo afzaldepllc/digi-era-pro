@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { 
-  Search, 
-  Hash, 
-  MessageSquare, 
-  Users, 
-  Phone, 
+import {
+  Search,
+  Hash,
+  MessageSquare,
+  Users,
+  Phone,
   Plus,
   Settings,
   Filter,
@@ -45,6 +45,7 @@ interface ChannelListProps {
   currentUserId: string
   onlineUserIds?: string[] // Real-time online user IDs from Supabase
   showSearch?: boolean
+  showHeader?: boolean
   onCreateChannel?: () => void
   onPinChannel?: (channelId: string, isPinned: boolean) => Promise<void>
   className?: string
@@ -57,12 +58,12 @@ export const ChannelList = memo(function ChannelList({
   currentUserId,
   onlineUserIds = [],
   showSearch = true,
+  showHeader = true,
   onCreateChannel,
   onPinChannel,
   className
 }: ChannelListProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterType, setFilterType] = useState<'all' | 'dm' | 'project' | 'client-support'>('all')
   const [pinLoading, setPinLoading] = useState<string | null>(null)
   const { toast } = useToast()
 
@@ -95,15 +96,15 @@ export const ChannelList = memo(function ChannelList({
       const otherParticipant = channel.channel_members.find(p => p.mongo_member_id !== currentUserId)
       return otherParticipant?.userRole || otherParticipant?.userType || ''
     }
-    
+
     if (channel.type === 'project') {
       return `${channel.channel_members.length} members`
     }
-    
+
     if (channel.type === 'client-support') {
       return 'Client Support'
     }
-    
+
     return `${channel.channel_members.length} members`
   }
 
@@ -124,19 +125,14 @@ export const ChannelList = memo(function ChannelList({
       const query = searchQuery.toLowerCase()
       const channelName = getChannelDisplayName(channel).toLowerCase()
       const matchesName = channelName.includes(query)
-      const matchesChannelMembers = channel.channel_members.some(p => 
+      const matchesChannelMembers = channel.channel_members.some(p =>
         p.name.toLowerCase().includes(query)
       )
       const matchesLastMessage = channel.last_message?.content.toLowerCase().includes(query)
-      
+
       if (!matchesName && !matchesChannelMembers && !matchesLastMessage) {
         return false
       }
-    }
-
-    // Type filter
-    if (filterType !== 'all' && channel.type !== filterType) {
-      return false
     }
 
     return true
@@ -150,10 +146,10 @@ export const ChannelList = memo(function ChannelList({
   const handlePinToggle = useCallback(async (e: React.MouseEvent, channel: IChannel) => {
     e.stopPropagation()
     if (!onPinChannel) return
-    
+
     const isPinned = (channel as any).is_pinned || false
     setPinLoading(channel.id)
-    
+
     try {
       await onPinChannel(channel.id, isPinned)
     } catch (error: any) {
@@ -176,10 +172,10 @@ export const ChannelList = memo(function ChannelList({
     const isArchived = (channel as any).is_archived || false
     const isPinned = (channel as any).is_pinned || false
     const isPinLoading = pinLoading === channel.id
-    
+
     // Check if user is online using real-time onlineUserIds from Supabase
     const isAvatarUserOnline = avatar ? (
-      onlineUserIds.length > 0 
+      onlineUserIds.length > 0
         ? onlineUserIds.includes(avatar.mongo_member_id)
         : avatar.isOnline
     ) : false
@@ -188,13 +184,13 @@ export const ChannelList = memo(function ChannelList({
       <div
         onClick={() => onChannelSelect(channel.id)}
         className={cn(
-          "flex items-center gap-4 p-2 cursor-pointer transition-all duration-300 rounded-md group relative",
-          "hover:shadow-lg hover:scale-[1.02]",
-          "border-2 border-transparent hover:border-accent/30",
-          isActive && "shadow-md border-primary/20",
-          hasUnread && "border-secondary-200/50",
+          "flex items-center gap-3 p-3 cursor-pointer transition-all duration-200 rounded-xl group relative",
+          "hover:bg-accent/50 hover:shadow-md hover:scale-[1.01]",
+          "border border-transparent hover:border-accent/50",
+          isActive && "bg-primary/10 shadow-sm border-primary/30",
+          hasUnread && "bg-accent/20 border-accent/30",
           isArchived && "opacity-60 bg-muted/30",
-          isPinned && "bg-primary/5 border-primary/10"
+          isPinned && "bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20"
         )}
       >
         {/* Pin indicator */}
@@ -203,7 +199,7 @@ export const ChannelList = memo(function ChannelList({
             <Pin className="h-3 w-3 text-primary fill-primary rotate-45" />
           </div>
         )}
-        
+
         {/* Pin/Unpin button - visible on hover */}
         {onPinChannel && (
           <Tooltip>
@@ -232,35 +228,35 @@ export const ChannelList = memo(function ChannelList({
             </TooltipContent>
           </Tooltip>
         )}
-        
+
         {/* Avatar or Icon */}
         <div className="relative shrink-0">
           {avatar ? (
             <>
               <Avatar className={cn(
-                "h-10 w-10 transition-transform duration-200 group-hover:scale-110",
+                "h-11 w-11 transition-all duration-200 group-hover:scale-110 shadow-sm",
                 // WhatsApp-style green ring for online users
-                isAvatarUserOnline && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+                isAvatarUserOnline && "ring-2 ring-green-500 dark:ring-green-400 ring-offset-2 ring-offset-background shadow-green-200 dark:shadow-green-900"
               )}>
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
                   {avatar.name ? (() => {
-                      const parts = avatar.name.trim().split(' ');
-                      if (parts.length === 1) {
-                        return parts[0][0].toUpperCase();
-                      }
-                      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                    })()
-                  : ''}
+                    const parts = avatar.name.trim().split(' ');
+                    if (parts.length === 1) {
+                      return parts[0][0].toUpperCase();
+                    }
+                    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                  })()
+                    : ''}
                 </AvatarFallback>
               </Avatar>
               {/* Online indicator dot */}
               {isAvatarUserOnline && (
-                <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
+                <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-green-500 dark:bg-green-400 border-2 border-background animate-pulse shadow-sm" />
               )}
             </>
           ) : (
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-muted to-accent/30 flex items-center justify-center transition-transform duration-200 group-hover:scale-110 group-hover:bg-gradient-to-br group-hover:from-primary/20 group-hover:to-accent/40">
+            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-muted to-accent/30 flex items-center justify-center transition-all duration-200 group-hover:scale-110 group-hover:shadow-md group-hover:from-primary/20 group-hover:to-accent/40 shadow-sm">
               {getChannelIcon(channel)}
             </div>
           )}
@@ -268,26 +264,26 @@ export const ChannelList = memo(function ChannelList({
 
         {/* Channel info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h3 className={cn(
-              "font-semibold text-base truncate tracking-tight transition-colors",
-              hasUnread && "font-bold text-primary",
+              "font-semibold text-sm truncate tracking-tight transition-colors",
+              hasUnread && "font-bold text-foreground",
               isActive && "text-primary"
             )}>
               {displayName}
             </h3>
-            
+
             {channel.last_message && (
               <span className={cn(
-                "text-xs font-medium ml-3 shrink-0 transition-colors",
+                "text-[10px] font-medium shrink-0 transition-colors",
                 hasUnread ? "text-primary" : "text-muted-foreground"
               )}>
                 {formatLastMessageTime(channel.last_message.created_at)}
               </span>
             )}
           </div>
-          
-          <div className="flex items-center justify-between">
+
+          <div className="flex items-center justify-between gap-2">
             {/* Subtitle or last message */}
             <div className="flex-1 min-w-0">
               {channel.last_message ? (
@@ -295,27 +291,27 @@ export const ChannelList = memo(function ChannelList({
                 //   "text-sm truncate leading-tight transition-colors",
                 //   hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
                 // )}>
-                   <HtmlTextRenderer
-                        content={channel.last_message.content}
-                        fallbackText="No description"
-                        showFallback={true}
-                        renderAsHtml={true}
-                        className="line-clamp-1"
-                        truncateHtml={true}
-                      />
+                <HtmlTextRenderer
+                  content={channel.last_message.content}
+                  fallbackText="No description"
+                  showFallback={true}
+                  renderAsHtml={true}
+                  className="line-clamp-1 text-xs"
+                  truncateHtml={true}
+                />
                 // </p>
               ) : (
-                <p className="text-sm text-muted-foreground/60 font-medium">
+                <p className="text-xs text-muted-foreground/60 font-medium">
                   {subtitle}
                 </p>
               )}
             </div>
-            
+
             {/* Unread count */}
             {hasUnread && (
-              <Badge 
-                variant="default" 
-                className="ml-3 h-6 min-w-[24px] flex items-center justify-center text-xs font-bold bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md animate-pulse hover:animate-none transition-all hover:scale-110"
+              <Badge
+                variant="default"
+                className="ml-2 h-5 min-w-[20px] px-1.5 flex items-center justify-center text-[10px] font-bold bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all hover:scale-110"
               >
                 {(channel.unreadCount || 0) > 99 ? '99+' : (channel.unreadCount || 0)}
               </Badge>
@@ -323,20 +319,20 @@ export const ChannelList = memo(function ChannelList({
           </div>
 
           {/* Channel type indicator */}
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 bg-gradient-to-r from-background to-accent/20 border-accent/30">
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 h-4 rounded-full bg-background/50 border-accent/40 text-muted-foreground">
               {channel.type === 'dm' ? 'Direct' : channel.type === 'client-support' ? 'Support' : channel.type.replace('-', ' ')}
             </Badge>
-            
+
             {isArchived && (
-              <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                <Archive className="h-3 w-3" />
+              <Badge variant="secondary" className="text-[10px] h-4 gap-1 px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <Archive className="h-2.5 w-2.5" />
                 Archived
               </Badge>
             )}
-            
+
             {!channel.is_private && !isArchived && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 py-0 rounded-full">
                 External
               </Badge>
             )}
@@ -350,85 +346,22 @@ export const ChannelList = memo(function ChannelList({
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-gradient-to-b from-card to-card/95 border-r border-border/50 shadow-sm overflow-hidden", className)}>
         {/* Header */}
-        <div className="p-2 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-primary" />
-              <h2 className="font-semibold text-lg tracking-tight">Messages</h2>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Filter dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="hover:bg-accent/50 transition-colors">
-                    <Filter className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuLabel>Filter by type</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setFilterType('all')}>
-                    All Channels
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterType('dm')}>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Direct Messages
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterType('project')}>
-                    <Hash className="h-4 w-4 mr-2" />
-                    Project Channels
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterType('client-support')}>
-                    <Phone className="h-4 w-4 mr-2" />
-                    Client Support
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              
-              {/* Create channel button */}
-              {onCreateChannel && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={onCreateChannel}
-                      className="hover:bg-primary hover:text-primary-foreground transition-all duration-200 hover:shadow-md hover:scale-105"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Create new channel</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
+        {showHeader && (
+          <div className="p-3 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
+            {/* Search */}
+            {showSearch && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
+                <Input
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20 hover:border-primary/30"
+                />
+              </div>
+            )}
           </div>
-
-          {/* Search */}
-          {showSearch && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
-              <Input
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20 hover:border-primary/30"
-              />
-            </div>
-          )}
-
-          {/* Active filter indicator */}
-          {filterType !== 'all' && (
-            <div className="mt-2">
-              <Badge variant="outline" className="text-xs">
-                Showing: {filterType.replace('-', ' ')}
-              </Badge>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Channel list */}
         <div className="flex-1 w-full max-w-full overflow-auto">
@@ -475,12 +408,12 @@ export const ChannelList = memo(function ChannelList({
                     </div>
                   </>
                 )}
-                
+
                 {/* Unpinned Channels - DM and Other */}
                 {(() => {
                   const dmChannels = unpinnedChannels.filter(channel => channel.type === 'dm')
                   const otherChannels = unpinnedChannels.filter(channel => channel.type !== 'dm')
-                  
+
                   return (
                     <>
                       {/* DM Unread */}
@@ -490,7 +423,7 @@ export const ChannelList = memo(function ChannelList({
                           <ChannelItem key={channel.id} channel={channel} />
                         ))
                       }
-                      
+
                       {/* DM Read */}
                       {dmChannels
                         .filter(channel => (channel.unreadCount || 0) === 0)
@@ -498,7 +431,7 @@ export const ChannelList = memo(function ChannelList({
                           <ChannelItem key={channel.id} channel={channel} />
                         ))
                       }
-                      
+
                       {/* Separator between DM and other channels */}
                       {dmChannels.length > 0 && otherChannels.length > 0 && (
                         <div className="py-3 px-2">
@@ -512,7 +445,7 @@ export const ChannelList = memo(function ChannelList({
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Other Channels Unread */}
                       {otherChannels
                         .filter(channel => (channel.unreadCount || 0) > 0)
@@ -520,7 +453,7 @@ export const ChannelList = memo(function ChannelList({
                           <ChannelItem key={channel.id} channel={channel} />
                         ))
                       }
-                      
+
                       {/* Other Channels Read */}
                       {otherChannels
                         .filter(channel => (channel.unreadCount || 0) === 0)

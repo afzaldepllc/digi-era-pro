@@ -67,7 +67,8 @@ import type {
   ITypingIndicator,
   IParticipant,
   ICommunication,
-  IChannel
+  IChannel,
+  IAttachment
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
@@ -303,7 +304,7 @@ export function useCommunications() {
     console.log(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
   }, [sessionUserId])
 
-  // Handle reaction added (real-time)
+  // Handle reaction added (real-time) - WhatsApp style
   const onReactionAdd = useCallback((data: {
     id: string;
     message_id: string;
@@ -313,24 +314,28 @@ export function useCommunications() {
     emoji: string;
     created_at: string;
   }) => {
-    logger.debug('Reaction added:', data)
+    logger.debug('Reaction added via realtime:', data)
+    
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
+    
+    // Ensure we have proper user info and emoji
+    const reactionData = {
+      id: data.id,
+      mongo_user_id: data.mongo_user_id,
+      user_name: data.user_name || 'Someone',
+      emoji: data.emoji, // Ensure emoji is preserved properly
+      created_at: data.created_at
+    }
     
     dispatch(addReactionToMessage({
       channelId: data.channel_id,
       messageId: data.message_id,
-      reaction: {
-        id: data.id,
-        mongo_user_id: data.mongo_user_id,
-        user_name: data.user_name,
-        emoji: data.emoji,
-        created_at: data.created_at
-      }
+      reaction: reactionData
     }))
   }, [dispatch, sessionUserId])
 
-  // Handle reaction removed (real-time)
+  // Handle reaction removed (real-time) - WhatsApp style
   const onReactionRemove = useCallback((data: {
     id: string;
     message_id: string;
@@ -338,7 +343,8 @@ export function useCommunications() {
     mongo_user_id: string;
     emoji: string;
   }) => {
-    logger.debug('Reaction removed:', data)
+    logger.debug('Reaction removed via realtime:', data)
+    
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
     
@@ -606,7 +612,7 @@ export function useCommunications() {
         logger.debug('Subscribing to channel:', activeChannelId)
         try {
           await realtimeManager.subscribeToChannel(activeChannelId)
-          fetchMessages({ channel_id: activeChannelId })
+          // fetchMessages is now handled in selectChannel
         } catch (error) {
           logger.error('Failed to subscribe to channel:', error)
         }
@@ -721,6 +727,37 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed toast from dependencies to prevent infinite loop
 
+  // Message operations
+  const fetchMessages = useCallback(async (params: FetchMessagesParams) => {
+    try {
+      dispatch(setMessagesLoading(true))
+      // Build query string
+      const MESSAGE_LIMIT = params.limit || 50
+      const queryParams = new URLSearchParams({
+        channel_id: params.channel_id,
+        limit: MESSAGE_LIMIT.toString(),
+        offset: '0'
+      })
+      
+      const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
+      dispatch(setMessages({ channelId: params.channel_id, messages: response.data || response }))
+
+      logger.debug('Fetched messages:', response.data?.length || response?.length || 0)
+      return response
+    } catch (error) {
+      dispatch(setError('Failed to fetch messages'))
+      toastRef.current({
+        title: "Error",
+        description: "Failed to load messages",
+        variant: "destructive"
+      })
+      return []
+    } finally {
+      dispatch(setMessagesLoading(false))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]) // Removed toast to prevent infinite loop
+
   const selectChannel = useCallback(async (channel_id: string) => {
     dispatch(setActiveChannel(channel_id))
     dispatch(clearNotificationsForChannel(channel_id))
@@ -778,42 +815,14 @@ export function useCommunications() {
     } catch (error) {
       logger.error('Failed to mark messages as read when selecting channel:', error)
     }
-  }, [dispatch, sessionUserId, realtimeManager, fetchChannels])
+
+    // Always fetch messages to ensure fresh data, even for the same channel
+    await fetchMessages({ channel_id })
+  }, [dispatch, sessionUserId, realtimeManager, fetchChannels, fetchMessages])
 
   const clearChannel = useCallback(() => {
     dispatch(clearActiveChannel())
   }, [dispatch])
-
-  // Message operations
-  const fetchMessages = useCallback(async (params: FetchMessagesParams) => {
-    try {
-      dispatch(setMessagesLoading(true))
-      // Build query string
-      const MESSAGE_LIMIT = params.limit || 50
-      const queryParams = new URLSearchParams({
-        channel_id: params.channel_id,
-        limit: MESSAGE_LIMIT.toString(),
-        offset: '0'
-      })
-      
-      const response = await apiRequest(`/api/communication/messages?${queryParams.toString()}`)
-      dispatch(setMessages({ channelId: params.channel_id, messages: response.data || response }))
-
-      logger.debug('Fetched messages:', response.data?.length || response?.length || 0)
-      return response
-    } catch (error) {
-      dispatch(setError('Failed to fetch messages'))
-      toastRef.current({
-        title: "Error",
-        description: "Failed to load messages",
-        variant: "destructive"
-      })
-      return []
-    } finally {
-      dispatch(setMessagesLoading(false))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]) // Removed toast to prevent infinite loop
 
   // Fetch older messages (pagination - prepend to existing)
   const fetchOlderMessages = useCallback(async (params: FetchMessagesParams & { offset: number }) => {
@@ -1075,19 +1084,16 @@ export function useCommunications() {
         xhr.send(formData)
       })
 
-      // Update optimistic message with real data
+      // Update optimistic message with real ID (keep optimistic attachments until real-time update)
       if (response?.id) {
-        // Clean up object URLs
-        optimisticAttachments.forEach(att => {
-          if (att.file_url?.startsWith('blob:')) {
-            URL.revokeObjectURL(att.file_url)
-          }
-        })
-
         dispatch(updateMessage({
           channelId: messageData.channel_id,
           messageId: tempId,
-          updates: { ...response, isOptimistic: false }
+          updates: { 
+            id: response.id, 
+            isOptimistic: false,
+            // Keep optimistic attachments until real-time update with actual attachments
+          }
         }))
       }
 
@@ -1120,7 +1126,7 @@ export function useCommunications() {
   }, [dispatch, sessionUserId, sessionUser])
 
   // Update an existing message (for editing)
-  const editMessage = useCallback(async (messageId: string, updates: { content?: string }) => {
+  const editMessage = useCallback(async (messageId: string, updates: { content?: string; newFiles?: File[]; attachmentsToRemove?: string[] }) => {
     try {
       dispatch(setActionLoading(true))
 
@@ -1138,21 +1144,82 @@ export function useCommunications() {
         throw new Error('Message not found')
       }
 
+      // Prepare the update payload
+      let requestBody: any
+      let headers: any = {}
+
+      // If we have new files, use FormData
+      if (updates.newFiles && updates.newFiles.length > 0) {
+        const formData = new FormData()
+        formData.append('content', updates.content || '')
+        
+        if (updates.attachmentsToRemove && updates.attachmentsToRemove.length > 0) {
+          formData.append('attachments_to_remove', JSON.stringify(updates.attachmentsToRemove))
+        }
+        
+        updates.newFiles.forEach(file => {
+          formData.append('files', file)
+        })
+        
+        requestBody = formData
+        // Don't set Content-Type header - let the browser set it for FormData
+      } else {
+        // Use JSON for content-only updates
+        requestBody = JSON.stringify({
+          content: updates.content,
+          attachments_to_remove: updates.attachmentsToRemove || []
+        })
+        headers['Content-Type'] = 'application/json'
+      }
+
       // Optimistically update the message
+      const optimisticUpdates: any = {
+        content: updates.content,
+        is_edited: true,
+        edited_at: new Date().toISOString()
+      }
+
+      // Handle attachment changes optimistically
+      const currentMessage = messages[channelId]?.find((m: ICommunication) => m.id === messageId)
+      if (currentMessage) {
+        let updatedAttachments = [...(currentMessage.attachments || [])]
+        
+        // Remove attachments
+        if (updates.attachmentsToRemove) {
+          updatedAttachments = updatedAttachments.filter(att => 
+            !updates.attachmentsToRemove!.includes(att.id)
+          )
+        }
+        
+        // For new files, we'll add placeholder attachments (they'll be replaced by real data from API)
+        if (updates.newFiles && updates.newFiles.length > 0) {
+          const placeholderAttachments: IAttachment[] = updates.newFiles.map(file => ({
+            id: `temp-${Date.now()}-${Math.random()}`,
+            message_id: messageId,
+            file_name: file.name,
+            file_size: file.size,
+            file_type: file.type,
+            file_url: undefined,
+            uploaded_by: sessionUserId,
+            created_at: new Date().toISOString()
+          }))
+          updatedAttachments = [...updatedAttachments, ...placeholderAttachments]
+        }
+        
+        optimisticUpdates.attachments = updatedAttachments
+      }
+
       dispatch(updateMessage({
         channelId,
         messageId,
-        updates: {
-          ...updates,
-          is_edited: true,
-          edited_at: new Date().toISOString()
-        }
+        updates: optimisticUpdates
       }))
 
       // Send to API
       const response = await apiRequest(`/api/communication/messages/${messageId}`, {
         method: 'PUT',
-        body: JSON.stringify(updates)
+        headers,
+        body: requestBody
       })
 
       if (response?.id) {
@@ -1180,7 +1247,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, messages])
+  }, [dispatch, messages, sessionUserId])
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -1326,7 +1393,20 @@ export function useCommunications() {
    * Otherwise, it will be added.
    */
   const toggleReaction = useCallback(async (messageId: string, channelId: string, emoji: string) => {
+    console.log(`🚀 [toggleReaction] Called with:`, { messageId, channelId, emoji, sessionUserId })
+    
     if (!sessionUserId) return
+    
+    // Validate emoji parameter before proceeding
+    if (!emoji || emoji.length > 10 || emoji.includes('-') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji)) {
+      console.error('❌ [toggleReaction] Invalid emoji received:', emoji)
+      toastRef.current({
+        title: "Error",
+        description: "Invalid emoji detected. Please try again.",
+        variant: "destructive"
+      })
+      return
+    }
 
     try {
       // Check if user already reacted with this emoji
@@ -1337,6 +1417,7 @@ export function useCommunications() {
       )
 
       if (existingReaction) {
+        console.log(`➖ [toggleReaction] Removing existing reaction:`, existingReaction)
         // Optimistically remove the reaction
         dispatch(removeReactionFromMessage({
           channelId,
@@ -1346,37 +1427,51 @@ export function useCommunications() {
           emoji
         }))
       } else {
-        // Optimistically add the reaction
+        console.log(`➕ [toggleReaction] Adding new reaction with emoji:`, emoji)
+        // Optimistically add the reaction with proper user info
         const tempReactionId = crypto.randomUUID()
+        const optimisticReaction = {
+          id: tempReactionId,
+          mongo_user_id: sessionUserId,
+          user_name: sessionUserName || 'You',
+          emoji: emoji, // Ensure emoji is properly set
+          created_at: new Date().toISOString()
+        }
+        
         dispatch(addReactionToMessage({
           channelId,
           messageId,
-          reaction: {
-            id: tempReactionId,
-            mongo_user_id: sessionUserId,
-            user_name: sessionUserName,
-            emoji,
-            created_at: new Date().toISOString()
-          }
+          reaction: optimisticReaction
         }))
       }
 
+      // Prepare API request data
+      const apiData = {
+        message_id: messageId,
+        channel_id: channelId,
+        emoji: emoji
+      }
+      
+      console.log(`📡 [toggleReaction] Sending API request with data:`, apiData)
+
       // Send to API (toggle behavior handled on server)
-      // apiRequest returns the data directly on success, or throws on error
       const result = await apiRequest('/api/communication/reactions', {
         method: 'POST',
-        body: JSON.stringify({
-          message_id: messageId,
-          channel_id: channelId,
-          emoji
-        })
+        body: JSON.stringify(apiData)
       }, false) // Don't show error toast, we handle it ourselves
 
-      logger.debug('Reaction toggled:', result)
+      console.log(`✅ [toggleReaction] API response:`, result)
+      logger.debug('Reaction toggled successfully:', { 
+        action: result?.action,
+        emoji,
+        messageId,
+        userId: sessionUserId 
+      })
     } catch (error: any) {
+      console.error('❌ [toggleReaction] Error:', error)
       logger.error('Failed to toggle reaction:', error)
       
-      // Check if user already reacted with this emoji (for reverting)
+      // Check if user already reacted with this emoji (for reverting optimistic update)
       const channelMessages = messages[channelId] || []
       const message = channelMessages.find(m => m.id === messageId)
       const existingReaction = message?.reactions?.find(
@@ -1403,7 +1498,7 @@ export function useCommunications() {
       
       toastRef.current({
         title: "Error",
-        description: error?.error || "Failed to add reaction",
+        description: error?.error || "Failed to toggle reaction",
         variant: "destructive"
       })
     }

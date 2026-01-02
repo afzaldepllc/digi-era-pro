@@ -6,17 +6,6 @@ and i want to resolve this error forever and every things should be working well
 and also  In localhost the message sent is not working well while in the live in the vercel the same code is working well 
 
 
-2) --not-resolved
-whats the man why the realtime notification not working well again and again the issue explian bellow and resolve it professionally 
-
- In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 
-there should be proper implementation of this one and make sure every things should be working well without anu error
-and make sure to handle the notification professionaly and corresctally when successfully read the notification than notification should be clean and there is the professional and proper implementation of the message read which should be completely realtime and every things should be working well and according to the current flow of this app 
-
-now issue is that when when i open the channel in the reciver side and than send the message to this channel from sender side than the messages are not the realtime and not the message notification is not the  realtime at all now   when message send and now need refresh to show the notification in the reciever side but i want the completely realtime notification for all those channels which are not open yet or the user is not in the /communications route and all the other things are working well also as of now 
-whats the hell man 
-now again need refresh the page to show the notification but  i want the completely realtime message notification while all the other things should be wokring well and after read that notification clear out in well manner and every things should be working well without any error and every things should be according to current flow of this project and according to the best practices of supabase
-
 
 3) --resolved  in the message-list , the messages search is not working well 
 <input
@@ -157,6 +146,179 @@ make sure the message search should be working well in the message chat and also
               now i want to  add these setting for the channel in the creation time also while all the things should be working well 
 
 
+
+11) resolved  when click on the same channel list than why this one 
+
+"No messages yet
+
+Start the conversation!"
+
+instead of showing the fresh data or same data but i want to when click again and again on the same channel_list than make sure show the fresh data
+
+
+18) resolved when message goes to trash than the attchment and other things along with the message content should be proper delete and restore in the well and professional way but now just the text restore and delete and when delete the message having attchements than also delete the file from the s3 on message delete
+
+
+
+
+23) resolved when message send with the file than some time its not showing the uploading files and than need refresh the page than show the uploading files preview (files are handled using the  s3 ) but i want the completely realtime like the text messages
+
+
+
+24) resolved when message edit than make sure we can replace/remore/update  the attachments also along with the message text edit while make sure all the other things should be working wel also as of now while make sure all the other things should be workign well
+
+
+
+
+
+
+
+
+26) --resolved   i want to adjust all these options in the content-panel 
+
+  {/* More options */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>
+                    <Pin className="h-4 w-4 mr-2" />
+                    Pin Channel
+                  </DropdownMenuItem>
+                  {selectedChannel && selectedChannel.type !== 'dm' && (
+                    <>
+                      <DropdownMenuItem onClick={() => setShowChannelSettings(true)}>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Channel Settings
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+
+                      <DropdownMenuItem
+                        onClick={() => leaveChannel(channelId)}
+                        className="text-orange-600 focus:text-orange-600"
+                      >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Leave Channel
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => archiveChannel(channelId, (selectedChannel as any).is_archived ? 'unarchive' : 'archive')}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Archive className="h-4 w-4 mr-2" />
+                        {(selectedChannel as any).is_archived ? 'Unarchive Channel' : 'Archive Channel'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+using the 
+<Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsPinned(!isPinned)}
+                    >
+                      <Pin className={cn("h-4 w-4", isPinned && "text-primary")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{isPinned ? 'Unpin' : 'Pin'} channel</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Channel settings</p>
+                  </TooltipContent>
+                </Tooltip>
+and use another things to adjacest all the other things while all the things should be working well as of now 
+
+
+25) this error when stick on the /communications route long time  Console Error
+
+
+
+❌ RT Channel error for 0b13eaee-d7cc-48f6-a8a0-0ca95daee698
+lib/realtime-manager.ts (607:19) @ <unknown>
+
+
+  605 |           resolve()
+  606 |         } else if (status === 'CHANNEL_ERROR') {
+> 607 |           console.error(`❌ RT Channel error for ${channelId}`)
+      |                   ^
+  608 |           this.subscriptionPromises.delete(channelId)
+  609 |           reject(new Error(`RT Channel error for ${channelId}`))
+  610 |         } else if (status === 'TIMED_OUT') {
+Call Stack
+14
+
+Show 13 ignore-listed frame(s)
+<unknown>
+lib/realtime-manager.ts (607:19)
+1
+2
+
+2) --not-resolved
+whats the man why the realtime notification not working well again and again the issue explian bellow and resolve it professionally 
+
+ In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 
+there should be proper implementation of this one and make sure every things should be working well without anu error
+and make sure to handle the notification professionaly and corresctally when successfully read the notification than notification should be clean and there is the professional and proper implementation of the message read which should be completely realtime and every things should be working well and according to the current flow of this app 
+
+now issue is that when when i open the channel in the reciver side and than send the message to this channel from sender side than the messages are not the realtime and not the message notification is not the  realtime at all now   when message send and now need refresh to show the notification in the reciever side but i want the completely realtime notification for all those channels which are not open yet or the user is not in the /communications route and all the other things are working well also as of now 
+whats the hell man 
+now again need refresh the page to show the notification but  i want the completely realtime message notification while all the other things should be wokring well and after read that notification clear out in well manner and every things should be working well without any error and every things should be according to current flow of this project and according to the best practices of supabase and every things should be implemented well and professionally 
+
+
+
+12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one(with type "dm" or "client-support") channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error and every things should be according to the flow of this app 
+
+13) there should be proper role base permission for every action of the communication which should be dynamic 
+
+14) now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
+
+
+16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
+
+
+17)  now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
+
+
+19) there is the proper implementation of the synch member with the realtime experience 
+
+20) new message notification issue when message seen and  reload page than again those messages shown as a notification in the header and channel_lists  
+
+
+21) for  the message auditlog, there should be proper separate ui proffessionaly 
+
+
+
+22) most of time when goes to the /communications or refresh the page than this issue occur
+
+{
+    "success": false,
+    "error": "Failed to fetch messages",
+    "details": {
+        "ipAddress": "::1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    },
+    "timestamp": "2025-12-26T13:33:46.853Z",
+    "statusCode": 500
+}
+
+and after some time the api give the correct response after giving this error from the supabase but in  the mongodb there is no issue and every things working well without any connection issue (as there are two db are using in this app , mongoDB for the main db handling all the things related to users, leads, clients, projects, tasks and supabase handles communication related things like messages, channels) check why this issue with the supabase connection or  due to another reason.
+
+
+
 6) --resolved-but-synch-issue now instead of leaving the channel the group admin can remove the any existing member with proper loges 
  {/* Leave Channel - Not for owners */}
               {!isOwner && (
@@ -259,53 +421,10 @@ lib/realtime-manager.ts (570:19)
 
 
 
-11) when click on the same channel list than why this one 
 
-"No messages yet
-
-Start the conversation!"
-
-instead of showing the fresh data or same data but i want to when click again and again on the same channel_list than make sure show the fresh data
-
-
-12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error and every things should be according to the flow of this app 
-
-13) there should be proper role base permission for every action of the communication which should be dynamic 
-
-14) now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
-
-
-16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
-
-
-17)  now the mention is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
-
-18) when message goes to trach than the attchment and other things along with the message content should be proper delete and restore in the well and professional way 
-
-19) there is the proper implementation of the synch member with the realtime experience 
-
-20) new message notification issue when message seen and  reload page than again those messages shown as a notification in the header and channel_lists  
-
-
-21) for  the message auditlog, there should be proper separate ui proffessionaly 
-
-
-
-22) most of time when goes to the /communications or refresh the page than this issue occur
-
-{
-    "success": false,
-    "error": "Failed to fetch messages",
-    "details": {
-        "ipAddress": "::1",
-        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    },
-    "timestamp": "2025-12-26T13:33:46.853Z",
-    "statusCode": 500
-}
-
-and after some time the api give the correct response after giving this error from the supabase but in  the mongodb there is no issue and every things working well without any connection issue (as there are two db are using in this app , mongoDB for the main db handling all the things related to users, leads, clients, projects, tasks and supabase handles communication related things like messages, channels) check why this issue with the supabase connection or  due to another reason.
-
-
-
-23) when message send with the file than some time its not showing the uploading files and than need refresh the page than show the uploading files preview (files are handled using the  s3 )
+26) attachements previews need better ui which should be looking professional
+27) ther should be proper multiple attchement share options
+28) attchement can be share to others chats(can be multiples chats)
+29) there should be proper attachements preview on the message input
+30) in the user_directory the pin should be synched to each other like in chat_lists
+31) attachement gallery for shared attachments like in the whatsapp 

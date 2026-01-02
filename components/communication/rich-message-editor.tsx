@@ -25,7 +25,7 @@ import HardBreak from '@tiptap/extension-hard-break'
 import { InlineEmojiPicker } from './emoji-picker'
 import { MentionPicker } from './mention-picker'
 import { VoiceRecorder } from './voice-recorder'
-import { ICommunication, IChannelMember } from '@/types/communication'
+import { IAttachment, IChannelMember, ICommunication } from '@/types/communication'
 
 export interface RichMessageEditorRef {
     focus: () => void
@@ -42,19 +42,22 @@ interface RichMessageEditorProps {
     onTyping?: () => void
     onStopTyping?: () => void
     // Called when editor requests a send. Should resolve true on success.
-    onSend?: (html: string, text: string, files: File[], mentionedUserIds: string[], replyToId?: string, editMessageId?: string) => Promise<boolean>
+    onSend?: (html: string, text: string, files: File[], mentionedUserIds: string[], replyToId?: string, editMessageId?: string, attachmentsToRemove?: string[]) => Promise<boolean>
     // Called when voice message is sent
     onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
     className?: string
     channelMembers?: IChannelMember[] // For @mentions
     replyTo?: ICommunication | null // Reply to message
     editMessage?: ICommunication | null // Message to edit
+    existingAttachments?: IAttachment[] // Existing attachments for editing
+    onAttachmentRemove?: (attachmentId: string) => void // Callback when attachment is removed during edit
     onCancelReply?: () => void
     onCancelEdit?: () => void
+    channelType?: string // Channel type to conditionally enable mentions
 }
 
 const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProps>(
-    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, onSendVoice, className, channelMembers = [], replyTo, editMessage, onCancelReply, onCancelEdit }, ref) => {
+    ({ value = "", placeholder = "Type a message...", disabled = false, maxLength = 5000, onChange, onTyping, onStopTyping, onSend, onSendVoice, className, channelMembers = [], replyTo, editMessage, existingAttachments = [], onAttachmentRemove, onCancelReply, onCancelEdit, channelType }, ref) => {
         const contentRef = useRef<HTMLDivElement | null>(null)
         const textareaRef = useRef<HTMLTextAreaElement | null>(null)
         const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -64,6 +67,9 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const [attachments, setAttachments] = useState<File[]>([])
         const [showToolbar, setShowToolbar] = useState(false)
         const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+
+        // Edit mode state
+        const [attachmentsToRemove, setAttachmentsToRemove] = useState<Set<string>>(new Set())
 
         // Mention state
         const [showMentionPicker, setShowMentionPicker] = useState(false)
@@ -80,6 +86,9 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         
         const activeReplyTo = replyTo !== undefined ? replyTo : internalReplyTo
         const activeEditMessage = editMessage !== undefined ? editMessage : internalEditMessage
+
+        // Check if mentions are enabled for this channel type (like WhatsApp - no mentions in DMs)
+        const mentionsEnabled = channelType !== 'dm' && channelType !== 'client-support'
 
         const editor = useEditor({
             extensions: [
@@ -117,13 +126,15 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 triggerTyping()
 
                 // Mention detection (last token starting with @)
-                const m = text.match(/@([\w-]*)$/)
-                if (m) {
-                    setMentionQuery(m[1])
-                    setShowMentionPicker(true)
-                } else {
-                    setShowMentionPicker(false)
-                    setMentionQuery("")
+                if (mentionsEnabled) {
+                    const m = text.match(/@([\w-]*)$/)
+                    if (m) {
+                        setMentionQuery(m[1])
+                        setShowMentionPicker(true)
+                    } else {
+                        setShowMentionPicker(false)
+                        setMentionQuery("")
+                    }
                 }
             },
         })
@@ -156,6 +167,9 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 setInternalReplyTo(null)
                 if (message) {
                     editor?.commands.setContent(message.content || '')
+                    // Reset attachment state for editing
+                    setAttachments([])
+                    setAttachmentsToRemove(new Set())
                 }
                 editor?.commands.focus()
             }
@@ -224,7 +238,8 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     attachments, 
                     mentionedUserIds,
                     activeReplyTo?.id,
-                    activeEditMessage?.id
+                    activeEditMessage?.id,
+                    activeEditMessage ? Array.from(attachmentsToRemove) : undefined
                 )
                 console.log("Send requested from editor, success:", success)
                 if (success) {
@@ -425,6 +440,11 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
             setAttachments(prev => prev.filter((_, i) => i !== index))
         }, [])
 
+        const removeExistingAttachment = useCallback((attachmentId: string) => {
+            setAttachmentsToRemove(prev => new Set([...prev, attachmentId]))
+            onAttachmentRemove?.(attachmentId)
+        }, [onAttachmentRemove])
+
         const insertMentionAtCaret = useCallback((user: { id: string; name: string }) => {
             if (!editor) return
             
@@ -572,8 +592,31 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 )}
 
                 {/* Attachment previews */}
-                {attachments.length > 0 && (
+                {(attachments.length > 0 || (existingAttachments.length > 0 && activeEditMessage)) && (
                     <div className="p-2 flex flex-wrap gap-2 border-b">
+                        {/* Existing attachments (only in edit mode) */}
+                        {activeEditMessage && existingAttachments.map((attachment) => {
+                            const isMarkedForRemoval = attachmentsToRemove.has(attachment.id)
+                            return (
+                                <div key={attachment.id} className={cn(
+                                    "flex items-center gap-2 px-2 py-1 border rounded bg-muted/30",
+                                    isMarkedForRemoval && "opacity-50 line-through"
+                                )}>
+                                    {attachment.file_type?.startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                                    <span className="text-xs max-w-[160px] truncate">{attachment.file_name}</span>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        onClick={() => removeExistingAttachment(attachment.id)}
+                                        disabled={isMarkedForRemoval}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            )
+                        })}
+                        
+                        {/* New attachments */}
                         {attachments.map((file, idx) => (
                             <div key={idx} className="flex items-center gap-2 px-2 py-1 border rounded bg-muted/30">
                                 {file.type.startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
@@ -618,13 +661,14 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     />
 
                     {/* Mention picker dropdown */}
-                    {showMentionPicker && channelMembers.length > 0 && (
+                    {showMentionPicker && mentionsEnabled && channelMembers.length > 0 && (
                         <MentionPicker
                             users={channelMembers}
                             searchQuery={mentionQuery}
                             onSelect={(user) => insertMentionAtCaret(user)}
                             onClose={() => setShowMentionPicker(false)}
                             showEveryone={true}
+                            channelType={channelType}
                             className="left-2 bottom-full mb-1"
                         />
                     )}
@@ -647,9 +691,11 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                         </button>
 
                         {/* Mention button */}
-                        <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
-                            <AtSign className="h-4 w-4" />
-                        </button>
+                        {mentionsEnabled && (
+                            <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
+                                <AtSign className="h-4 w-4" />
+                            </button>
+                        )}
                         
                         {/* Emoji picker */}
                         <div className="relative" ref={emojiPickerRef}>
@@ -694,7 +740,8 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                                     attachments,
                                     mentionedUserIds,
                                     activeReplyTo?.id,
-                                    activeEditMessage?.id
+                                    activeEditMessage?.id,
+                                    activeEditMessage ? Array.from(attachmentsToRemove) : undefined
                                 )
                                 if (success) {
                                     editor?.commands.setContent('')

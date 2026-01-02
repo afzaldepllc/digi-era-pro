@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
           const channel = supabaseAdmin.channel(`rt_${channelId}`)
           await channel.send({
             type: 'broadcast',
-            event: 'message_attachments_added',
+            event: 'attachments_added',
             payload: {
               messageId: message.id,
               attachments: uploadedAttachments,

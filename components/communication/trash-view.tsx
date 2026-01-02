@@ -29,6 +29,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import CustomModal from "@/components/shared/custom-modal"
 import { useCommunications } from "@/hooks/use-communications"
 import HtmlTextRenderer from "../shared/html-text-renderer"
+import { AttachmentGrid } from "./attachment-preview"
 
 interface TrashViewProps {
   isOpen: boolean
@@ -226,6 +227,17 @@ export function TrashView({
                         className="prose-sm" 
                       />
                     </div>
+                    
+                    {/* Attachments Preview */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="mt-2">
+                        <AttachmentGrid
+                          attachments={message.attachments}
+                          maxVisible={3}
+                          className="gap-1"
+                        />
+                      </div>
+                    )}
                     
                     {/* Trash reason if provided */}
                     {message.trash_reason && (

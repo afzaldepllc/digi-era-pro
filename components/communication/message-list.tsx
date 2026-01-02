@@ -52,7 +52,7 @@ interface MessageListProps {
   onDelete?: (messageId: string) => void
   onMoveToTrash?: (messageId: string, channelId: string) => void
   onHideForSelf?: (messageId: string, channelId: string) => void
-  onReaction?: (messageId: string, channelId: string, emoji: string) => void
+  onReaction?: (messageId: string, emoji: string) => void
   onScrollToMessage?: (messageId: string) => void
   onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
   hasMoreMessages?: boolean
@@ -112,11 +112,11 @@ export function MessageList({
 
     // Update the first message id reference
     const currentFirstMessageId = messages.length > 0 ? messages[0].id : null
-    const messagesWerePrepended = prevFirstMessageIdRef.current !== null && 
-                                   currentFirstMessageId !== null && 
-                                   prevFirstMessageIdRef.current !== currentFirstMessageId &&
-                                   messages.some(m => m.id === prevFirstMessageIdRef.current)
-    
+    const messagesWerePrepended = prevFirstMessageIdRef.current !== null &&
+      currentFirstMessageId !== null &&
+      prevFirstMessageIdRef.current !== currentFirstMessageId &&
+      messages.some(m => m.id === prevFirstMessageIdRef.current)
+
     prevFirstMessageIdRef.current = currentFirstMessageId
 
     // Don't auto-scroll if messages were prepended (older messages loaded)
@@ -156,7 +156,7 @@ export function MessageList({
       prevScrollHeightRef.current = container.scrollHeight
       shouldRestoreScrollRef.current = true
       setLoadingMore(true)
-      
+
       try {
         await onLoadMore()
         // hasMoreMessages will be updated by parent
@@ -240,7 +240,7 @@ export function MessageList({
   // file_type?: string
   const renderAttachments = (attachments: IAttachment[]) => {
     if (!attachments || attachments.length === 0) return null
-    
+
     return (
       <div className="mt-2">
         <AttachmentGrid attachments={attachments} />
@@ -248,33 +248,70 @@ export function MessageList({
     )
   }
 
-  // Helper to group reactions by emoji for display
+  // Helper to group reactions by emoji for display - WhatsApp style
   const groupReactions = (reactions: ICommunication['reactions']): IGroupedReaction[] => {
     if (!reactions || reactions.length === 0) return []
-    
+
+    console.log('🔍 [groupReactions] Raw reactions from database:', reactions)
+
     const grouped: Record<string, IGroupedReaction> = {}
-    
-    reactions.forEach(reaction => {
-      if (!grouped[reaction.emoji]) {
-        grouped[reaction.emoji] = {
-          emoji: reaction.emoji,
+
+    reactions.forEach((reaction, index) => {
+      console.log(`🔍 [groupReactions] Processing reaction ${index}:`, {
+        id: reaction.id,
+        emoji: reaction.emoji,
+        user_name: reaction.user_name,
+        mongo_user_id: reaction.mongo_user_id,
+        fullReaction: reaction
+      })
+      
+      // Robust emoji validation - handle potential data corruption
+      let emojiKey = reaction.emoji
+      
+      // Check if emoji field is corrupted (contains UUID or is too long)
+      if (!emojiKey || emojiKey.length > 10 || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey)) {
+        console.warn('⚠️ [groupReactions] Invalid emoji detected in reaction:', {
+          originalEmoji: emojiKey,
+          reactionId: reaction.id,
+          isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey || ''),
+          length: emojiKey?.length
+        })
+        emojiKey = '👍'
+      }
+      
+      console.log(`✅ [groupReactions] Using emoji key:`, emojiKey)
+      
+      if (!grouped[emojiKey]) {
+        grouped[emojiKey] = {
+          emoji: emojiKey,
           count: 0,
           users: [],
           hasCurrentUserReacted: false
         }
       }
-      grouped[reaction.emoji].count++
-      grouped[reaction.emoji].users.push({
+      grouped[emojiKey].count++
+      
+      // Ensure we have proper user name fallback
+      const userName = reaction.user_name || 'Someone'
+      
+      grouped[emojiKey].users.push({
         id: reaction.id,
         mongo_user_id: reaction.mongo_user_id,
-        name: reaction.user_name
+        name: userName
       })
+      
       if (reaction.mongo_user_id === currentUserId) {
-        grouped[reaction.emoji].hasCurrentUserReacted = true
+        grouped[emojiKey].hasCurrentUserReacted = true
       }
     })
+
+    const result = Object.values(grouped).sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return a.emoji.localeCompare(b.emoji)
+    })
     
-    return Object.values(grouped)
+    console.log('✅ [groupReactions] Final grouped result:', result)
+    return result
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
@@ -290,7 +327,7 @@ export function MessageList({
         allReceipts.push(pr)
       }
     })
-    
+
     // Find all read receipts for this message (excluding sender)
     const receipts = allReceipts.filter(r => r.mongo_user_id !== message.mongo_sender_id)
 
@@ -301,7 +338,7 @@ export function MessageList({
     const readers = channel_members.filter(p =>
       receipts.some(r => r.mongo_user_id === p.mongo_member_id)
     )
-    
+
     // Get parent message for reply preview
     const parentMessage = getParentMessage(message.parent_message_id)
 
@@ -339,7 +376,7 @@ export function MessageList({
           if (el) messageRefs.current.set(message.id, el)
         }}
         className={cn(
-          "flex gap-2 px-3 py-1 group transition-colors duration-500",
+          "flex gap-3 px-4 py-2 group transition-all duration-200 hover:bg-muted/30",
           isOwn && "flex-row-reverse"
         )}
       >
@@ -368,13 +405,13 @@ export function MessageList({
         </div>
 
         {/* Message content */}
-        <div className={cn("flex-1 space-y-1 flex flex-col", isOwn && "text-right")}>
+        <div className={cn("flex-1 space-y-1.5 flex flex-col", isOwn && "text-right")}>
           {/* Header */}
           <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}>
-            <span className="font-medium text-sm">{sender?.name}</span>
+            <span className="font-semibold text-sm">{sender?.name}</span>
 
             {sender?.role && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5 py-0 rounded-full border-primary/20 bg-primary/5 text-primary">
                 {sender?.role}
               </Badge>
             )}
@@ -384,11 +421,11 @@ export function MessageList({
             </span>
 
             {/* Message actions (visible on hover) */}
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="opacity-0 group-hover:opacity-100 transition-all duration-200">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    <MoreVertical className="h-3 w-3" />
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent hover:scale-110 transition-all">
+                    <MoreVertical className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align={isOwn ? "end" : "start"}>
@@ -404,34 +441,34 @@ export function MessageList({
                       Edit
                     </DropdownMenuItem>
                   )}
-                  
+
                   {/* Delete options separator */}
                   {(onHideForSelf || (isOwn && onMoveToTrash) || (isOwn && onDelete)) && (
                     <DropdownMenuSeparator />
                   )}
-                  
+
                   {/* Hide for Me - available for all messages */}
                   {onHideForSelf && (
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => onHideForSelf(message.id, message.channel_id)}
                       className="text-muted-foreground"
                     >
                       <EyeOff className="h-4 w-4 mr-2" />
-                      Hide for Me
+                      Delete for Me
                     </DropdownMenuItem>
                   )}
-                  
+
                   {/* Move to Trash - only for message owner */}
                   {isOwn && onMoveToTrash && (
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => onMoveToTrash(message.id, message.channel_id)}
                       className="text-amber-600"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Move to Trash
+                      Delete for everyone
                     </DropdownMenuItem>
                   )}
-                  
+
                   {/* Legacy delete (falls back to trash if no new handlers) */}
                   {isOwn && onDelete && !onMoveToTrash && (
                     <DropdownMenuItem
@@ -448,91 +485,95 @@ export function MessageList({
           </div>
 
           {/* Message text */}
-            <div className={cn(
-            "relative bg-card rounded-lg p-3 shadow-sm border max-w-[70%] w-auto overflow-visible",
-            isOwn ? "bg-primary text-primary-foreground ml-8 self-end" : "bg-background mr-8 self-start"
-            )}>
-              {/* Reply preview */}
-              {parentMessage && (
-                <button
-                  onClick={() => scrollToMessage(parentMessage.id)}
-                  className={cn(
-                    "flex items-start gap-2 mb-2 p-2 rounded text-xs w-full text-left transition-colors",
-                    isOwn ? "bg-primary-foreground/10 hover:bg-primary-foreground/20" : "bg-muted/50 hover:bg-muted"
-                  )}
-                >
-                  <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
-                  <div className="min-w-0 flex-1">
-                    <p className={cn("font-medium truncate", isOwn ? "text-primary-foreground" : "text-foreground")}>
-                      {parentMessage.sender?.name || parentMessage.sender_name}
-                    </p>
-                    <p className={cn("truncate opacity-70", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
-                      {extractTextFromHtml(parentMessage.content, 60)}
-                    </p>
-                  </div>
-                </button>
-              )}
-              
-              {/* Render content based on type */}
-              {message.content_type === 'audio' && message.attachments && message.attachments.length > 0 ? (
-                <div className="space-y-2">
-                  {/* Voice message content */}
-                  {message.content && message.content !== '🎤 Voice message' && (
-                    <HtmlTextRenderer
-                      content={message.content}
-                      fallbackText=""
-                      showFallback={false}
-                      renderAsHtml={true}
-                      className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
-                      truncateHtml={false}
-                    />
-                  )}
-                  {/* Audio player for voice messages */}
-                  {message.attachments[0].file_url && (
-                    <AudioPlayer
-                      src={message.attachments[0].file_url}
-                      duration={message.attachments[0].durationSeconds}
-                      className="max-w-xs"
-                      isVoiceMessage={true}
-                    />
-                  )}
+          <div className={cn(
+            "relative rounded-2xl px-4 py-3 shadow-md border max-w-[75%] w-auto overflow-visible transition-all duration-200 group-hover:shadow-lg",
+            isOwn
+              ? "bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground ml-auto self-end border-primary/20"
+              : "bg-gradient-to-br from-card to-card/95 mr-auto self-start border-border/50 hover:border-border"
+          )}>
+            {/* Reply preview */}
+            {parentMessage && (
+              <button
+                onClick={() => scrollToMessage(parentMessage.id)}
+                className={cn(
+                  "flex items-start gap-2 mb-3 p-2.5 rounded-lg text-xs w-full text-left transition-all duration-200 border-l-2",
+                  isOwn
+                    ? "bg-primary-foreground/10 hover:bg-primary-foreground/20 border-primary-foreground/30"
+                    : "bg-muted/50 hover:bg-muted border-primary/50"
+                )}
+              >
+                <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                <div className="min-w-0 flex-1">
+                  <p className={cn("font-medium truncate", isOwn ? "text-primary-foreground" : "text-foreground")}>
+                    {parentMessage.sender?.name || parentMessage.sender_name}
+                  </p>
+                  <p className={cn("truncate opacity-70", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
+                    {extractTextFromHtml(parentMessage.content, 60)}
+                  </p>
                 </div>
-              ) : (
-                <>
+              </button>
+            )}
+
+            {/* Render content based on type */}
+            {message.content_type === 'audio' && message.attachments && message.attachments.length > 0 ? (
+              <div className="space-y-3">
+                {/* Voice message content */}
+                {message.content && message.content !== '🎤 Voice message' && (
                   <HtmlTextRenderer
                     content={message.content}
-                    fallbackText="No description"
-                    showFallback={true}
+                    fallbackText=""
+                    showFallback={false}
                     renderAsHtml={true}
-                    className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
+                    className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
                     truncateHtml={false}
                   />
+                )}
+                {/* Audio player for voice messages */}
+                {message.attachments[0].file_url && (
+                  <AudioPlayer
+                    src={message.attachments[0].file_url}
+                    duration={message.attachments[0].durationSeconds}
+                    className="max-w-xs"
+                    isVoiceMessage={true}
+                  />
+                )}
+              </div>
+            ) : (
+              <>
+                <HtmlTextRenderer
+                  content={message.content}
+                  fallbackText="No description"
+                  showFallback={true}
+                  renderAsHtml={true}
+                  className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
+                  truncateHtml={false}
+                />
 
-                  {/* Attachments */}
-                  {message.attachments && message.attachments.length > 0 && 
-                    renderAttachments(message.attachments)
-                  }
-                </>
-              )}
-            
+                {/* Attachments */}
+                {message.attachments && message.attachments.length > 0 &&
+                  renderAttachments(message.attachments)
+                }
+              </>
+            )}
+
             {/* Quick reaction bar (visible on hover) */}
             {onReaction && (
               <div className={cn(
-                "absolute -top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10",
+                "absolute -top-4 opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:scale-100 scale-95 z-10 shadow-lg",
                 isOwn ? "left-0" : "right-0"
               )}>
                 <QuickReactionBar
-                  onSelect={(emoji) => onReaction(message.id, message.channel_id, emoji)}
+                  onSelect={(emoji) => onReaction(message.id, emoji)}
                 />
               </div>
             )}
-            </div>
+          </div>
 
           {/* Message reactions */}
           {message.reactions && message.reactions.length > 0 && (
             <MessageReactions
               reactions={groupReactions(message.reactions)}
-              onReactionClick={(emoji) => onReaction?.(message.id, message.channel_id, emoji)}
+              onReactionClick={(emoji) => onReaction?.(message.id, emoji)}
               currentUserId={currentUserId}
               className={isOwn ? "justify-end" : "justify-start"}
             />
@@ -591,14 +632,14 @@ export function MessageList({
     <TooltipProvider>
       <>
         {/* Messages */}
-        <div 
+        <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
           className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-1 p-3", className)}
         >
           {/* Load more indicator at top */}
           {hasMoreMessages && messages.length > 0 && (
-            <div 
+            <div
               ref={loadMoreTriggerRef}
               className="flex justify-center py-2"
             >
