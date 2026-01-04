@@ -178,8 +178,8 @@ export function useChatAttachments() {
     }
 
     try {
-      // Get a fresh download URL from the API with Content-Disposition header
-      const response = await fetch(`/api/communication/attachments/download?id=${attachment.id}`)
+      // Get a fresh download URL from the consolidated API with Content-Disposition header
+      const response = await fetch(`/api/communication/attachments?download=${attachment.id}`)
       
       if (!response.ok) {
         throw new Error('Failed to get download URL')

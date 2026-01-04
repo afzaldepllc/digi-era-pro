@@ -839,10 +839,10 @@ export function useCommunications() {
     }
   }, [])
 
-  // Search messages in a channel
+  // Search messages in a channel (consolidated endpoint)
   const searchMessages = useCallback(async (channelId: string, query: string, limit = 20, offset = 0) => {
     try {
-      const response = await fetch(`/api/communication/messages/search?channel_id=${channelId}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
+      const response = await fetch(`/api/communication/messages?channel_id=${channelId}&search=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
       const data = await response.json()
       if (data.success) {
         return {
@@ -1072,7 +1072,8 @@ export function useCommunications() {
           reject(new Error('Network error during upload'))
         })
 
-        xhr.open('POST', '/api/communication/messages/with-files')
+        // Use consolidated messages endpoint (handles both JSON and FormData)
+        xhr.open('POST', '/api/communication/messages')
         xhr.send(formData)
       })
 
@@ -1297,7 +1298,7 @@ export function useCommunications() {
     }))
 
     try {
-      const response = await apiRequest(`/api/communication/channels/${channelId}/pin`, {
+      const response = await apiRequest(`/api/communication/channels/${channelId}?action=pin`, {
         method: 'POST'
       }, false)
 
@@ -1654,9 +1655,8 @@ export function useCommunications() {
 
       // Send to API first to get the restored message
       // Note: apiRequest unwraps successful responses, so we get the data directly
-      const restoredMessage = await apiRequest('/api/communication/messages/restore', {
-        method: 'POST',
-        body: JSON.stringify({ messageId })
+      const restoredMessage = await apiRequest(`/api/communication/messages/${messageId}?action=restore`, {
+        method: 'POST'
       })
 
       if (restoredMessage && restoredMessage.id && restoredMessage.channel_id) {
@@ -1746,8 +1746,9 @@ export function useCommunications() {
       if (params?.limit) queryParams.append('limit', params.limit.toString())
       if (params?.offset) queryParams.append('offset', params.offset.toString())
       
+      queryParams.append('trash', 'true')
       const queryString = queryParams.toString()
-      const url = `/api/communication/messages/trash${queryString ? `?${queryString}` : ''}`
+      const url = `/api/communication/messages?${queryString}`
 
       // Note: apiRequest unwraps successful responses, so we may get data directly or full response
       const response = await apiRequest(url)
@@ -1931,7 +1932,7 @@ export function useCommunications() {
     try {
       dispatch(setActionLoading(true))
       
-      const result = await apiRequest(`/api/communication/channels/${channelId}/leave`, {
+      const result = await apiRequest(`/api/communication/channels/${channelId}?action=leave`, {
         method: 'POST'
       })
 
@@ -1993,9 +1994,8 @@ export function useCommunications() {
     try {
       dispatch(setActionLoading(true))
       
-      const result = await apiRequest(`/api/communication/channels/${channelId}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({ action })
+      const result = await apiRequest(`/api/communication/channels/${channelId}?action=${action}`, {
+        method: 'PUT'
       })
 
       // Optimistically update the channel in Redux state

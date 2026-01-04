@@ -154,7 +154,7 @@ export function ContextPanel({
 
     setIsRemovingMember(true)
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/members?mongo_member_id=${memberId}`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=remove-member&mongo_member_id=${memberId}`, {
         method: 'DELETE'
       })
 

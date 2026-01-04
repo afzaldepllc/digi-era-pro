@@ -184,7 +184,8 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================
-// GET /api/communication/attachments?channel_id=... - Get attachments for a channel
+// GET /api/communication/attachments - Get attachments for a channel (CONSOLIDATED)
+// Supports: ?channel_id= to list attachments, ?download=id to get download URL
 // ============================================
 export async function GET(request: NextRequest) {
   try {
@@ -196,6 +197,47 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams
+    const downloadId = searchParams.get('download')
+
+    // DOWNLOAD MODE: Get presigned download URL for a specific attachment
+    if (downloadId) {
+      const attachment = await prisma.attachments.findUnique({
+        where: { id: downloadId }
+      })
+
+      if (!attachment) {
+        return createErrorResponse('Attachment not found', 404)
+      }
+
+      // Verify user has access to the channel
+      if (attachment.channel_id) {
+        const isMember = await channelOps.isMember(attachment.channel_id, session.user.id)
+        if (!isMember) {
+          return createErrorResponse('Access denied', 403)
+        }
+      }
+
+      // Generate fresh download URL with Content-Disposition header
+      if (!attachment.s3_key) {
+        return createErrorResponse('File not found in storage', 404)
+      }
+
+      const downloadUrl = await S3Service.getPresignedDownloadUrl(
+        attachment.s3_key,
+        'CHAT_ATTACHMENTS',
+        attachment.file_name
+      )
+
+      return NextResponse.json({
+        success: true,
+        downloadUrl,
+        fileName: attachment.file_name,
+        fileType: attachment.file_type,
+        fileSize: attachment.file_size
+      })
+    }
+
+    // LIST MODE: Get attachments for a channel
     const channelId = searchParams.get('channel_id')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')

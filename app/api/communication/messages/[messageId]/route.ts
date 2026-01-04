@@ -429,3 +429,131 @@ export async function DELETE(
     return createAPIErrorResponse('Failed to delete message', 500, undefined, getClientInfo(request))
   }
 }
+
+// POST /api/communication/messages/[messageId] - Restore message (CONSOLIDATED)
+// Supports: ?action=restore
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ messageId: string }> }
+) {
+  try {
+    const params = await paramsPromise
+    const { session, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'update')
+
+    if (!session?.user?.id) {
+      return createErrorResponse('Unauthorized', 401)
+    }
+
+    const validatedParams = messageIdSchema.parse(params)
+    const messageId = validatedParams.messageId
+
+    const searchParams = request.nextUrl.searchParams
+    const action = searchParams.get('action')
+
+    // Action: restore - Restore message from trash
+    if (action === 'restore') {
+      const message = await prisma.messages.findUnique({
+        where: { id: messageId },
+        include: {
+          channels: { select: { id: true, name: true, type: true } },
+          reactions: true,
+          attachments: true,
+          read_receipts: true
+        }
+      })
+
+      if (!message) {
+        return createErrorResponse('Message not found', 404)
+      }
+
+      const messageWithTrash = message as typeof message & {
+        is_trashed?: boolean
+        trashed_at?: Date | null
+      }
+
+      if (!messageWithTrash.is_trashed) {
+        return createErrorResponse('Message is not in trash', 400)
+      }
+
+      const userId = session.user.id
+      const isOwner = message.mongo_sender_id === userId
+
+      if (!isOwner && !isSuperAdmin) {
+        return createErrorResponse('You can only restore your own messages', 403)
+      }
+
+      // Check 30-day window
+      const trashedAt = new Date(messageWithTrash.trashed_at!)
+      const now = new Date()
+      const daysSinceTrashed = Math.floor((now.getTime() - trashedAt.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (daysSinceTrashed > 30) {
+        return createErrorResponse('Message cannot be restored. It has been in trash for more than 30 days.', 400)
+      }
+
+      // Restore message
+      const restoredMessage = await prisma.messages.update({
+        where: { id: messageId },
+        data: {
+          is_trashed: false,
+          trashed_at: null,
+          trashed_by: null,
+          trash_reason: null
+        } as any,
+        include: {
+          channels: { select: { id: true, name: true, type: true } },
+          reactions: true,
+          attachments: true,
+          read_receipts: true
+        }
+      })
+
+      // Create audit log in MongoDB
+      await executeGenericDbQuery(async () => {
+        return await MessageAuditLog.create({
+          supabase_message_id: messageId,
+          supabase_channel_id: message.channel_id,
+          action: 'restored',
+          actor_id: new mongoose.Types.ObjectId(userId),
+          actor_name: (session.user as any).name || 'Unknown',
+          actor_email: (session.user as any).email || '',
+          actor_role: isSuperAdmin ? 'super_admin' : 'user',
+          new_content: message.content,
+          metadata: { days_in_trash: daysSinceTrashed }
+        })
+      })
+
+      // Transform for response
+      const transformedMessage = {
+        ...restoredMessage,
+        sender: {
+          mongo_member_id: restoredMessage.mongo_sender_id,
+          name: restoredMessage.sender_name || 'Unknown User',
+          email: restoredMessage.sender_email || '',
+          avatar: restoredMessage.sender_avatar || '',
+          role: restoredMessage.sender_role || 'User',
+          userType: 'User' as const,
+          isOnline: false
+        }
+      }
+
+      // Broadcast restoration
+      broadcastToChannel({
+        channelId: message.channel_id,
+        event: 'message_restore',
+        payload: { messageId, channelId: message.channel_id, restoredBy: userId, message: transformedMessage }
+      }).catch(err => logger.error('Failed to broadcast message restoration:', err))
+
+      return NextResponse.json({ 
+        success: true, 
+        data: transformedMessage,
+        message: 'Message restored successfully'
+      })
+    }
+
+    return createErrorResponse('Invalid action. Use restore', 400)
+  } catch (error: any) {
+    logger.error('Error in POST message:', error)
+    return createAPIErrorResponse('Failed to process request', 500, undefined, getClientInfo(request))
+  }
+}

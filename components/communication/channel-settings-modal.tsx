@@ -258,7 +258,7 @@ export function ChannelSettingsModal({
 
     setIsSavingSettings(true)
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/settings`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -297,12 +297,12 @@ export function ChannelSettingsModal({
   // Handle member role change
   const handleRoleChange = useCallback(async (memberId: string, newRole: 'admin' | 'member') => {
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=member-role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mongo_member_id: memberId,
-          channelRole: newRole
+          memberId: memberId,
+          role: newRole
         })
       })
 
@@ -333,7 +333,7 @@ export function ChannelSettingsModal({
   // Handle remove member
   const handleRemoveMember = useCallback(async (memberId: string) => {
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/members?mongo_member_id=${memberId}`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=remove-member&mongo_member_id=${memberId}`, {
         method: 'DELETE'
       })
 
@@ -398,7 +398,7 @@ export function ChannelSettingsModal({
     setIsAddingMembers(true)
     try {
       // Call API to add members
-      const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: selectedUsersToAdd })
