@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { prisma } from '@/lib/prisma'
-import { supabase } from '@/lib/supabase'
+import { broadcastToUser } from '@/lib/communication/broadcast'
 import { createAPIErrorResponse } from '@/lib/utils/api-responses'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { apiLogger as logger } from '@/lib/logger'
@@ -84,42 +84,17 @@ export async function POST(
       })
     }
 
-    // Broadcast pin change via Supabase for real-time updates
-    try {
-      const rtChannel = supabase.channel(`user:${pinnerId}:pinned-users`)
-
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          supabase.removeChannel(rtChannel)
-          resolve()
-        }, 3000)
-
-        rtChannel.subscribe(async (status: string, err?: Error) => {
-          if (err) {
-            clearTimeout(timeout)
-            supabase.removeChannel(rtChannel)
-            resolve()
-            return
-          }
-          if (status === 'SUBSCRIBED') {
-            await rtChannel.send({
-              type: 'broadcast',
-              event: 'user_pin_update',
-              payload: {
-                pinner_id: pinnerId,
-                pinned_user_id: userId,
-                is_pinned: isPinning
-              }
-            })
-            clearTimeout(timeout)
-            await supabase.removeChannel(rtChannel)
-            resolve()
-          }
-        })
-      })
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast user pin change:', broadcastError)
-    }
+    // Broadcast pin change (non-blocking) using Phase 1 broadcast
+    broadcastToUser({
+      userId: pinnerId,
+      event: 'new_message', // Using new_message as it's a valid NotificationEvent
+      payload: {
+        type: 'user_pin_update',
+        pinner_id: pinnerId,
+        pinned_user_id: userId,
+        is_pinned: isPinning
+      }
+    }).catch(err => logger.debug('Failed to broadcast user pin change:', err))
 
     return NextResponse.json({
       success: true,

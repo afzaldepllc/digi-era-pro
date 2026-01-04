@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
           file_url: fileUrl,
           file_size: attachment.file_size,
           file_type: attachment.file_type,
-          uploaded_by: attachment.messages?.sender_name || 'Unknown',
+          uploaded_by: attachment.mongo_uploader_id || 'Unknown',
           created_at: attachment.created_at.toISOString()
         }
       })

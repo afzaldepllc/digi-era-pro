@@ -389,7 +389,7 @@ export async function POST(request: NextRequest) {
         try {
           const { channelSyncManager } = await import('@/lib/communication/channel-sync-manager')
           await channelSyncManager.syncUserToDepartmentChannels(
-            user._id.toString(),
+            (user._id as { toString(): string }).toString(),
             user.department.toString(),
             session.user.id
           )

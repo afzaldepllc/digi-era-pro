@@ -172,12 +172,13 @@ export async function PUT(
             data: {
               id: crypto.randomUUID(),
               message_id: validatedParams.messageId,
+              channel_id: message.channel_id,
+              mongo_uploader_id: session.user.id,
               file_name: file.name,
-              file_url: uploadResult.url,
-              s3_key: uploadResult.key,
+              file_url: uploadResult.data?.url || '',
+              s3_key: uploadResult.data?.key || '',
               file_size: file.size,
               file_type: file.type,
-              uploaded_by: session.user.id,
             }
           })
 

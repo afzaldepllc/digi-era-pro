@@ -393,9 +393,9 @@ export function EmailComposer({
               />
             </div>
 
-            {form.formState.errors.content && (
+            {(form.formState.errors as Record<string, { message?: string }>).content && (
               <p className="text-sm text-destructive">
-                {form.formState.errors.content.message}
+                {(form.formState.errors as Record<string, { message?: string }>).content?.message}
               </p>
             )}
           </div>
