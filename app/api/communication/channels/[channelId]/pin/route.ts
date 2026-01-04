@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { prisma } from '@/lib/prisma'
-import { supabase } from '@/lib/supabase'
+import { channelOps } from '@/lib/communication/operations'
+import { broadcastToUser } from '@/lib/communication/broadcast'
 import { createAPIErrorResponse } from '@/lib/utils/api-responses'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { apiLogger as logger } from '@/lib/logger'
@@ -76,49 +77,21 @@ export async function POST(
       }
     })
 
-    // Broadcast pin change via Supabase for real-time updates
+    // Broadcast pin change (non-blocking) using Phase 1 broadcast
     // Note: Pin changes are user-specific, so we broadcast to the user's channel
-    try {
-      const rtChannel = supabase.channel(`user:${userId}:channels`)
-      
-      // Subscribe, send, then cleanup
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          supabase.removeChannel(rtChannel)
-          resolve() // Don't fail on timeout
-        }, 3000)
-        
-        rtChannel.subscribe(async (status: string, err?: Error) => {
-          if (err) {
-            clearTimeout(timeout)
-            supabase.removeChannel(rtChannel)
-            resolve() // Don't fail on error
-            return
-          }
-          if (status === 'SUBSCRIBED') {
-            await rtChannel.send({
-              type: 'broadcast',
-              event: 'channel_update',
-              payload: {
-                id: channelId,
-                type: 'update',
-                channel: {
-                  id: channelId,
-                  is_pinned: isPinning,
-                  pinned_at: updated.pinned_at
-                }
-              }
-            })
-            clearTimeout(timeout)
-            await supabase.removeChannel(rtChannel)
-            resolve()
-          }
-        })
-      })
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast pin change:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
+    broadcastToUser({
+      userId,
+      event: 'new_message', // Using new_message as it's a valid NotificationEvent
+      payload: {
+        id: channelId,
+        type: 'pin_update',
+        channel: {
+          id: channelId,
+          is_pinned: isPinning,
+          pinned_at: updated.pinned_at
+        }
+      }
+    }).catch(err => logger.debug('Failed to broadcast pin change:', err))
 
     return NextResponse.json({
       success: true,

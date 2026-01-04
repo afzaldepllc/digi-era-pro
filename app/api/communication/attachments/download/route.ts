@@ -1,11 +1,20 @@
+/**
+ * Attachments Download API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses channelOps.isMember() for membership checks
+ */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { S3Service } from '@/lib/services/s3-service'
 import { apiLogger as logger } from '@/lib/logger'
+// Phase 2: Use centralized services from Phase 1
+import { channelOps } from '@/lib/communication/operations'
 
+// ============================================
 // GET /api/communication/attachments/download?id=xxx
 // Returns a fresh presigned download URL for an attachment
+// ============================================
 export async function GET(request: NextRequest) {
   try {
     const { session } = await genericApiRoutesMiddleware(request, 'communication', 'read')
@@ -23,10 +32,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch the attachment
     const attachment = await prisma.attachments.findUnique({
-      where: { id: attachmentId },
-      include: {
-        channels: true
-      }
+      where: { id: attachmentId }
     })
 
     if (!attachment) {
@@ -35,14 +41,8 @@ export async function GET(request: NextRequest) {
 
     // Verify user has access to the channel
     if (attachment.channel_id) {
-      const membership = await prisma.channel_members.findFirst({
-        where: {
-          channel_id: attachment.channel_id,
-          mongo_member_id: session.user.id
-        }
-      })
-
-      if (!membership) {
+      const isMember = await channelOps.isMember(attachment.channel_id, session.user.id)
+      if (!isMember) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }

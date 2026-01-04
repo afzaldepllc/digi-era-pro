@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { channelOperations } from '@/lib/db-utils'
+import { channelOps } from '@/lib/communication/operations'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
 
@@ -19,35 +19,18 @@ export async function GET(
 
     const channelId = params.channelId
 
-    // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: session.user.id,
-      },
-    })
+    // Check if user is member of the channel using Phase 1 channelOps
+    const isMember = await channelOps.isMember(channelId, session.user.id)
 
-    if (!membership) {
+    if (!isMember) {
       return NextResponse.json(
         { error: 'Access denied to this channel' },
         { status: 403 }
       )
     }
 
-    // Fetch channel with details
-    const channel = await prisma.channels.findUnique({
-      where: { id: channelId },
-      include: {
-        channel_members: true,
-        messages: {
-          orderBy: { created_at: 'desc' },
-          take: 1,
-        },
-        _count: {
-          select: { messages: true },
-        },
-      },
-    })
+    // Fetch channel with details using channelOps
+    const channel = await channelOps.getById(channelId, { includeMembers: true })
 
     if (!channel) {
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
@@ -80,16 +63,10 @@ export async function PUT(
     const body = await request.json()
     const { name, is_private } = body
 
-    // Check if user is admin of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: session.user.id,
-        role: { in: ['admin', 'owner'] },
-      },
-    })
+    // Check if user is admin of the channel using Phase 1 channelOps
+    const role = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!membership) {
+    if (!role || !['admin', 'owner'].includes(role)) {
       return NextResponse.json(
         { error: 'Access denied - admin required' },
         { status: 403 }
@@ -145,25 +122,18 @@ export async function DELETE(
 
     const channelId = params.channelId
 
-    // Check if user is creator or admin
-    const channel = await prisma.channels.findUnique({
-      where: { id: channelId },
-    })
+    // Check if user is creator or admin using Phase 1 channelOps
+    const channel = await channelOps.getById(channelId)
 
     if (!channel) {
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
     }
 
     const isCreator = channel.mongo_creator_id === session.user.id
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: session.user.id,
-        role: { in: ['admin', 'owner'] },
-      },
-    })
+    const role = await channelOps.getMemberRole(channelId, session.user.id)
+    const isAdminOrOwner = role && ['admin', 'owner'].includes(role)
 
-    if (!isCreator && !membership && !isSuperAdmin) {
+    if (!isCreator && !isAdminOrOwner && !isSuperAdmin) {
       return NextResponse.json(
         { error: 'Access denied - admin required' },
         { status: 403 }

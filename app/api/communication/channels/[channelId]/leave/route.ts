@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
-import { supabase } from '@/lib/supabase'
+import { channelOps } from '@/lib/communication/operations'
+import { broadcastMemberChange } from '@/lib/communication/broadcast'
 
 // POST /api/communication/channels/[channelId]/leave - Leave a channel
 export async function POST(
@@ -32,20 +33,15 @@ export async function POST(
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
     }
 
-    // Check if user is a member
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: userId
-      }
-    })
+    // Check if user is a member using Phase 1 channelOps
+    const memberRole = await channelOps.getMemberRole(channelId, userId)
 
-    if (!membership) {
+    if (!memberRole) {
       return NextResponse.json({ error: 'You are not a member of this channel' }, { status: 400 })
     }
 
     // Check if user is the only admin/owner
-    const isAdminOrOwner = membership.role === 'admin' || membership.role === 'owner'
+    const isAdminOrOwner = memberRole === 'admin' || memberRole === 'owner'
     
     if (isAdminOrOwner) {
       // Count other admins/owners
@@ -120,22 +116,11 @@ export async function POST(
       }
     })
 
-    // Broadcast member_left event for real-time sync
-    try {
-      const rtChannel = supabase.channel(`rt_${channelId}`)
-      await rtChannel.send({
-        type: 'broadcast',
-        event: 'channel_update',
-        payload: {
-          id: channelId,
-          type: 'member_left',
-          member_id: userId
-        }
-      })
-      await supabase.removeChannel(rtChannel)
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast member left:', broadcastError)
-    }
+    // Broadcast member_left event (non-blocking) using Phase 1 broadcast
+    broadcastMemberChange(channelId, 'left', {
+      memberId: userId,
+      memberName: ''
+    }).catch(err => logger.debug('Failed to broadcast member left:', err))
 
     // Update member count
     await prisma.channels.update({

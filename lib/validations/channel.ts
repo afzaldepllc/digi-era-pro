@@ -164,6 +164,61 @@ export const markAsReadSchema = z.object({
   message_id: z.string().uuid(),
 })
 
+// Bulk read receipt schema
+export const markAllAsReadSchema = z.object({
+  channel_id: z.string().uuid(),
+  mark_all: z.literal(true),
+})
+
+// Trash query schema
+export const trashQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+})
+
+// Search query schema
+export const searchQuerySchema = z.object({
+  channel_id: z.string().uuid(),
+  query: z.string().min(1).max(500),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+})
+
+// Audit log query schema
+export const auditLogQuerySchema = z.object({
+  channel_id: z.string().uuid().optional(),
+  message_id: z.string().uuid().optional(),
+  actor_id: z.string().optional(),
+  action: z.enum(['created', 'edited', 'trashed', 'restored', 'permanently_deleted']).optional(),
+  start_date: z.string().datetime().optional(),
+  end_date: z.string().datetime().optional(),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
+})
+
+// Attachment upload schema
+export const attachmentUploadSchema = z.object({
+  channel_id: z.string().uuid(),
+  message_id: z.string().uuid().optional(),
+})
+
+// Delete message schema
+export const deleteMessageSchema = z.object({
+  delete_type: z.enum(['trash', 'self', 'permanent']).default('trash'),
+  reason: z.string().max(500).optional(),
+})
+
+// Toggle pin schema
+export const togglePinSchema = z.object({
+  channelId: z.string().uuid(),
+})
+
+// Archive channel schema
+export const archiveChannelSchema = z.object({
+  action: z.enum(['archive', 'unarchive']).default('archive'),
+})
+
 // Type exports for TypeScript
 export type CreateChannelData = z.infer<typeof createChannelSchema>
 export type UpdateChannelData = z.infer<typeof updateChannelSchema>
@@ -175,3 +230,11 @@ export type AddMemberData = z.infer<typeof addMemberSchema>
 export type UpdateMemberStatusData = z.infer<typeof updateMemberStatusSchema>
 export type CreateReactionData = z.infer<typeof createReactionSchema>
 export type MarkAsReadData = z.infer<typeof markAsReadSchema>
+export type MarkAllAsReadData = z.infer<typeof markAllAsReadSchema>
+export type TrashQueryParams = z.infer<typeof trashQuerySchema>
+export type SearchQueryParams = z.infer<typeof searchQuerySchema>
+export type AuditLogQueryParams = z.infer<typeof auditLogQuerySchema>
+export type AttachmentUploadData = z.infer<typeof attachmentUploadSchema>
+export type DeleteMessageData = z.infer<typeof deleteMessageSchema>
+export type TogglePinData = z.infer<typeof togglePinSchema>
+export type ArchiveChannelData = z.infer<typeof archiveChannelSchema>

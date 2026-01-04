@@ -1,214 +1,163 @@
+/**
+ * Read Receipts API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses centralized services from Phase 1:
+ * - readReceiptOps from operations.ts for database operations
+ * - broadcastReadReceipt, broadcastBulkReadReceipt from broadcast.ts for real-time updates
+ * - channelOps.isMember() for membership checks
+ */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { messageOperations } from '@/lib/db-utils'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
-import { createClient } from '@supabase/supabase-js'
+// Phase 2: Use centralized services from Phase 1
+import { readReceiptOps, channelOps } from '@/lib/communication/operations'
+import { broadcastReadReceipt, broadcastBulkReadReceipt } from '@/lib/communication/broadcast'
 
+// ============================================
+// Helper Functions
+// ============================================
+function createErrorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status })
+}
+
+// ============================================
 // POST /api/communication/read-receipts - Mark message(s) as read
+// ============================================
 // Supports:
 // - Single message: { message_id, channel_id }
 // - All channel messages: { channel_id, mark_all: true }
 export async function POST(request: NextRequest) {
   try {
-    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'create')
+    const { session } = await genericApiRoutesMiddleware(request, 'communication', 'create')
+
+    if (!session?.user?.id) {
+      return createErrorResponse('Unauthorized', 401)
+    }
 
     const body = await request.json()
     const { message_id, channel_id, mark_all } = body
+    const userId = session.user.id
 
     // Validate input
     if (!message_id && !mark_all) {
-      return NextResponse.json(
-        { error: 'Either message_id or mark_all with channel_id is required' },
-        { status: 400 }
-      )
+      return createErrorResponse('Either message_id or mark_all with channel_id is required', 400)
     }
 
     if (mark_all && !channel_id) {
-      return NextResponse.json(
-        { error: 'channel_id is required when using mark_all' },
-        { status: 400 }
-      )
+      return createErrorResponse('channel_id is required when using mark_all', 400)
     }
 
     // Check if user is member of the channel
     if (channel_id) {
-      const membership = await prisma.channel_members.findFirst({
-        where: {
-          channel_id,
-          mongo_member_id: session.user.id,
-        },
-      })
-
-      if (!membership) {
-        return NextResponse.json(
-          { error: 'Access denied to this channel' },
-          { status: 403 }
-        )
+      const isMember = await channelOps.isMember(channel_id, userId)
+      if (!isMember) {
+        return createErrorResponse('Access denied to this channel', 403)
       }
     }
 
     // Mark all unread messages in the channel as read
     if (mark_all && channel_id) {
-      // Get all messages in the channel not from the current user that don't have a read receipt
-      const unreadMessages = await prisma.messages.findMany({
-        where: {
-          channel_id,
-          mongo_sender_id: { not: session.user.id },
-          is_trashed: false,
-          read_receipts: {
-            none: {
-              mongo_user_id: session.user.id
-            }
-          }
-        },
-        select: { id: true }
-      })
+      const result = await readReceiptOps.markAllInChannel(channel_id, userId)
 
-      if (unreadMessages.length === 0) {
+      if (result.markedCount === 0) {
         return NextResponse.json({ 
           success: true,
-          receipts: [],
           count: 0,
           message: 'No unread messages to mark as read'
         })
       }
 
-      // Create read receipts in bulk
-      const readReceiptsData = unreadMessages.map(msg => ({
-        message_id: msg.id,
-        mongo_user_id: session.user.id,
-        read_at: new Date()
-      }))
+      logger.debug(`Marked ${result.markedCount} messages as read in channel ${channel_id} for user ${userId}`)
 
-      // Use createMany with skipDuplicates to handle any race conditions
-      const result = await prisma.read_receipts.createMany({
-        data: readReceiptsData,
-        skipDuplicates: true
-      })
-
-      logger.debug(`Marked ${result.count} messages as read in channel ${channel_id} for user ${session.user.id}`)
-
-      // Broadcast read receipts to channel members (async, fire-and-forget)
-      setImmediate(async () => {
-        try {
-          const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SECRET_KEY!
-          )
-
-          const channel = supabaseAdmin.channel(`rt_${channel_id}`)
-          await channel.send({
-            type: 'broadcast',
-            event: 'bulk_message_read',
-            payload: {
-              userId: session.user.id,
-              channelId: channel_id,
-              messageIds: unreadMessages.map(m => m.id),
-              readAt: new Date().toISOString()
-            }
-          })
-        } catch (error) {
-          logger.error('Failed to broadcast bulk read receipt:', error)
-        }
-      })
+      // Broadcast bulk read receipt (non-blocking)
+      broadcastBulkReadReceipt(channel_id, {
+        userId,
+        messageCount: result.markedCount
+      }).catch(err => logger.error('Failed to broadcast bulk read receipt:', err))
 
       return NextResponse.json({ 
         success: true,
-        count: result.count,
-        message: `Marked ${result.count} messages as read`
+        count: result.markedCount,
+        message: `Marked ${result.markedCount} messages as read`
       })
     }
 
     // Mark single message as read
-    const receipt = await messageOperations.markAsRead(message_id, session.user.id)
+    const receipt = await readReceiptOps.mark(message_id, userId)
 
-    // Broadcast read receipt (async, fire-and-forget)
+    // Broadcast read receipt (non-blocking)
     if (channel_id) {
-      setImmediate(async () => {
-        try {
-          const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SECRET_KEY!
-          )
-
-          const channel = supabaseAdmin.channel(`rt_${channel_id}`)
-          await channel.send({
-            type: 'broadcast',
-            event: 'message_read',
-            payload: {
-              messageId: message_id,
-              userId: session.user.id,
-              channelId: channel_id,
-              readAt: new Date().toISOString()
-            }
-          })
-        } catch (error) {
-          logger.error('Failed to broadcast read receipt:', error)
-        }
-      })
+      broadcastReadReceipt(channel_id, {
+        messageId: message_id,
+        userId,
+        readAt: new Date().toISOString()
+      }).catch(err => logger.error('Failed to broadcast read receipt:', err))
     }
 
     return NextResponse.json({ success: true, receipt })
   } catch (error) {
     logger.error('Error marking message as read:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return createErrorResponse('Internal server error', 500)
   }
 }
 
-// GET /api/communication/read-receipts?message_id=... - Get read receipts for a message
+// ============================================
+// GET /api/communication/read-receipts - Get read receipts for a message
+// ============================================
 export async function GET(request: NextRequest) {
   try {
-    const { session, user, userEmail, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+    const { session } = await genericApiRoutesMiddleware(request, 'communication', 'read')
+
+    if (!session?.user?.id) {
+      return createErrorResponse('Unauthorized', 401)
+    }
 
     const { searchParams } = new URL(request.url)
     const messageId = searchParams.get('message_id')
+    const channelId = searchParams.get('channel_id')
 
-    if (!messageId) {
-      return NextResponse.json(
-        { error: 'Message ID is required' },
-        { status: 400 }
-      )
+    if (!messageId && !channelId) {
+      return createErrorResponse('message_id or channel_id is required', 400)
     }
 
-    // Check if user can access this message
-    const message = await prisma.messages.findUnique({
-      where: { id: messageId },
-      include: {
-        channels: {
-          include: {
-            channel_members: {
-              where: { mongo_member_id: session.user.id },
-            },
-          },
-        },
-      },
-    })
-
-    if (!message || message.channels.channel_members.length === 0) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      )
+    // If channel_id provided, check membership
+    if (channelId) {
+      const isMember = await channelOps.isMember(channelId, session.user.id)
+      if (!isMember) {
+        return createErrorResponse('Access denied', 403)
+      }
     }
 
-    const receipts = await prisma.read_receipts.findMany({
-      where: { message_id: messageId },
-      include: {
-        // Note: We can't directly join with MongoDB users here
-        // The frontend will need to resolve user details separately
-      },
-    })
+    if (messageId) {
+      // Check access to message via its channel
+      const message = await prisma.messages.findUnique({
+        where: { id: messageId },
+        select: { channel_id: true }
+      })
 
-    return NextResponse.json({ receipts })
+      if (!message) {
+        return createErrorResponse('Message not found', 404)
+      }
+
+      const isMember = await channelOps.isMember(message.channel_id, session.user.id)
+      if (!isMember) {
+        return createErrorResponse('Access denied', 403)
+      }
+
+      const receipts = await readReceiptOps.getByMessage(messageId)
+      return NextResponse.json({ success: true, receipts })
+    }
+
+    // Get unread count for channel
+    if (channelId) {
+      const unreadCount = await readReceiptOps.getUnreadCount(channelId, session.user.id)
+      return NextResponse.json({ success: true, unreadCount })
+    }
+
+    return createErrorResponse('Invalid request', 400)
   } catch (error) {
     logger.error('Error fetching read receipts:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return createErrorResponse('Internal server error', 500)
   }
 }

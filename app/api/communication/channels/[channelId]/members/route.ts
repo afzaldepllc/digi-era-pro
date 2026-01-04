@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import User from '@/models/User'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
-import { supabase } from '@/lib/supabase'
+import { channelOps } from '@/lib/communication/operations'
+import { broadcastToChannel, broadcastToUser, broadcastMemberChange } from '@/lib/communication/broadcast'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 
@@ -47,10 +48,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { channelId } = await params
 
-    // Verify user is a member
-    const isMember = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Verify user is a member using Phase 1 channelOps
+    const isMember = await channelOps.isMember(channelId, session.user.id)
 
     if (!isMember) {
       return createErrorResponse('Access denied', 403)
@@ -65,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     })
 
     // Enrich with MongoDB user data
-    const memberIds = members.map(m => m.mongo_member_id)
+    const memberIds = members.map((m: { mongo_member_id: string }) => m.mongo_member_id)
     const users = await executeGenericDbQuery(async () => {
       return await User.find({ _id: { $in: memberIds } })
         .select('_id name email avatar role department')
@@ -75,7 +74,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const userMap = new Map((users as any[]).map((u: any) => [u._id.toString(), u]))
 
-    const enrichedMembers = members.map(member => ({
+    const enrichedMembers = members.map((member: any) => ({
       ...member,
       user: userMap.get(member.mongo_member_id) || {
         _id: member.mongo_member_id,
@@ -123,19 +122,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return createErrorResponse('Channel not found', 404)
     }
 
-    // Check requester permissions
-    const requester = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Check requester permissions using Phase 1 channelOps
+    const requesterRole = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!requester) {
+    if (!requesterRole) {
       return createErrorResponse('You are not a member of this channel', 403)
     }
 
     // Check if admin-only-add is enabled (use any to handle field that might not exist yet)
     const channelAny = channel as any
     if (channelAny.admin_only_add) {
-      if (requester.role !== 'admin' && requester.role !== 'owner') {
+      if (requesterRole !== 'admin' && requesterRole !== 'owner') {
         return createErrorResponse('Only admins can add members to this channel', 403)
       }
     }
@@ -201,39 +198,31 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     })
 
-    // Broadcast to new members
-    try {
-      for (const memberId of newMemberIds) {
-        const rtUserChannel = supabase.channel(`user:${memberId}:channels`)
-        await rtUserChannel.send({
-          type: 'broadcast',
-          event: 'channel_update',
-          payload: { id: channelId, type: 'new_channel' }
-        })
-        await supabase.removeChannel(rtUserChannel)
-      }
-
-      // Broadcast to channel
-      const rtChannel = supabase.channel(`rt_${channelId}`)
-      await rtChannel.send({
-        type: 'broadcast',
-        event: 'member_update',
-        payload: {
-          channelId,
-          memberIds: newMemberIds,
-          type: 'members_added',
-          users: users.map(user => ({
-            mongo_member_id: user._id.toString(),
-            name: user.name,
-            email: user.email,
-            avatar: user.avatar
-          }))
-        }
-      })
-      await supabase.removeChannel(rtChannel)
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast member add:', broadcastError)
+    // Broadcast to new members (non-blocking) using Phase 1 broadcast functions
+    for (const memberId of newMemberIds) {
+      broadcastToUser({
+        userId: memberId,
+        event: 'new_message',
+        payload: { id: channelId, type: 'new_channel' }
+      }).catch(err => logger.debug(`Failed to notify user ${memberId} of new channel:`, err))
     }
+
+    // Broadcast to channel (non-blocking)
+    broadcastToChannel({
+      channelId,
+      event: 'member_joined',
+      payload: {
+        channelId,
+        memberIds: newMemberIds,
+        type: 'members_added',
+        users: users.map(user => ({
+          mongo_member_id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar
+        }))
+      }
+    }).catch(err => logger.debug('Failed to broadcast member add:', err))
 
     // Get updated channel with members
     const updatedChannel = await prisma.channels.findUnique({
@@ -253,7 +242,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Enrich members with user data
-    const memberIds = updatedChannel.channel_members.map(m => m.mongo_member_id)
+    const memberIds = updatedChannel.channel_members.map((m: { mongo_member_id: string }) => m.mongo_member_id)
     const enrichedUsers = await executeGenericDbQuery(async () => {
       return await User.find({ _id: { $in: memberIds } }).select('_id name email avatar department position role isClient')
     })
@@ -266,7 +255,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return acc
     }, {})
 
-    const enrichedMembers = updatedChannel.channel_members.map(member => ({
+    const enrichedMembers = updatedChannel.channel_members.map((member: any) => ({
       ...member,
       name: userMap[member.mongo_member_id]?.name || 'Unknown User',
       email: userMap[member.mongo_member_id]?.email || '',
@@ -315,16 +304,25 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return createErrorResponse('Channel not found', 404)
     }
 
-    // Check requester is admin/owner
-    const requester = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Check requester is admin/owner using Phase 1 channelOps
+    const requesterRole = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!requester || (requester.role !== 'admin' && requester.role !== 'owner')) {
+    if (!requesterRole || !['admin', 'owner'].includes(requesterRole)) {
       return createErrorResponse('Admin permission required', 403)
     }
 
     // Cannot change owner role
+    const targetRole = await channelOps.getMemberRole(channelId, memberId)
+
+    if (!targetRole) {
+      return createErrorResponse('Member not found', 404)
+    }
+
+    if (targetRole === 'owner') {
+      return createErrorResponse('Cannot change owner role', 403)
+    }
+
+    // Get target member record for update
     const target = await prisma.channel_members.findFirst({
       where: { channel_id: channelId, mongo_member_id: memberId }
     })
@@ -333,28 +331,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return createErrorResponse('Member not found', 404)
     }
 
-    if (target.role === 'owner') {
-      return createErrorResponse('Cannot change owner role', 403)
-    }
-
     // Update role
     const updatedMember = await prisma.channel_members.update({
       where: { id: target.id },
       data: { role }
     })
 
-    // Broadcast update
-    try {
-      const rtChannel = supabase.channel(`rt_${channelId}`)
-      await rtChannel.send({
-        type: 'broadcast',
-        event: 'member_update',
-        payload: { channelId, memberId, type: 'member_updated', role }
-      })
-      await supabase.removeChannel(rtChannel)
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast role update:', broadcastError)
-    }
+    // Broadcast update (non-blocking) using Phase 1 broadcast
+    broadcastMemberChange(channelId, 'role_changed', {
+      memberId,
+      memberName: '', // Will be enriched on client side
+      role
+    }).catch(err => logger.debug('Failed to broadcast role update:', err))
 
     return NextResponse.json({ 
       success: true, 
@@ -389,26 +377,31 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return createErrorResponse('Channel not found', 404)
     }
 
-    // Check requester permissions
-    const requester = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Check requester permissions using Phase 1 channelOps
+    const requesterRole = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!requester || (requester.role !== 'admin' && requester.role !== 'owner')) {
+    if (!requesterRole || !['admin', 'owner'].includes(requesterRole)) {
       return createErrorResponse('Admin permission required', 403)
     }
 
     // Cannot remove owner
+    const targetRole = await channelOps.getMemberRole(channelId, memberId)
+
+    if (!targetRole) {
+      return createErrorResponse('Member not found', 404)
+    }
+
+    if (targetRole === 'owner') {
+      return createErrorResponse('Cannot remove channel owner', 403)
+    }
+
+    // Get target member record for deletion
     const target = await prisma.channel_members.findFirst({
       where: { channel_id: channelId, mongo_member_id: memberId }
     })
 
     if (!target) {
       return createErrorResponse('Member not found', 404)
-    }
-
-    if (target.role === 'owner') {
-      return createErrorResponse('Cannot remove channel owner', 403)
     }
 
     // Remove member
@@ -438,7 +431,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Enrich members with user data
-    const memberIds = updatedChannel.channel_members.map(m => m.mongo_member_id)
+    const memberIds = updatedChannel.channel_members.map((m: { mongo_member_id: string }) => m.mongo_member_id)
     const users = await executeGenericDbQuery(async () => {
       return await User.find({ _id: { $in: memberIds } }).select('_id name email avatar department position role isClient')
     })
@@ -451,7 +444,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return acc
     }, {})
 
-    const enrichedMembers = updatedChannel.channel_members.map(member => ({
+    const enrichedMembers = updatedChannel.channel_members.map((member: any) => ({
       ...member,
       name: userMap[member.mongo_member_id]?.name || 'Unknown User',
       email: userMap[member.mongo_member_id]?.email || '',
@@ -462,27 +455,18 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       isClient: userMap[member.mongo_member_id]?.isClient || false
     }))
 
-    // Broadcast to removed user
-    try {
-      const rtUserChannel = supabase.channel(`user:${memberId}:channels`)
-      await rtUserChannel.send({
-        type: 'broadcast',
-        event: 'channel_update',
-        payload: { id: channelId, type: 'channel_removed' }
-      })
-      await supabase.removeChannel(rtUserChannel)
+    // Broadcast to removed user (non-blocking) using Phase 1 broadcast
+    broadcastToUser({
+      userId: memberId,
+      event: 'new_message',
+      payload: { id: channelId, type: 'channel_removed' }
+    }).catch(err => logger.debug(`Failed to notify removed user ${memberId}:`, err))
 
-      // Broadcast to channel
-      const rtChannel = supabase.channel(`rt_${channelId}`)
-      await rtChannel.send({
-        type: 'broadcast',
-        event: 'member_update',
-        payload: { channelId, memberId, type: 'member_removed' }
-      })
-      await supabase.removeChannel(rtChannel)
-    } catch (broadcastError) {
-      logger.warn('Failed to broadcast member removal:', broadcastError)
-    }
+    // Broadcast to channel (non-blocking)
+    broadcastMemberChange(channelId, 'left', {
+      memberId,
+      memberName: ''
+    }).catch(err => logger.debug('Failed to broadcast member removal:', err))
 
     return NextResponse.json({
       success: true,

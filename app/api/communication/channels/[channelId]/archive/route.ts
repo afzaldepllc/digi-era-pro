@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { apiLogger as logger } from '@/lib/logger'
-import { supabase } from '@/lib/supabase'
+import { channelOps } from '@/lib/communication/operations'
+import { broadcastChannelUpdate } from '@/lib/communication/broadcast'
 import type { channels } from '@prisma/client'
 
 // Extended channel type with archive fields (until Prisma client is regenerated)
@@ -44,18 +45,13 @@ export async function POST(
     // Cast to include archive fields (until Prisma client is regenerated)
     const channel = channelResult as ChannelWithArchive
 
-    // Only admins/owners or super admins can archive/unarchive
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: userId,
-        role: { in: ['admin', 'owner'] }
-      }
-    })
+    // Only admins/owners or super admins can archive/unarchive using Phase 1 channelOps
+    const memberRole = await channelOps.getMemberRole(channelId, userId)
+    const isAdminOrOwner = memberRole && ['admin', 'owner'].includes(memberRole)
 
     const isCreator = channel.mongo_creator_id === userId
 
-    if (!membership && !isCreator && !isSuperAdmin) {
+    if (!isAdminOrOwner && !isCreator && !isSuperAdmin) {
       return NextResponse.json(
         { error: 'Only channel admins can archive/unarchive channels' },
         { status: 403 }
@@ -82,27 +78,16 @@ export async function POST(
         }
       })
 
-      // Broadcast channel update to all members for real-time sync
-      try {
-        const rtChannel = supabase.channel(`rt_${channelId}`)
-        await rtChannel.send({
-          type: 'broadcast',
-          event: 'channel_update',
-          payload: {
-            id: channelId,
-            type: 'archive',
-            channel: {
-              id: updatedChannel.id,
-              is_archived: true,
-              archived_at: updatedChannel.archived_at,
-              archived_by: updatedChannel.archived_by
-            }
-          }
-        })
-        await supabase.removeChannel(rtChannel)
-      } catch (broadcastError) {
-        logger.warn('Failed to broadcast channel archive:', broadcastError)
-      }
+      // Broadcast channel update (non-blocking) using Phase 1 broadcast
+      broadcastChannelUpdate(channelId, {
+        type: 'archive',
+        channel: {
+          id: updatedChannel.id,
+          is_archived: true,
+          archived_at: updatedChannel.archived_at,
+          archived_by: updatedChannel.archived_by
+        }
+      }).catch(err => logger.debug('Failed to broadcast channel archive:', err))
 
       return NextResponse.json({ 
         success: true, 
@@ -130,27 +115,16 @@ export async function POST(
         }
       })
 
-      // Broadcast channel update to all members for real-time sync
-      try {
-        const rtChannel = supabase.channel(`rt_${channelId}`)
-        await rtChannel.send({
-          type: 'broadcast',
-          event: 'channel_update',
-          payload: {
-            id: channelId,
-            type: 'unarchive',
-            channel: {
-              id: updatedChannel.id,
-              is_archived: false,
-              archived_at: null,
-              archived_by: null
-            }
-          }
-        })
-        await supabase.removeChannel(rtChannel)
-      } catch (broadcastError) {
-        logger.warn('Failed to broadcast channel unarchive:', broadcastError)
-      }
+      // Broadcast channel update (non-blocking) using Phase 1 broadcast
+      broadcastChannelUpdate(channelId, {
+        type: 'unarchive',
+        channel: {
+          id: updatedChannel.id,
+          is_archived: false,
+          archived_at: null,
+          archived_by: null
+        }
+      }).catch(err => logger.debug('Failed to broadcast channel unarchive:', err))
 
       return NextResponse.json({ 
         success: true, 

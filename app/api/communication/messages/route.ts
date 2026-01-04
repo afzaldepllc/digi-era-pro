@@ -1,3 +1,11 @@
+/**
+ * Messages API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses centralized services from Phase 1:
+ * - messageOps from operations.ts for database operations
+ * - broadcastToChannel, broadcastNewMessage, sendMentionNotification from broadcast.ts
+ * - channelOps.isMember() for membership checks
+ */
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
@@ -5,98 +13,17 @@ import { createMessageSchema, messageQuerySchema } from "@/lib/validations/chann
 import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
-import { createClient } from '@supabase/supabase-js'
 import { apiLogger as logger } from '@/lib/logger'
+// Phase 2: Use centralized services from Phase 1
+import { channelOps } from '@/lib/communication/operations'
+import { 
+  broadcastToChannel, 
+  broadcastNewMessage, 
+  sendMentionNotification,
+  broadcastToUser 
+} from '@/lib/communication/broadcast'
 
-// ============================================
-// Supabase Admin Client for Broadcasting
-// ============================================
-
-// Create a singleton admin client for broadcasting
-let supabaseAdminClient: ReturnType<typeof createClient> | null = null
-
-function getSupabaseAdmin() {
-  if (!supabaseAdminClient) {
-    supabaseAdminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SECRET_KEY!,
-      {
-        realtime: {
-          params: {
-            eventsPerSecond: 100
-          }
-        }
-      }
-    )
-  }
-  return supabaseAdminClient
-}
-
-/**
- * Broadcast a message to a Supabase channel.
- * This properly subscribes to the channel before sending to ensure delivery.
- */
-async function broadcastToChannel(
-  channelName: string, 
-  event: string, 
-  payload: any,
-  timeout = 5000
-): Promise<boolean> {
-  const supabase = getSupabaseAdmin()
-  
-  return new Promise((resolve) => {
-    const channel = supabase.channel(channelName, {
-      config: {
-        broadcast: { self: false, ack: true }
-      }
-    })
-    
-    let resolved = false
-    const timeoutId = setTimeout(() => {
-      if (!resolved) {
-        resolved = true
-        supabase.removeChannel(channel)
-        logger.warn(`Broadcast to ${channelName} timed out`)
-        resolve(false)
-      }
-    }, timeout)
-    
-    channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        try {
-          const result = await channel.send({
-            type: 'broadcast',
-            event,
-            payload
-          })
-          
-          if (!resolved) {
-            resolved = true
-            clearTimeout(timeoutId)
-            // Immediately remove the channel after sending
-            supabase.removeChannel(channel)
-            resolve(result === 'ok')
-          }
-        } catch (error) {
-          if (!resolved) {
-            resolved = true
-            clearTimeout(timeoutId)
-            supabase.removeChannel(channel)
-            logger.error(`Broadcast error to ${channelName}:`, error)
-            resolve(false)
-          }
-        }
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        if (!resolved) {
-          resolved = true
-          clearTimeout(timeoutId)
-          supabase.removeChannel(channel)
-          resolve(false)
-        }
-      }
-    })
-  })
-}
+// NOTE: Supabase broadcasting is now handled by @/lib/communication/broadcast.ts (Phase 1)
 
 // ============================================
 // Type Definitions
@@ -228,14 +155,8 @@ export async function GET(request: NextRequest) {
     const validatedParams = messageQuerySchema.parse(parsedParams)
 
     // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: validatedParams.channel_id,
-        mongo_member_id: session.user.id,
-      },
-    })
-
-    if (!membership) {
+    const isMember = await channelOps.isMember(validatedParams.channel_id, session.user.id)
+    if (!isMember) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
@@ -289,21 +210,15 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Channel not found', 404)
     }
 
-    // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: validatedData.channel_id,
-        mongo_member_id: session.user.id,
-      },
-    })
-
-    if (!membership) {
+    // Check if user is member of the channel and get their role
+    const memberRecord = await channelOps.getMember(validatedData.channel_id, session.user.id)
+    if (!memberRecord) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
     // Check admin-only-post restriction
     if (channel.admin_only_post) {
-      if (membership.role !== 'admin' && membership.role !== 'owner') {
+      if (memberRecord.role !== 'admin' && memberRecord.role !== 'owner') {
         return createErrorResponse('Only admins can post messages in this channel', 403)
       }
     }
@@ -380,9 +295,9 @@ export async function POST(request: NextRequest) {
         logger.info(`🚀 Starting broadcast. Sender ID: ${senderId}, Channel: ${validatedData.channel_id}`)
         
         // Broadcast the message with sender data to realtime subscribers (active channel)
-        const channelBroadcast = await broadcastToChannel(
-          `rt_${validatedData.channel_id}`,
-          'new_message',
+        // Using Phase 1 broadcastNewMessage convenience function
+        const channelBroadcast = await broadcastNewMessage(
+          validatedData.channel_id,
           messageWithSender
         )
         if (channelBroadcast) {
@@ -393,28 +308,17 @@ export async function POST(request: NextRequest) {
 
         // Broadcast mention notifications to mentioned users
         if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
-          const mentionNotification = {
-            type: 'mention',
-            message_id: message.id,
-            channel_id: validatedData.channel_id,
-            sender_name: senderName,
-            sender_avatar: senderAvatar,
-            content_preview: validatedData.content.slice(0, 100),
-            created_at: message.created_at
-          }
-
-          // Broadcast to each mentioned user's personal notification channel
-          const mentionPromises = validatedData.mongo_mentioned_user_ids.map(async (mentionedUserId) => {
-            const success = await broadcastToChannel(
-              `notifications_${mentionedUserId}`,
-              'mention_notification',
-              mentionNotification
-            )
-            if (success) {
-              logger.debug('Mention notification sent to user:', mentionedUserId)
-            }
-            return success
-          })
+          // Use Phase 1 sendMentionNotification
+          const mentionPromises = validatedData.mongo_mentioned_user_ids.map((mentionedUserId) =>
+            sendMentionNotification(mentionedUserId, {
+              channelId: validatedData.channel_id,
+              channelName: '', // Will be resolved by client
+              messageId: message.id,
+              mentionedBy: senderId,
+              mentionedByName: senderName,
+              preview: validatedData.content.slice(0, 100)
+            })
+          )
           await Promise.all(mentionPromises)
         }
 
@@ -424,39 +328,21 @@ export async function POST(request: NextRequest) {
           select: { mongo_member_id: true }
         })
 
-        logger.info(`Broadcasting to ${members.length} channel members, sender: ${senderId} (type: ${typeof senderId})`)
+        logger.info(`Broadcasting to ${members.length} channel members, sender: ${senderId}`)
 
         // Filter out sender and broadcast to all other members in parallel
-        // Use String() comparison to avoid type mismatches
         const recipientMembers = members.filter(member => String(member.mongo_member_id) !== String(senderId))
-        logger.info(`Recipients (excluding sender): ${recipientMembers.map(m => m.mongo_member_id).join(', ')}`)
         
-        // Log if sender was correctly excluded
-        const senderMember = members.find(m => String(m.mongo_member_id) === String(senderId))
-        if (senderMember) {
-          logger.info(`✅ Sender correctly excluded from recipients`)
-        } else {
-          logger.warn(`⚠️ Sender not found in channel members - they might not be a member`)
-        }
-
-        const notificationPromises = recipientMembers.map(async (member) => {
-            const channelName = `notifications_${member.mongo_member_id}`
-            logger.info(`Sending notification to channel: ${channelName}`)
-            const success = await broadcastToChannel(
-              channelName,
-              'new_message',
-              { message: messageWithSender }
-            )
-            if (success) {
-              logger.info(`✅ Notification sent successfully to: ${member.mongo_member_id}`)
-            } else {
-              logger.warn(`❌ Failed to send notification to user: ${member.mongo_member_id}`)
-            }
-            return success
+        const notificationPromises = recipientMembers.map((member) =>
+          broadcastToUser({
+            userId: member.mongo_member_id,
+            event: 'new_message',
+            payload: { message: messageWithSender }
           })
+        )
         
         await Promise.all(notificationPromises)
-        logger.info(`Broadcast complete: sent to ${notificationPromises.length} members for channel ${validatedData.channel_id}`)
+        logger.info(`Broadcast complete: sent to ${recipientMembers.length} members for channel ${validatedData.channel_id}`)
       } catch (error) {
         logger.error('Failed to broadcast message:', error)
         // Don't fail the request if broadcast fails

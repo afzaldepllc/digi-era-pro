@@ -34,9 +34,105 @@ class CommunicationCache {
   private messagesCache: Map<string, CacheEntry<any[]>> = new Map();
   private userDataCache: Map<string, CacheEntry<any>> = new Map();
   private config: CacheConfig;
+  
+  // Generic key-value cache for operations.ts
+  private genericCache: Map<string, CacheEntry<any>> = new Map();
 
   constructor(config: Partial<CacheConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    
+    // Run cleanup periodically (server-side only)
+    if (typeof window === 'undefined') {
+      setInterval(() => this.cleanup(), 30000);
+    }
+  }
+
+  // ============================================
+  // Generic Key-Value Cache (for operations.ts)
+  // ============================================
+
+  /**
+   * Get cached value if not expired
+   */
+  get<T>(key: string): T | null {
+    const entry = this.genericCache.get(key) as CacheEntry<T> | undefined;
+    if (!entry) return null;
+
+    if (Date.now() > entry.expiresAt) {
+      this.genericCache.delete(key);
+      return null;
+    }
+
+    return entry.data;
+  }
+
+  /**
+   * Set value with TTL (default 60 seconds)
+   */
+  set<T>(key: string, data: T, ttl: number = 60000): void {
+    this.genericCache.set(key, {
+      data,
+      timestamp: Date.now(),
+      expiresAt: Date.now() + ttl
+    });
+  }
+
+  /**
+   * Delete single key
+   */
+  delete(key: string): void {
+    this.genericCache.delete(key);
+  }
+
+  /**
+   * Invalidate by pattern (e.g., 'channel:*' invalidates all channel caches)
+   * Supports simple wildcard patterns with *
+   */
+  invalidate(pattern: string): void {
+    if (pattern.includes('*')) {
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+      for (const key of this.genericCache.keys()) {
+        if (regex.test(key)) {
+          this.genericCache.delete(key);
+        }
+      }
+    } else {
+      // Exact match
+      this.genericCache.delete(pattern);
+    }
+  }
+
+  /**
+   * Clean up expired entries from all caches
+   */
+  private cleanup(): void {
+    const now = Date.now();
+    
+    // Clean generic cache
+    for (const [key, entry] of this.genericCache.entries()) {
+      if (now > entry.expiresAt) {
+        this.genericCache.delete(key);
+      }
+    }
+    
+    // Clean messages cache
+    for (const [key, entry] of this.messagesCache.entries()) {
+      if (now > entry.expiresAt) {
+        this.messagesCache.delete(key);
+      }
+    }
+    
+    // Clean user data cache
+    for (const [key, entry] of this.userDataCache.entries()) {
+      if (now > entry.expiresAt) {
+        this.userDataCache.delete(key);
+      }
+    }
+    
+    // Clean channels cache
+    if (this.channelsCache && now > this.channelsCache.expiresAt) {
+      this.channelsCache = null;
+    }
   }
 
   // ============================================
@@ -223,6 +319,7 @@ class CommunicationCache {
     this.channelsCache = null;
     this.messagesCache.clear();
     this.userDataCache.clear();
+    this.genericCache.clear();
   }
 
   getStats(): {
@@ -230,6 +327,7 @@ class CommunicationCache {
     channelsAge: number | null;
     messagesChannelCount: number;
     usersCached: number;
+    genericCacheSize: number;
   } {
     return {
       channelsCached: this.channelsCache !== null,
@@ -238,6 +336,7 @@ class CommunicationCache {
         : null,
       messagesChannelCount: this.messagesCache.size,
       usersCached: this.userDataCache.size,
+      genericCacheSize: this.genericCache.size,
     };
   }
 

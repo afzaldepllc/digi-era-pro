@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { z } from 'zod'
 import { apiLogger as logger } from '@/lib/logger'
+// Phase 2: Use centralized services from Phase 1
+import { channelOps } from '@/lib/communication/operations'
 
 // Search query validation
 const searchQuerySchema = z.object({
@@ -74,14 +76,8 @@ export async function GET(request: NextRequest) {
     logger.debug('[Search API] Validated params:', validatedParams)
 
     // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: validatedParams.channel_id,
-        mongo_member_id: session.user.id,
-      },
-    })
-
-    if (!membership) {
+    const isMember = await channelOps.isMember(validatedParams.channel_id, session.user.id)
+    if (!isMember) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 

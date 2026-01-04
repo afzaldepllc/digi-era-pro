@@ -1,14 +1,18 @@
+/**
+ * Messages Restore API Route - CONSOLIDATED (Phase 2)
+ */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from '@/lib/utils/api-responses'
 import { getClientInfo } from '@/lib/security/error-handler'
 import { apiLogger as logger } from '@/lib/logger'
-import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import MessageAuditLog from '@/models/MessageAuditLog'
 import mongoose from 'mongoose'
 import { z } from 'zod'
+// Phase 2: Use centralized services from Phase 1
+import { broadcastToChannel } from '@/lib/communication/broadcast'
 
 // Validation schema
 const restoreMessageSchema = z.object({
@@ -22,25 +26,6 @@ function createErrorResponse(message: string, status: number, details?: any) {
     error: message,
     ...(details && { details })
   }, { status })
-}
-
-// Helper: Broadcast via Supabase Realtime
-async function broadcastMessageEvent(channelId: string, event: string, payload: any) {
-  try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const channel = supabaseAdmin.channel(`rt_${channelId}`)
-    await channel.send({
-      type: 'broadcast',
-      event,
-      payload
-    })
-    logger.debug(`Broadcasted ${event} to channel:`, channelId)
-  } catch (e) {
-    logger.error(`Failed to broadcast ${event}:`, e)
-  }
 }
 
 /**
@@ -171,13 +156,17 @@ export async function POST(request: NextRequest) {
     // Transform for response
     const transformedMessage = transformMessageWithSender(restoredMessage)
 
-    // Broadcast restoration via Supabase Realtime
-    await broadcastMessageEvent(message.channel_id, 'message_restored', {
-      messageId,
+    // Broadcast restoration via Phase 1 service
+    broadcastToChannel({
       channelId: message.channel_id,
-      restoredBy: userId,
-      message: transformedMessage
-    })
+      event: 'message_restore',
+      payload: {
+        messageId,
+        channelId: message.channel_id,
+        restoredBy: userId,
+        message: transformedMessage
+      }
+    }).catch(err => logger.error('Failed to broadcast message restoration:', err))
 
     return NextResponse.json({ 
       success: true, 

@@ -1,3 +1,10 @@
+/**
+ * Messages [messageId] API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses centralized services from Phase 1:
+ * - messageOps from operations.ts for database operations
+ * - broadcastToChannel, broadcastMessageUpdate, broadcastMessageDelete from broadcast.ts
+ */
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
@@ -7,11 +14,17 @@ import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { apiLogger as logger } from '@/lib/logger'
-import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import MessageAuditLog from '@/models/MessageAuditLog'
 import mongoose from 'mongoose'
 import { S3Service } from "@/lib/services/s3-service"
+// Phase 2: Use centralized services from Phase 1
+import { messageOps } from '@/lib/communication/operations'
+import { 
+  broadcastToChannel, 
+  broadcastMessageUpdate, 
+  broadcastMessageDelete 
+} from '@/lib/communication/broadcast'
 
 // Delete types for the trash system
 type DeleteType = 'trash' | 'self' | 'permanent'
@@ -25,24 +38,7 @@ function createErrorResponse(message: string, status: number, details?: any) {
   }, { status })
 }
 
-// Helper: Broadcast via Supabase Realtime
-async function broadcastMessageEvent(channelId: string, event: string, payload: any) {
-  try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const channel = supabaseAdmin.channel(`rt_${channelId}`)
-    await channel.send({
-      type: 'broadcast',
-      event,
-      payload
-    })
-    logger.debug(`Broadcasted ${event} to channel:`, channelId)
-  } catch (e) {
-    logger.error(`Failed to broadcast ${event}:`, e)
-  }
-}
+// NOTE: Broadcast now handled by @/lib/communication/broadcast.ts (Phase 1)
 
 // Type for messages with trash fields (until prisma generate is run)
 type MessageWithTrash = {
@@ -196,14 +192,12 @@ export async function PUT(
     // Update message using messageOperations
     const updatedMessage = await messageOperations.update(validatedParams.messageId, validatedData.content)
 
-    // Broadcast message update
-    await broadcastMessageEvent(message.channel_id, 'message_updated', {
-      messageId: validatedParams.messageId,
-      channelId: message.channel_id,
+    // Broadcast message update using Phase 1 function
+    broadcastMessageUpdate(message.channel_id, validatedParams.messageId, {
       content: validatedData.content,
       attachmentsAdded: uploadedAttachments.length,
       attachmentsRemoved: validatedData.attachments_to_remove?.length || 0
-    })
+    }).catch(err => logger.error('Failed to broadcast message update:', err))
 
     return NextResponse.json({
       success: true,
@@ -288,11 +282,15 @@ export async function DELETE(
       })
 
       // Broadcast hide event (only to the user who hid it - via notifications channel)
-      await broadcastMessageEvent(message.channel_id, 'message_hidden', {
-        messageId,
+      broadcastToChannel({
         channelId: message.channel_id,
-        hiddenBy: userId
-      })
+        event: 'message_hidden',
+        payload: {
+          messageId,
+          channelId: message.channel_id,
+          hiddenBy: userId
+        }
+      }).catch(err => logger.error('Failed to broadcast message hidden:', err))
 
       return NextResponse.json({ 
         success: true, 
@@ -335,12 +333,16 @@ export async function DELETE(
         })
       })
 
-      // Broadcast via Supabase Realtime
-      await broadcastMessageEvent(message.channel_id, 'message_trashed', {
-        messageId,
+      // Broadcast via Supabase Realtime using Phase 1 function
+      broadcastToChannel({
         channelId: message.channel_id,
-        trashedBy: userId
-      })
+        event: 'message_trash',
+        payload: {
+          messageId,
+          channelId: message.channel_id,
+          trashedBy: userId
+        }
+      }).catch(err => logger.error('Failed to broadcast message trash:', err))
 
       return NextResponse.json({ 
         success: true, 
@@ -407,12 +409,9 @@ export async function DELETE(
       // Delete message permanently (cascade deletes reactions, attachments, etc.)
       await messageOperations.delete(messageId)
 
-      // Broadcast permanent deletion
-      await broadcastMessageEvent(message.channel_id, 'message_deleted', {
-        messageId,
-        channelId: message.channel_id,
-        deletedBy: userId
-      })
+      // Broadcast permanent deletion using Phase 1 function
+      broadcastMessageDelete(message.channel_id, messageId, userId)
+        .catch(err => logger.error('Failed to broadcast message deletion:', err))
 
       return NextResponse.json({
         success: true,

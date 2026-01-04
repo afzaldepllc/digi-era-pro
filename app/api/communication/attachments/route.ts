@@ -1,15 +1,24 @@
+/**
+ * Attachments API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses centralized services from Phase 1:
+ * - attachmentOps from operations.ts for database operations
+ * - broadcastToChannel from broadcast.ts for real-time updates
+ * - channelOps.isMember() for membership checks
+ */
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from '@/lib/prisma'
 import { S3Service } from '@/lib/services/s3-service'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { apiLogger as logger } from '@/lib/logger'
+// Phase 2: Use centralized services from Phase 1
+import { attachmentOps, channelOps } from '@/lib/communication/operations'
+import { broadcastToChannel } from '@/lib/communication/broadcast'
 
 // ============================================
 // Validation Schemas
 // ============================================
-
 const uploadQuerySchema = z.object({
   channel_id: z.string().uuid(),
   message_id: z.string().uuid().optional()
@@ -18,7 +27,6 @@ const uploadQuerySchema = z.object({
 // ============================================
 // Helper Functions
 // ============================================
-
 function createErrorResponse(message: string, status: number, details?: unknown) {
   return NextResponse.json({
     success: false,
@@ -65,14 +73,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: session.user.id,
-      },
-    })
-
-    if (!membership) {
+    const isMember = await channelOps.isMember(channelId, session.user.id)
+    if (!isMember) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
@@ -150,27 +152,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Broadcast attachment upload event via real-time
+    // Broadcast attachment upload event via real-time (non-blocking)
     if (uploadedAttachments.length > 0) {
-      try {
-        const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SECRET_KEY!
-        )
-
-        const channel = supabaseAdmin.channel(`rt_${channelId}`)
-        await channel.send({
-          type: 'broadcast',
-          event: 'attachments_added',
-          payload: {
-            channel_id: channelId,
-            message_id: messageId,
-            attachments: uploadedAttachments
-          }
-        })
-      } catch (broadcastError) {
-        logger.error('Failed to broadcast attachment event:', broadcastError)
-      }
+      broadcastToChannel({
+        channelId,
+        event: 'attachments_added',
+        payload: {
+          channel_id: channelId,
+          message_id: messageId,
+          attachments: uploadedAttachments
+        }
+      }).catch(err => logger.error('Failed to broadcast attachment event:', err))
     }
 
     return NextResponse.json({
@@ -213,31 +205,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id: channelId,
-        mongo_member_id: session.user.id,
-      },
-    })
-
-    if (!membership) {
+    const isMember = await channelOps.isMember(channelId, session.user.id)
+    if (!isMember) {
       return createErrorResponse('Access denied to this channel', 403)
     }
 
-    // Fetch attachments
-    const attachments = await prisma.attachments.findMany({
-      where: { channel_id: channelId },
-      orderBy: { created_at: 'desc' },
-      take: limit,
-      skip: offset,
-      include: {
-        messages: {
-          select: {
-            sender_name: true
-          }
-        }
-      }
-    })
+    // Fetch attachments using attachmentOps
+    const attachments = await attachmentOps.getByChannel(channelId, { limit, offset })
 
     // Get total count
     const total = await prisma.attachments.count({

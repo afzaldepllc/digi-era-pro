@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
-import { supabase } from '@/lib/supabase'
+import { channelOps } from '@/lib/communication/operations'
+import { broadcastChannelUpdate } from '@/lib/communication/broadcast'
 import { z } from 'zod'
 
 interface RouteParams {
@@ -38,12 +39,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { channelId } = await params
 
-    // Verify membership
-    const membership = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Verify membership using Phase 1 channelOps
+    const memberRole = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!membership) {
+    if (!memberRole) {
       return createErrorResponse('Access denied', 403)
     }
 
@@ -56,9 +55,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return createErrorResponse('Channel not found', 404)
     }
 
-    // Determine user's permissions
-    const isOwner = membership.role === 'owner' || channel.mongo_creator_id === session.user.id
-    const isAdmin = membership.role === 'admin' || isOwner
+    // Determine user's permissions using Phase 1 memberRole
+    const isOwner = memberRole === 'owner' || channel.mongo_creator_id === session.user.id
+    const isAdmin = memberRole === 'admin' || isOwner
 
     return NextResponse.json({
       success: true,
@@ -80,7 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         updated_at: channel.updated_at,
         isAdmin,
         isOwner,
-        currentUserRole: membership.role
+        currentUserRole: memberRole
       }
     })
   } catch (error: any) {
@@ -108,12 +107,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     
     const validated = validation.data
 
-    // Check admin permission
-    const membership = await prisma.channel_members.findFirst({
-      where: { channel_id: channelId, mongo_member_id: session.user.id }
-    })
+    // Check admin permission using Phase 1 channelOps
+    const memberRole = await channelOps.getMemberRole(channelId, session.user.id)
 
-    if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
+    if (!memberRole || !['admin', 'owner'].includes(memberRole)) {
       return createErrorResponse('Admin permission required', 403)
     }
 
@@ -136,22 +133,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     })
 
-    // Broadcast settings update to channel members
-    try {
-      const rtChannel = supabase.channel(`rt_${channelId}`)
-      await rtChannel.send({
-        type: 'broadcast',
-        event: 'channel_update',
-        payload: {
-          id: channelId,
-          type: 'update',
-          channel: updatedChannel
-        }
-      })
-      await supabase.removeChannel(rtChannel)
-    } catch (broadcastError) {
-      console.warn('Failed to broadcast settings update:', broadcastError)
-    }
+    // Broadcast settings update (non-blocking) using Phase 1 broadcast
+    broadcastChannelUpdate(channelId, {
+      type: 'update',
+      channel: updatedChannel
+    }).catch(err => console.debug('Failed to broadcast settings update:', err))
 
     return NextResponse.json({
       success: true,
