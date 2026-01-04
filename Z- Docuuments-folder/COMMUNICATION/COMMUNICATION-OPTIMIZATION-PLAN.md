@@ -10,6 +10,49 @@ This document outlines a comprehensive phased approach to optimize the Communica
 4. **Preserve Real-time Capabilities**: Keep all Supabase real-time features working identically
 5. **Enterprise-grade Optimization**: Follow WhatsApp-level architecture best practices
 
+---
+
+## ⚠️ Pre-Implementation Fixes Required
+
+Before starting the optimization, these inconsistencies in the current codebase MUST be fixed:
+
+### 1. Environment Variable Inconsistency
+
+**Issue**: Some API routes use `SUPABASE_SECRET_KEY`, others use `SUPABASE_SERVICE_ROLE_KEY`.
+
+| File | Current Usage | Should Be |
+|------|---------------|-----------|
+| `messages/route.ts` | `SUPABASE_SECRET_KEY` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `messages/with-files/route.ts` | `SUPABASE_SECRET_KEY` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `read-receipts/route.ts` | `SUPABASE_SECRET_KEY` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `attachments/route.ts` | `SUPABASE_SECRET_KEY` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `reactions/route.ts` | `SUPABASE_SERVICE_ROLE_KEY` | ✅ Correct |
+| `messages/restore/route.ts` | `SUPABASE_SERVICE_ROLE_KEY` | ✅ Correct |
+| `messages/[messageId]/route.ts` | `SUPABASE_SERVICE_ROLE_KEY` | ✅ Correct |
+
+**Action**: Standardize to `SUPABASE_SERVICE_ROLE_KEY` (the JWT token for server-side admin access). The `SUPABASE_SECRET_KEY` is a different format and may cause issues.
+
+### 2. Existing Validation Schemas
+
+**Status**: `lib/validations/channel.ts` already exists with comprehensive schemas.
+
+**Decision**: 
+- ✅ Keep existing `lib/validations/channel.ts` 
+- ✅ Add missing schemas (audit logs, trash queries) to it
+- ❌ Do NOT create separate `lib/validations/communication.ts` - consolidate into existing file
+
+### 3. Missing Broadcast Events in Plan
+
+The following broadcast events exist in `realtime-manager.ts` but were not documented in original plan:
+
+| Event | Purpose | Must Preserve |
+|-------|---------|---------------|
+| `new_channel` | Notify user of new channel they were added to | ✅ Yes |
+| `user_pin_update` | Notify user when their pin status changes | ✅ Yes |
+| `new_message` (on notification channel) | DM/mention notification to specific user | ✅ Yes |
+
+---
+
 ## Current State Analysis
 
 ### Current Backend Structure (20+ Route Files)
@@ -387,21 +430,37 @@ function getSupabaseAdmin(): SupabaseClient {
 
 // Event types for type safety
 export type BroadcastEvent = 
+  // Message events
   | 'new_message'
   | 'message_update'
   | 'message_delete'
   | 'message_trash'
   | 'message_restore'
+  | 'message_hidden'
+  // Reaction events
   | 'reaction_added'
   | 'reaction_removed'
+  // Read receipt events
   | 'message_read'
-  | 'typing_start'
-  | 'typing_stop'
+  // Typing events (NOTE: These are CLIENT-SIDE via realtime-manager.ts, NOT server broadcast)
+  // | 'typing_start'  // DO NOT include - handled by client
+  // | 'typing_stop'   // DO NOT include - handled by client
+  // Channel events
   | 'channel_updated'
   | 'channel_archived'
+  | 'new_channel'           // Broadcast to user when added to a channel
+  | 'user_pin_update'       // Broadcast to user when channel pin status changes
+  // Member events
   | 'member_joined'
   | 'member_left'
   | 'member_updated'
+  | 'member_role_changed'
+
+// Notification-specific events (sent to user notification channel)
+export type NotificationEvent = 
+  | 'mention_notification'
+  | 'dm_notification'
+  | 'new_message'           // For DM notifications
 
 export interface BroadcastOptions {
   channelId: string
@@ -1154,218 +1213,90 @@ class CommunicationCache {
 export const communicationCache = new CommunicationCache()
 ```
 
-### 1.5 Consolidated Validation Schemas
+### 1.5 Update Existing Validation Schemas
 
-**File**: `lib/validations/communication.ts` (Create comprehensive file)
+> ⚠️ **IMPORTANT**: The file `lib/validations/channel.ts` already exists with comprehensive schemas. 
+> DO NOT create a new `lib/validations/communication.ts` file - instead, add missing schemas to the existing file.
+
+**File**: `lib/validations/channel.ts` (UPDATE EXISTING - Add missing schemas)
+
+**Schemas that already exist** (no changes needed):
+- ✅ `createChannelSchema`
+- ✅ `updateChannelSchema`
+- ✅ `channelQuerySchema`
+- ✅ `createMessageSchema`
+- ✅ `updateMessageSchema`
+- ✅ `messageQuerySchema`
+- ✅ `addMemberSchema`
+- ✅ `createReactionSchema`
+- ✅ `markAsReadSchema`
+
+**Schemas to ADD to existing file**:
 
 ```typescript
-/**
- * Consolidated Communication Validation Schemas
- * All validation schemas for the communication module in one place
- */
-import { z } from 'zod'
-
 // ============================================
-// Constants
+// ADD THESE TO lib/validations/channel.ts
 // ============================================
 
-export const COMMUNICATION_CONSTANTS = {
-  CHANNEL: {
-    NAME_MIN: 1,
-    NAME_MAX: 100,
-    TYPES: ['dm', 'group', 'project', 'department', 'department-category', 'multi-category', 'client-support'] as const,
-    CATEGORIES: ['sales', 'support', 'it', 'management'] as const,
-    MAX_PINS: 5,
-    MAX_MEMBERS_BATCH: 50,
-  },
-  MESSAGE: {
-    MAX_LENGTH: 5000,
-    CONTENT_TYPES: ['text', 'image', 'file', 'audio', 'system'] as const,
-    MAX_ATTACHMENTS: 10,
-    TRASH_RETENTION_DAYS: 30,
-  },
-  PAGINATION: {
-    DEFAULT_LIMIT: 50,
-    MAX_LIMIT: 100,
-    MIN_LIMIT: 1,
-  },
-  REACTION: {
-    MAX_EMOJI_LENGTH: 50,
-  }
-} as const
-
-// ============================================
-// Helpers
-// ============================================
-
-const uuidSchema = z.string().uuid('Invalid UUID format')
-const mongoIdSchema = z.string().min(1, 'ID is required')
-
-// ============================================
-// Channel Schemas
-// ============================================
-
-export const createChannelSchema = z.object({
-  type: z.enum(COMMUNICATION_CONSTANTS.CHANNEL.TYPES),
-  name: z.string().min(COMMUNICATION_CONSTANTS.CHANNEL.NAME_MIN).max(COMMUNICATION_CONSTANTS.CHANNEL.NAME_MAX).optional(),
-  mongo_department_id: mongoIdSchema.optional(),
-  mongo_project_id: mongoIdSchema.optional(),
-  channel_members: z.array(mongoIdSchema).optional(),
-  is_private: z.boolean().default(false),
-  categories: z.array(z.enum(COMMUNICATION_CONSTANTS.CHANNEL.CATEGORIES)).default([]),
-  category: z.enum(COMMUNICATION_CONSTANTS.CHANNEL.CATEGORIES).optional(),
-  client_id: mongoIdSchema.optional(),
-  auto_sync_enabled: z.boolean().default(true),
-  allow_external_members: z.boolean().default(false),
-  admin_only_post: z.boolean().default(false),
-  admin_only_add: z.boolean().default(false),
+// Trash query schema
+export const trashQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20)
 })
 
-export const updateChannelSchema = z.object({
-  name: z.string().min(COMMUNICATION_CONSTANTS.CHANNEL.NAME_MIN).max(COMMUNICATION_CONSTANTS.CHANNEL.NAME_MAX).optional(),
-  is_private: z.boolean().optional(),
-  avatar_url: z.string().url().optional().nullable(),
-  auto_sync_enabled: z.boolean().optional(),
-  allow_external_members: z.boolean().optional(),
-  admin_only_post: z.boolean().optional(),
-  admin_only_add: z.boolean().optional(),
-}).refine(data => Object.keys(data).length > 0, {
-  message: 'At least one field must be provided'
-})
-
-export const channelQuerySchema = z.object({
-  type: z.string().optional(),
-  department_id: mongoIdSchema.optional(),
-  project_id: mongoIdSchema.optional(),
-})
-
-export const channelActionSchema = z.object({
-  action: z.enum(['archive', 'unarchive', 'pin', 'unpin', 'leave']),
-})
-
-export const channelMemberSchema = z.object({
-  userId: mongoIdSchema.or(z.array(mongoIdSchema)),
-  role: z.enum(['admin', 'member']).default('member'),
-})
-
-export const updateMemberRoleSchema = z.object({
-  memberId: uuidSchema,
-  role: z.enum(['admin', 'member']),
-})
-
-// ============================================
-// Message Schemas
-// ============================================
-
-export const createMessageSchema = z.object({
-  channel_id: uuidSchema,
-  content: z.string().max(COMMUNICATION_CONSTANTS.MESSAGE.MAX_LENGTH).default(''),
-  content_type: z.enum(COMMUNICATION_CONSTANTS.MESSAGE.CONTENT_TYPES).default('text'),
-  parent_message_id: uuidSchema.optional(),
-  mongo_mentioned_user_ids: z.array(mongoIdSchema).default([]),
-  attachment_ids: z.array(uuidSchema).optional(),
-  audio_attachment: z.object({
-    file_url: z.string().url(),
-    file_name: z.string().default('Voice Message'),
-    file_size: z.number().optional(),
-    file_type: z.string().default('audio/webm'),
-    duration_seconds: z.number().optional()
-  }).optional(),
-}).refine(
-  data => data.content.trim().length > 0 || (data.attachment_ids && data.attachment_ids.length > 0) || data.audio_attachment,
-  { message: 'Message must have content, attachment, or audio' }
-)
-
-export const updateMessageSchema = z.object({
-  content: z.string().min(1).max(COMMUNICATION_CONSTANTS.MESSAGE.MAX_LENGTH),
-  attachments_to_remove: z.array(uuidSchema).optional(),
-})
-
-export const messageQuerySchema = z.object({
-  channel_id: uuidSchema,
-  limit: z.coerce.number().min(COMMUNICATION_CONSTANTS.PAGINATION.MIN_LIMIT).max(COMMUNICATION_CONSTANTS.PAGINATION.MAX_LIMIT).default(COMMUNICATION_CONSTANTS.PAGINATION.DEFAULT_LIMIT),
-  offset: z.coerce.number().min(0).default(0),
-  before: z.string().datetime().optional(),
-  after: z.string().datetime().optional(),
-})
-
+// Message action schema (for trash/restore/hide operations)
 export const messageActionSchema = z.object({
   action: z.enum(['trash', 'restore', 'permanent_delete', 'hide_for_self']),
   reason: z.string().optional(),
 })
 
-export const messageSearchSchema = z.object({
-  channel_id: uuidSchema,
-  query: z.string().min(1).max(500),
-  limit: z.coerce.number().min(1).max(100).default(20),
-  offset: z.coerce.number().min(0).default(0),
+// Channel action schema (for archive/pin/leave operations)
+export const channelActionSchema = z.object({
+  action: z.enum(['archive', 'unarchive', 'pin', 'unpin', 'leave']),
 })
 
-// ============================================
-// Reaction Schemas
-// ============================================
-
-export const reactionSchema = z.object({
-  message_id: uuidSchema,
-  channel_id: uuidSchema,
-  emoji: z.string().min(1).max(COMMUNICATION_CONSTANTS.REACTION.MAX_EMOJI_LENGTH),
-})
-
-// ============================================
-// Read Receipt Schemas
-// ============================================
-
-export const markReadSchema = z.object({
-  message_id: uuidSchema.optional(),
-  channel_id: uuidSchema.optional(),
-  mark_all: z.boolean().optional(),
-}).refine(
-  data => data.message_id || (data.mark_all && data.channel_id),
-  { message: 'Either message_id or (mark_all with channel_id) is required' }
-)
-
-// ============================================
-// Attachment Schemas
-// ============================================
-
-export const attachmentQuerySchema = z.object({
-  channel_id: uuidSchema,
-  message_id: uuidSchema.optional(),
-})
-
-// ============================================
-// Audit Log Schemas
-// ============================================
-
+// Audit log query schema
 export const auditLogQuerySchema = z.object({
-  channel_id: uuidSchema.optional(),
-  message_id: uuidSchema.optional(),
+  channel_id: z.string().uuid().optional(),
+  message_id: z.string().uuid().optional(),
   action: z.enum(['created', 'edited', 'trashed', 'restored', 'permanently_deleted']).optional(),
-  actor_id: mongoIdSchema.optional(),
+  actor_id: z.string().optional(),
   start_date: z.string().datetime().optional(),
   end_date: z.string().datetime().optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
 })
 
-// ============================================
-// Type Exports
-// ============================================
+// Message search schema
+export const messageSearchSchema = z.object({
+  channel_id: z.string().uuid(),
+  query: z.string().min(1).max(500),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+})
 
-export type CreateChannelData = z.infer<typeof createChannelSchema>
-export type UpdateChannelData = z.infer<typeof updateChannelSchema>
-export type ChannelQueryParams = z.infer<typeof channelQuerySchema>
-export type ChannelActionData = z.infer<typeof channelActionSchema>
-export type ChannelMemberData = z.infer<typeof channelMemberSchema>
-export type CreateMessageData = z.infer<typeof createMessageSchema>
-export type UpdateMessageData = z.infer<typeof updateMessageSchema>
-export type MessageQueryParams = z.infer<typeof messageQuerySchema>
+// Mark read schema (supports bulk and single)
+export const markReadBulkSchema = z.object({
+  message_id: z.string().uuid().optional(),
+  channel_id: z.string().uuid().optional(),
+  mark_all: z.boolean().optional(),
+}).refine(
+  data => data.message_id || (data.mark_all && data.channel_id),
+  { message: 'Either message_id or (mark_all with channel_id) is required' }
+)
+
+// Type exports for new schemas
+export type TrashQueryParams = z.infer<typeof trashQuerySchema>
 export type MessageActionData = z.infer<typeof messageActionSchema>
-export type MessageSearchParams = z.infer<typeof messageSearchSchema>
-export type ReactionData = z.infer<typeof reactionSchema>
-export type MarkReadData = z.infer<typeof markReadSchema>
+export type ChannelActionData = z.infer<typeof channelActionSchema>
 export type AuditLogQueryParams = z.infer<typeof auditLogQuerySchema>
+export type MessageSearchParams = z.infer<typeof messageSearchSchema>
+export type MarkReadBulkData = z.infer<typeof markReadBulkSchema>
 ```
+
+> 📝 **Note**: The constants `CHANNEL_CONSTANTS` already exist in `lib/validations/channel.ts`. 
+> Update them if needed rather than creating new ones.
 
 ---
 
@@ -1696,7 +1627,7 @@ lib/communication/
 └── utils.ts                        # Utilities
 
 lib/validations/
-└── communication.ts                # All validation schemas
+└── channel.ts                      # All validation schemas (EXISTING - update, don't create new)
 ```
 
 ---
@@ -1739,6 +1670,8 @@ All endpoints should follow this response format:
 
 ## Appendix C: Broadcast Event Reference
 
+### Channel-Specific Broadcasts (via `rt_{channelId}`)
+
 | Event | Payload | Triggered By |
 |-------|---------|--------------|
 | `new_message` | Full message with sender | POST /messages (via `broadcast.ts`) |
@@ -1746,6 +1679,7 @@ All endpoints should follow this response format:
 | `message_delete` | { messageId, channelId } | DELETE /messages/[id] (via `broadcast.ts`) |
 | `message_trash` | { messageId, channelId } | DELETE /messages/[id]?action=trash (via `broadcast.ts`) |
 | `message_restore` | Full message | POST /messages/[id]?action=restore (via `broadcast.ts`) |
+| `message_hidden` | { messageId, userId } | DELETE /messages/[id]?action=hide (via `broadcast.ts`) |
 | `reaction_added` | Full reaction | POST /reactions (via `broadcast.ts`) |
 | `reaction_removed` | { messageId, emoji, userId } | POST /reactions toggle (via `broadcast.ts`) |
 | `message_read` | { messageId, userId, readAt } | POST /read-receipts (via `broadcast.ts`) |
@@ -1753,8 +1687,29 @@ All endpoints should follow this response format:
 | `channel_archived` | { channelId, archived } | PUT /channels/[id]?action=archive (via `broadcast.ts`) |
 | `member_joined` | Member data | POST /channels/[id]?action=members (via `broadcast.ts`) |
 | `member_left` | { channelId, userId } | POST /channels/[id]?action=leave (via `broadcast.ts`) |
-| `typing_start` | { channelId, userId, userName } | CLIENT-SIDE via `realtime-manager.ts` |
-| `typing_stop` | { channelId, userId } | CLIENT-SIDE via `realtime-manager.ts` |
+| `member_role_changed` | { channelId, userId, newRole } | PUT /channels/[id]?action=member-role (via `broadcast.ts`) |
+| `typing_start` | { channelId, userId, userName } | **CLIENT-SIDE** via `realtime-manager.ts` |
+| `typing_stop` | { channelId, userId } | **CLIENT-SIDE** via `realtime-manager.ts` |
+
+### User-Specific Broadcasts (via `notifications_{userId}`)
+
+| Event | Payload | Triggered By |
+|-------|---------|--------------|
+| `mention_notification` | { channelId, messageId, mentionedBy, content } | POST /messages when @mention detected |
+| `new_message` | { channelId, message, sender } | POST /messages for DM channels |
+
+### User Channel Updates (via `user:{userId}:channels`)
+
+| Event | Payload | Triggered By |
+|-------|---------|--------------|
+| `new_channel` | Full channel object | POST /channels when user added as member |
+| `user_pin_update` | { channelId, isPinned } | POST /channels/[id]?action=pin |
+
+### Presence (via `global_presence`)
+
+| Event | Payload | Triggered By |
+|-------|---------|--------------|
+| (presence sync) | { userId, status, lastSeen } | **CLIENT-SIDE** via `realtime-manager.ts` |
 
 ---
 
@@ -1784,3 +1739,52 @@ This optimization focuses on code organization, consistency, and maintainability
 | `lib/communication/operations.ts` | Enhanced cached database operations | SERVER (API routes) |
 | `hooks/use-communications.ts` | React hook for communication state | CLIENT (Browser) |
 | `lib/validations/channel.ts` | Zod validation schemas | SHARED |
+
+---
+
+## Appendix D: Pre-Implementation Checklist
+
+Before starting implementation, verify these items:
+
+### Environment Setup
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` is set in `.env` (not `SUPABASE_SECRET_KEY`)
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` is set
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` is set
+- [ ] Database migrations are up to date (`npx prisma db push`)
+
+### Codebase Preparation
+- [ ] All existing tests pass
+- [ ] No TypeScript errors in `/app/api/communication/**`
+- [ ] Back up existing route files before modification
+- [ ] Create git branch for optimization work
+
+### Dependencies Check
+- [ ] `@supabase/supabase-js` is installed
+- [ ] `zod` is installed
+- [ ] `@prisma/client` is installed
+- [ ] All peer dependencies are resolved
+
+### Architecture Understanding Confirmed
+- [ ] Understand `realtime-manager.ts` is CLIENT-SIDE only
+- [ ] Understand `broadcast.ts` will be SERVER-SIDE only
+- [ ] Understand `genericApiRoutesMiddleware` returns `{ session, user, userEmail, isSuperAdmin, filterContext, applyFilters }`
+- [ ] Understand existing validation schemas in `lib/validations/channel.ts`
+
+---
+
+## Appendix E: Implementation Order
+
+**Recommended order to minimize risk:**
+
+1. **Phase 1.1**: Create `lib/communication/broadcast.ts` (new file, no breaking changes)
+2. **Phase 1.2**: Create `lib/communication/operations.ts` (new file, no breaking changes)
+3. **Phase 1.3**: Update `lib/communication/cache.ts` (enhance existing)
+4. **Phase 1.4**: Add missing schemas to `lib/validations/channel.ts`
+5. **Phase 2.1**: Consolidate `reactions/route.ts` (least complex)
+6. **Phase 2.2**: Consolidate `read-receipts/route.ts` (least complex)
+7. **Phase 2.3**: Consolidate `attachments/route.ts`
+8. **Phase 2.4**: Consolidate `messages/route.ts` and `messages/[messageId]/route.ts`
+9. **Phase 2.5**: Consolidate `channels/route.ts` and `channels/[channelId]/route.ts`
+10. **Phase 3**: Update `hooks/use-communications.ts` to use new endpoints
+11. **Phase 4**: Remove deprecated route files
+12. **Phase 5**: Final testing and cleanup
