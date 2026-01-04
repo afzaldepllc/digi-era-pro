@@ -8,6 +8,13 @@ import {
   CommunicationSort
 } from '@/types/communication'
 
+// Type for updateChannel payload that allows functions for numeric fields
+type UpdateChannelPayload = {
+  id: string;
+} & Partial<{
+  [K in keyof IChannel]: IChannel[K] | ((prev: IChannel[K]) => IChannel[K])
+}>
+
 // State interface
 interface CommunicationState {
   // Channel management
@@ -60,7 +67,7 @@ interface CommunicationState {
     message?: ICommunication
     messageId?: string
     preview?: string
-    timestamp: Date
+    timestamp: string  // ISO string for Redux serialization
     read: boolean
   }>
   
@@ -171,8 +178,14 @@ const communicationSlice = createSlice({
         channel.last_message = message
         channel.last_message_at = message.created_at
         
-        // Update unread count if not active channel and not from current user
-        if (channelId !== state.activeChannelId && message.mongo_sender_id !== state.currentUserId) {
+        // Update unread count ONLY if:
+        // 1. Not the active channel
+        // 2. currentUserId is set (to avoid false positives)
+        // 3. Message is NOT from the current user
+        const isActiveChannel = channelId === state.activeChannelId
+        const isFromCurrentUser = state.currentUserId && message.mongo_sender_id === state.currentUserId
+        
+        if (!isActiveChannel && !isFromCurrentUser && state.currentUserId) {
           channel.unreadCount = (channel.unreadCount || 0) + 1
           state.unreadCount += 1
         }
@@ -250,9 +263,16 @@ const communicationSlice = createSlice({
       }
     },
     
-    // ============================================
-    // Reactions
-    // ============================================
+    // Decrement unread count (when message is marked as read)
+    decrementUnreadCount: (state, action: PayloadAction<number | undefined>) => {
+      const decrement = action.payload ?? 1
+      state.unreadCount = Math.max(0, state.unreadCount - decrement)
+    },
+
+    incrementUnreadCount: (state, action: PayloadAction<number | undefined>) => {
+      const increment = action.payload ?? 1
+      state.unreadCount += increment
+    },
     
     addReactionToMessage: (state, action: PayloadAction<{
       channelId: string;
@@ -511,6 +531,13 @@ const communicationSlice = createSlice({
       preview?: string
       read?: boolean
     }>) => {
+      // Check for duplicate notifications
+      const exists = state.notifications.some(n => n.id === action.payload.id)
+      if (exists) {
+        console.log('📨 Notification already exists, skipping:', action.payload.id)
+        return
+      }
+      
       state.notifications.push({
         id: action.payload.id,
         type: action.payload.type,
@@ -519,13 +546,21 @@ const communicationSlice = createSlice({
         message: action.payload.message,
         messageId: action.payload.messageId,
         preview: action.payload.preview,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(), // Use ISO string for serialization
         read: action.payload.read ?? false
       })
     },
     
     clearNotifications: (state) => {
       state.notifications = []
+    },
+
+    clearNotificationsForChannel: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(n => n.channelId !== action.payload)
+    },
+
+    removeNotification: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(n => n.id !== action.payload)
     },
     
     // ============================================
@@ -543,13 +578,33 @@ const communicationSlice = createSlice({
     },
     
     // Update an existing channel (real-time)
-    updateChannel: (state, action: PayloadAction<Partial<IChannel> & { id: string }>) => {
+    updateChannel: (state, action: PayloadAction<UpdateChannelPayload>) => {
       const index = state.channels.findIndex(c => c.id === action.payload.id)
       if (index !== -1) {
-        state.channels[index] = { ...state.channels[index], ...action.payload }
+        const channel = state.channels[index]
+        Object.keys(action.payload).forEach(key => {
+          if (key !== 'id') {
+            const value = (action.payload as any)[key]
+            if (typeof value === 'function') {
+              (channel as any)[key] = value((channel as any)[key])
+            } else {
+              (channel as any)[key] = value
+            }
+          }
+        })
         // Also update selectedChannel if it's the same
         if (state.selectedChannel?.id === action.payload.id) {
-          state.selectedChannel = { ...state.selectedChannel, ...action.payload }
+          const selectedChannel = state.selectedChannel
+          Object.keys(action.payload).forEach(key => {
+            if (key !== 'id') {
+              const value = (action.payload as any)[key]
+              if (typeof value === 'function') {
+                (selectedChannel as any)[key] = value((selectedChannel as any)[key])
+              } else {
+                (selectedChannel as any)[key] = value
+              }
+            }
+          })
         }
       }
     },
@@ -568,22 +623,13 @@ const communicationSlice = createSlice({
     
     // Data setters for TanStack Query integration
     setChannels: (state, action: PayloadAction<IChannel[]>) => {
-      // Only update if channels actually changed (prevent infinite loops)
-      const newChannelIds = action.payload.map(c => c.id).sort().join(',')
-      const currentChannelIds = state.channels.map(c => c.id).sort().join(',')
-      
-      if (newChannelIds === currentChannelIds) {
-        // Channels are the same, skip update
-        return
-      }
-      
       // Create fresh copies to avoid mutating frozen payload
       state.channels = action.payload.map(channel => ({
         ...channel,
         unreadCount: channel.unreadCount ?? 0
       }))
       state.channelsInitialized = true // Mark as initialized to prevent duplicate fetches
-      // Calculate total unread count
+      // Calculate total unread count from all channels
       state.unreadCount = state.channels.reduce((total, channel) => total + (channel.unreadCount || 0), 0)
     },
     
@@ -815,10 +861,14 @@ export const {
   setError,
   addNotification,
   clearNotifications,
+  clearNotificationsForChannel,
+  removeNotification,
   setChannelsInitialized,
   addReactionToMessage,
   removeReactionFromMessage,
   resetState,
+  decrementUnreadCount,
+  incrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,

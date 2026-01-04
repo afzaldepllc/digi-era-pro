@@ -7,6 +7,7 @@ import { ProfessionalSessionProvider } from "@/components/providers/professional
 import { NavigationProvider } from "@/components/providers/navigation-provider";
 import { NavigationLoadingBar } from "@/components/shared/navigation-loading-bar";
 import { ServerSessionProvider } from "@/components/providers/session-provider-server";
+import { RealtimeProvider } from "@/components/providers/realtime-provider";
 import { store } from "@/store";
 import dynamic from "next/dynamic";
 import { memo, useMemo } from "react";
@@ -43,11 +44,13 @@ export default memo(function ClientProviders({ children }: { children: React.Rea
         <QueryClientProvider client={queryClient}>
           <ThemeVariantProvider>
             <ProfessionalSessionProvider>
-              <NavigationProvider>
-                <NavigationLoadingBar />
-                {children}
-                <Toaster />
-              </NavigationProvider>
+              <RealtimeProvider>
+                <NavigationProvider>
+                  <NavigationLoadingBar />
+                  {children}
+                  <Toaster />
+                </NavigationProvider>
+              </RealtimeProvider>
             </ProfessionalSessionProvider>
           </ThemeVariantProvider>
         </QueryClientProvider>

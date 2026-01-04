@@ -18,9 +18,11 @@ import {
   Pause,
   Maximize2,
   Eye,
-  Mic
+  Mic,
+  FileAudio
 } from "lucide-react"
 import { IAttachment } from "@/types/communication"
+import { useChatAttachments } from "@/hooks/use-chat-attachments"
 import { formatDistanceToNow } from "date-fns"
 import Image from "next/image"
 
@@ -376,6 +378,8 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
 
+  const { downloadAttachment } = useChatAttachments()
+
   const category = getFileCategory(attachment.file_type, attachment.file_name)
   const Icon = getFileIcon(category)
   const colorClass = getExtensionColor(category)
@@ -393,25 +397,15 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   }
 
   const handleDownload = useCallback(async () => {
-    if (!attachment.file_url) return
     setIsDownloading(true)
     try {
-      const response = await fetch(attachment.file_url)
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = attachment.file_name
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      await downloadAttachment(attachment)
     } catch (error) {
       console.error('Download failed:', error)
     } finally {
       setIsDownloading(false)
     }
-  }, [attachment.file_url, attachment.file_name])
+  }, [downloadAttachment, attachment])
 
   // Image attachment
   if (category === 'image' && attachment.file_url) {
@@ -500,13 +494,20 @@ export const AttachmentPreview = memo(function AttachmentPreview({
                     (attachment as any).isVoiceMessage
 
     return (
-      <AudioPlayer
-        src={attachment.file_url}
-        duration={attachment.durationSeconds}
-        isVoiceMessage={isVoice}
-        onDownload={showDownload ? handleDownload : undefined}
-        className={className}
-      />
+      attachment.file_url ? (
+        <AudioPlayer
+          src={attachment.file_url}
+          duration={attachment.durationSeconds}
+          isVoiceMessage={isVoice}
+          onDownload={showDownload ? handleDownload : undefined}
+          className={className}
+        />
+      ) : (
+        <div className={cn("flex items-center gap-2 p-3 text-muted-foreground", className)}>
+          <FileAudio className="h-4 w-4" />
+          <span className="text-sm">Audio file unavailable</span>
+        </div>
+      )
     )
   }
 

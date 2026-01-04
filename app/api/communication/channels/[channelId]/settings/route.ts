@@ -141,11 +141,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       const rtChannel = supabase.channel(`rt_${channelId}`)
       await rtChannel.send({
         type: 'broadcast',
-        event: 'channel_settings_updated',
+        event: 'channel_update',
         payload: {
-          channelId,
-          settings: validated,
-          updatedBy: session.user.id
+          id: channelId,
+          type: 'update',
+          channel: updatedChannel
         }
       })
       await supabase.removeChannel(rtChannel)

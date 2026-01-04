@@ -21,8 +21,9 @@ export interface UseVoiceRecorderReturn extends VoiceRecorderState {
   cancelRecording: () => void
   resetRecording: () => void
   formatDuration: (seconds: number) => string
-  checkPermission: () => Promise<PermissionState | null>
+  checkPermission: () => Promise<'prompt' | 'granted' | 'denied' | 'unknown' | null>
   requestPermission: () => Promise<boolean>
+  forcePermissionCheck: () => Promise<void>
 }
 
 const MAX_RECORDING_DURATION = 300 // 5 minutes max
@@ -32,13 +33,14 @@ const MAX_RECORDING_DURATION = 300 // 5 minutes max
  */
 function checkMicrophonePolicy(): boolean {
   if (typeof document === 'undefined') return true
-  
+
   // Check if we're in a secure context (HTTPS or localhost)
-  if (!window.isSecureContext) {
+  // Note: Vercel serves over HTTPS, so this should pass in production
+  if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
     console.warn('Voice recording requires a secure context (HTTPS or localhost)')
     return false
   }
-  
+
   return true
 }
 
@@ -61,10 +63,23 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const startTimeRef = useRef<number>(0)
   const pausedDurationRef = useRef<number>(0)
 
-  // Check permission status on mount
+  // Load permission status from localStorage on mount
   useEffect(() => {
-    checkPermission()
+    const savedPermission = localStorage.getItem('voice-recorder-permission')
+    if (savedPermission && ['granted', 'denied'].includes(savedPermission)) {
+      setState(prev => ({ ...prev, permissionStatus: savedPermission as 'granted' | 'denied' }))
+    } else {
+      // Only check permissions if we don't have a saved state
+      checkPermission()
+    }
   }, [])
+
+  // Save permission status to localStorage whenever it changes
+  useEffect(() => {
+    if (state.permissionStatus !== 'unknown') {
+      localStorage.setItem('voice-recorder-permission', state.permissionStatus)
+    }
+  }, [state.permissionStatus])
 
   // Clean up on unmount
   useEffect(() => {
@@ -79,7 +94,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         URL.revokeObjectURL(state.audioUrl)
       }
     }
-  }, [])
+  }, [state.audioUrl])
 
   // Format duration as MM:SS
   const formatDuration = useCallback((seconds: number): string => {
@@ -88,27 +103,95 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }, [])
 
-  // Check microphone permission status
-  const checkPermission = useCallback(async (): Promise<PermissionState | null> => {
+  // Check microphone permission status with better production support
+  const checkPermission = useCallback(async (): Promise<'prompt' | 'granted' | 'denied' | 'unknown' | null> => {
     try {
-      if (!navigator.permissions) {
-        // Permissions API not supported, assume unknown
-        setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
-        return null
+      // First check if we have a saved permission state
+      const savedPermission = localStorage.getItem('voice-recorder-permission')
+      if (savedPermission === 'granted') {
+        setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+        return 'granted'
       }
-      
-      const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-      setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
-      
-      // Listen for permission changes
-      result.onchange = () => {
-        setState(prev => ({ ...prev, permissionStatus: result.state as 'prompt' | 'granted' | 'denied' }))
+      if (savedPermission === 'denied') {
+        setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+        return 'denied'
       }
-      
-      return result.state
+
+      // Check Permissions API if available
+      if (navigator.permissions) {
+        try {
+          const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+
+          // Update state based on permission result
+          const permissionState = result.state as 'prompt' | 'granted' | 'denied'
+          setState(prev => ({ ...prev, permissionStatus: permissionState }))
+
+          // Save to localStorage for persistence
+          if (permissionState !== 'prompt') {
+            localStorage.setItem('voice-recorder-permission', permissionState)
+          }
+
+          // Listen for permission changes
+          result.onchange = () => {
+            const newState = result.state as 'prompt' | 'granted' | 'denied'
+            setState(prev => ({ ...prev, permissionStatus: newState }))
+            if (newState !== 'prompt') {
+              localStorage.setItem('voice-recorder-permission', newState)
+            }
+          }
+
+          return result.state
+        } catch (permError) {
+          // Permissions API failed - common in production, try getUserMedia test
+          console.debug('Permissions API failed, testing with getUserMedia:', permError)
+
+          // Try a quick permission test (this will trigger permission prompt if needed)
+          try {
+            const testStream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+            })
+            testStream.getTracks().forEach(track => track.stop())
+
+            setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+            localStorage.setItem('voice-recorder-permission', 'granted')
+            return 'granted'
+          } catch (testError: any) {
+            if (testError.name === 'NotAllowedError' || testError.name === 'PermissionDeniedError') {
+              setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+              localStorage.setItem('voice-recorder-permission', 'denied')
+              return 'denied'
+            }
+            // Other errors - assume prompt state
+            setState(prev => ({ ...prev, permissionStatus: 'prompt' }))
+            return 'prompt'
+          }
+        }
+      } else {
+        // Permissions API not supported - try getUserMedia test
+        console.debug('Permissions API not supported, testing with getUserMedia')
+
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+          })
+          testStream.getTracks().forEach(track => track.stop())
+
+          setState(prev => ({ ...prev, permissionStatus: 'granted' }))
+          localStorage.setItem('voice-recorder-permission', 'granted')
+          return 'granted'
+        } catch (testError: any) {
+          if (testError.name === 'NotAllowedError' || testError.name === 'PermissionDeniedError') {
+            setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+            localStorage.setItem('voice-recorder-permission', 'denied')
+            return 'denied'
+          }
+          // Other errors - assume prompt state
+          setState(prev => ({ ...prev, permissionStatus: 'prompt' }))
+          return 'prompt'
+        }
+      }
     } catch (error) {
-      // Some browsers don't support microphone permission query
-      console.debug('Permission query not supported:', error)
+      console.error('Permission check failed:', error)
       setState(prev => ({ ...prev, permissionStatus: 'unknown' }))
       return null
     }
@@ -117,37 +200,116 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   // Request microphone permission without starting recording
   const requestPermission = useCallback(async (): Promise<boolean> => {
     try {
-      // Check permissions policy first
+      // Check permissions policy first (relaxed for production)
       if (!checkMicrophonePolicy()) {
-        setState(prev => ({ 
-          ...prev, 
-          error: 'Voice recording requires HTTPS or localhost. Please use a secure connection.',
+        setState(prev => ({
+          ...prev,
+          error: 'Voice recording requires HTTPS. Please ensure you are using a secure connection.',
           permissionStatus: 'denied'
         }))
         return false
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Check if we can query permissions first (with better error handling for production)
+      if (navigator.permissions) {
+        try {
+          const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+          if (result.state === 'granted') {
+            setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
+            return true
+          }
+          if (result.state === 'denied') {
+            setState(prev => ({
+              ...prev,
+              error: 'Microphone access was denied. Please click the lock icon in your browser address bar and allow microphone access, then refresh the page.',
+              permissionStatus: 'denied'
+            }))
+            return false
+          }
+          // result.state === 'prompt' - continue to request access
+        } catch (permError) {
+          // Permission query failed - this is common in production, continue with getUserMedia
+          console.debug('Permission query failed (normal in production):', permError)
+        }
+      }
+
+      // Request microphone access with optimized constraints for better compatibility
+      // Use more conservative constraints for production environments
+      const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+      const audioConstraints = isProduction ? {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          // Use more conservative settings for production
+          sampleRate: 16000,
+          channelCount: 1
+        }
+      } : {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
+        }
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(audioConstraints)
+
       // Permission granted - stop the stream immediately
       stream.getTracks().forEach(track => track.stop())
       setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
+      localStorage.setItem('voice-recorder-permission', 'granted')
       return true
     } catch (error: any) {
-      let errorMessage = 'Microphone permission denied'
+      console.error('Microphone permission error:', error)
+      let errorMessage = 'Unable to access microphone'
       let permissionStatus: 'denied' | 'prompt' = 'denied'
-      
+
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage = 'Microphone access was denied. Please allow microphone access in your browser settings and refresh the page.'
+        errorMessage = 'Microphone access was denied. Please click "Allow" when prompted by your browser, or check your browser settings to enable microphone access for this site.'
+        permissionStatus = 'denied'
+        localStorage.setItem('voice-recorder-permission', 'denied')
         permissionStatus = 'denied'
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         errorMessage = 'No microphone found. Please connect a microphone and try again.'
+        permissionStatus = 'prompt'
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        errorMessage = 'Microphone is being used by another application. Please close other apps and try again.'
+        errorMessage = 'Microphone is being used by another application. Please close other apps using the microphone and try again.'
+        permissionStatus = 'prompt'
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'Microphone does not support the required audio format. Trying with basic settings...'
+        // Retry with minimal constraints (more aggressive fallback for production)
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          })
+          fallbackStream.getTracks().forEach(track => track.stop())
+          setState(prev => ({ ...prev, permissionStatus: 'granted', error: null }))
+          return true
+        } catch (fallbackError: any) {
+          console.error('Fallback microphone access failed:', fallbackError)
+          errorMessage = 'Microphone setup failed. Please try refreshing the page or using a different browser.'
+        }
       } else if (error.name === 'SecurityError') {
-        errorMessage = 'Voice recording is not allowed due to security restrictions. Please use HTTPS.'
+        errorMessage = 'Voice recording requires a secure connection. This may be a browser security restriction.'
         permissionStatus = 'denied'
+      } else if (error.name === 'AbortError') {
+        errorMessage = 'Microphone access was interrupted. Please try again.'
+        permissionStatus = 'prompt'
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage = 'Voice recording is not supported in this browser. Please try using Chrome, Firefox, or Safari.'
+        permissionStatus = 'denied'
+      } else {
+        // Generic error for production - provide helpful guidance
+        errorMessage = 'Unable to access microphone. Please ensure you have a microphone connected and try refreshing the page.'
       }
-      
+
       setState(prev => ({ ...prev, error: errorMessage, permissionStatus }))
       return false
     }
@@ -161,19 +323,25 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }
 
     try {
-      // Request microphone permission
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      // Ensure we have permission before starting
+      if (state.permissionStatus !== 'granted') {
+        const hasPermission = await requestPermission()
+        if (!hasPermission) {
+          return
+        }
+      }
+
+      // Get microphone access with optimized settings
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100
-        } 
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
+        }
       })
-      
-      streamRef.current = stream
-      audioChunksRef.current = []
 
-      // Determine the best supported audio format
       let mimeType = 'audio/webm;codecs=opus'
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         mimeType = 'audio/webm'
@@ -199,7 +367,15 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       mediaRecorder.onerror = (event: any) => {
         console.error('MediaRecorder error:', event.error)
-        setState(prev => ({ ...prev, error: 'Recording error occurred', isRecording: false }))
+        let errorMessage = 'Recording failed'
+
+        if (event.error?.name === 'NotAllowedError') {
+          errorMessage = 'Microphone access was revoked during recording'
+        } else if (event.error?.name === 'NotReadableError') {
+          errorMessage = 'Microphone became unavailable during recording'
+        }
+
+        setState(prev => ({ ...prev, error: errorMessage, isRecording: false }))
       }
 
       // Start recording with small time slices for better streaming
@@ -207,17 +383,21 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       startTimeRef.current = Date.now()
       pausedDurationRef.current = 0
 
-      // Start timer
+      // Start timer with error handling
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current - pausedDurationRef.current) / 1000)
-        
-        // Check max duration
-        if (elapsed >= MAX_RECORDING_DURATION) {
-          stopRecording()
-          return
+        if (mediaRecorder.state === 'recording') {
+          const elapsed = (Date.now() - startTimeRef.current - pausedDurationRef.current) / 1000
+          setState(prev => {
+            if (elapsed >= MAX_RECORDING_DURATION) {
+              // Auto-stop recording at max duration
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop()
+              }
+              return { ...prev, duration: MAX_RECORDING_DURATION }
+            }
+            return { ...prev, duration: elapsed }
+          })
         }
-
-        setState(prev => ({ ...prev, duration: elapsed }))
       }, 100)
 
       setState(prev => ({
@@ -232,18 +412,23 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     } catch (error: any) {
       console.error('Failed to start recording:', error)
       let errorMessage = 'Failed to start recording'
-      
+
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage = 'Microphone permission denied. Please allow microphone access.'
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        errorMessage = 'No microphone found. Please connect a microphone.'
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        errorMessage = 'Microphone is in use by another application.'
+        errorMessage = 'Microphone permission is required. Please allow access and try again.'
+        setState(prev => ({ ...prev, permissionStatus: 'denied' }))
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No microphone detected. Please connect a microphone.'
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'Microphone is busy. Please close other applications using the microphone.'
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'Microphone does not support required audio settings.'
+      } else if (error.name === 'SecurityError') {
+        errorMessage = 'Recording blocked by security policy. Please use HTTPS.'
       }
 
       setState(prev => ({ ...prev, error: errorMessage }))
     }
-  }, [state.isSupported])
+  }, [state.isSupported, state.permissionStatus, requestPermission])
 
   // Stop recording and return the audio blob
   const stopRecording = useCallback((): Promise<Blob | null> => {
@@ -351,6 +536,14 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }))
   }, [state.audioUrl])
 
+  // Force re-check permissions (useful for production troubleshooting)
+  const forcePermissionCheck = useCallback(async () => {
+    // Clear saved permission state
+    localStorage.removeItem('voice-recorder-permission')
+    // Re-check permissions
+    await checkPermission()
+  }, [checkPermission])
+
   return {
     ...state,
     startRecording,
@@ -361,7 +554,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     resetRecording,
     formatDuration,
     checkPermission,
-    requestPermission
+    requestPermission,
+    forcePermissionCheck
   }
 }
 

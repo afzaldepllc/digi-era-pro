@@ -67,6 +67,7 @@ export interface IChannel {
 
 // Channel members table interface
 export interface IChannelMember {
+  role: string
   // Prisma fields
   id: string // Supabase UUID
   channel_id: string // Supabase channel UUID

@@ -1,19 +1,18 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MessageList } from "@/components/communication/message-list"
 import { MessageInput, MessageInputRef } from "@/components/communication/message-input"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { TypingIndicator } from "@/components/communication/typing-indicator"
-import { ContextPanel } from "@/components/ui/context-panel"
+import { ContextPanel } from "@/components/communication/context-panel"
 import { ChannelSettingsModal } from "@/components/communication/channel-settings-modal"
-import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle'
-import { 
-  Info, 
-  Phone, 
-  Video, 
+import { ResizableSidebar } from "@/components/communication/resizable-sidebar"
+import FullscreenToggle from '@/components/shared/FullscreenToggle'
+import {
+  Info,
   MoreVertical,
   Search,
   Pin,
@@ -26,14 +25,6 @@ import {
 import { cn } from "@/lib/utils"
 import { ChatWindowProps, CreateMessageData, ICommunication, ITypingIndicator, IParticipant } from "@/types/communication"
 import { useCommunications } from "@/hooks/use-communications"
-import { format } from "date-fns"
-import {
-  DropdownMenu, 
-  DropdownMenuContent,  
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +33,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+// import { ResizableSidebar } from "./resizable-sidebar"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded, fullscreenRef, onFullscreenChange }: ChatWindowProps) {
   const {
@@ -51,7 +43,6 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     actionLoading,
     error,
     typingUsers,
-    onlineUsers,
     onlineUserIds,
     isContextPanelVisible,
     sendMessage,
@@ -76,27 +67,33 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     // Channel management (Phase 3)
     leaveChannel,
     archiveChannel,
+    pinChannel,
   } = useCommunications()
+
+  // Memoize maxWidth for ContextPanel to prevent unnecessary re-renders
+  const maxContextPanelWidth = useMemo(() => {
+    return typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.4) : 500
+  }, [])
 
   const [isSearchVisible, setIsSearchVisible] = useState(false)
   const [hasMoreMessages, setHasMoreMessages] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<ICommunication[]>([])
-  const [showChannelSettings, setShowChannelSettings] = useState(false)
   const [searchIndex, setSearchIndex] = useState(0)
   const [isSearching, setIsSearching] = useState(false)
+  const [editingMessage, setEditingMessage] = useState<ICommunication | null>(null)
   const [searchTotal, setSearchTotal] = useState(0)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageInputRef = useRef<MessageInputRef>(null)
-  
+
   // Auto-select channel if channelId is provided and no channel is selected
   useEffect(() => {
     if (channelId && !selectedChannel) {
       selectChannel(channelId)
     }
   }, [channelId, selectedChannel, selectChannel])
-  
+
   // Show loading state while session is being fetched
   const isInitializing = sessionStatus === 'loading' || usersLoading
 
@@ -119,42 +116,38 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }
 
   // Handle sending messages
-  const handleSendMessage = async (messageData: CreateMessageData) => {
-    try {
-      await sendMessage(messageData)
-      handleStopTyping() // Stop typing indicator after sending
-    } catch (error) {
-      // Error is handled by the sendMessage function
-    }
+  const handleSendMessage = (messageData: CreateMessageData): Promise<void> => {
+    handleStopTyping() // Stop typing indicator after sending
+    return sendMessage(messageData)
   }
 
   // Handle sending voice messages
   const handleSendVoice = useCallback(async (audioBlob: Blob, duration: number) => {
     if (!channelId) return
-    
+
     try {
       // Create form data for upload
       const formData = new FormData()
       formData.append('file', audioBlob, `voice-message-${Date.now()}.webm`)
       formData.append('folder', 'voice-messages')
       formData.append('channelId', channelId)
-      
+
       // Upload to S3
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       })
-      
+
       if (!uploadResponse.ok) {
         throw new Error('Failed to upload voice message')
       }
-      
+
       const uploadResult = await uploadResponse.json()
-      
+
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || 'Upload failed')
       }
-      
+
       // Send message with audio attachment
       await sendMessage({
         channel_id: channelId,
@@ -168,7 +161,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
           duration_seconds: duration
         }
       })
-      
+
       handleStopTyping()
     } catch (error) {
       console.error('Failed to send voice message:', error)
@@ -186,12 +179,23 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   }, [])
 
   const handleEdit = useCallback((message: ICommunication) => {
+    setEditingMessage(message)
     messageInputRef.current?.setEditMessage(message)
   }, [])
 
-  const handleEditMessage = useCallback(async (messageId: string, data: CreateMessageData) => {
-    if (updateMessage) {
-      await updateMessage(messageId, { content: data.content })
+  const handleEditMessage = useCallback(async (messageId: string, data: CreateMessageData, newFiles?: File[], attachmentsToRemove?: string[]) => {
+    try {
+      if (updateMessage) {
+        await updateMessage(messageId, { 
+          content: data.content,
+          newFiles,
+          attachmentsToRemove 
+        })
+      }
+      setEditingMessage(null) // Clear editing state on success
+    } catch (error) {
+      // Keep editing state on error so user can retry
+      console.error('Failed to edit message:', error)
     }
   }, [updateMessage])
 
@@ -221,10 +225,10 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   // Handle loading more (older) messages
   const handleLoadMore = useCallback(async () => {
     if (!channelId || isLoadingMore) return { messages: [], hasMore: false }
-    
+
     const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
     const offset = channelMessages.length
-    
+
     setIsLoadingMore(true)
     try {
       const result = await fetchOlderMessages({
@@ -232,11 +236,11 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
         limit: 30,
         offset
       })
-      
+
       if (result.messages.length > 0) {
         prependMessagesToChannel(channelId, result.messages)
       }
-      
+
       setHasMoreMessages(result.hasMore)
       return result
     } finally {
@@ -249,33 +253,42 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     setHasMoreMessages(true)
   }, [channelId])
 
+  // Reset search when channel changes
+  useEffect(() => {
+    setSearchQuery("")
+    setSearchResults([])
+    setSearchTotal(0)
+    setSearchIndex(0)
+    setIsSearching(false)
+  }, [channelId])
+
   // Search messages with debounce
   const handleSearchChange = useCallback((query: string) => {
     setSearchQuery(query)
-    
+
     // Clear previous timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current)
     }
-    
+
     if (!query.trim()) {
       setSearchResults([])
       setSearchTotal(0)
       setSearchIndex(0)
       return
     }
-    
+
     // Debounce search
     searchTimeoutRef.current = setTimeout(async () => {
       if (!channelId) return
-      
+
       setIsSearching(true)
       try {
         const result = await searchMessages(channelId, query.trim(), 50, 0)
         setSearchResults(result.messages)
         setSearchTotal(result.total)
         setSearchIndex(result.messages.length > 0 ? 1 : 0)
-        
+
         // Navigate to first result
         if (result.messages.length > 0) {
           await navigateToSearchResult(result.messages[0])
@@ -289,22 +302,22 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   // Navigate to a search result message - loads more messages if needed
   const navigateToSearchResult = useCallback(async (message: ICommunication) => {
     if (!channelId) return
-    
+
     const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
-    
+
     // Check if message is already loaded
     const isLoaded = channelMessages.some(m => m.id === message.id)
-    
+
     if (!isLoaded) {
       // Message not loaded - we need to load all messages up to and including this one
       // Find how many messages we need to load based on the message's position
       // For now, load enough messages to include this search result
       const messageDate = new Date(message.created_at)
       const oldestLoadedMessage = channelMessages[0]
-      
+
       if (oldestLoadedMessage) {
         const oldestDate = new Date(oldestLoadedMessage.created_at)
-        
+
         // If the search result is older than what we have loaded, load more
         if (messageDate < oldestDate) {
           // Keep loading until we have the message or can't load more
@@ -312,34 +325,34 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
           let hasMore = true
           let attempts = 0
           const maxAttempts = 10 // Prevent infinite loop
-          
+
           while (hasMore && attempts < maxAttempts) {
             const result = await fetchOlderMessages({
               channel_id: channelId,
               limit: 20,
               offset
             })
-            
+
             if (result.messages.length > 0) {
               prependMessagesToChannel(channelId, result.messages)
               offset += result.messages.length
-              
+
               // Check if we now have the message
               if (result.messages.some((m: ICommunication) => m.id === message.id)) {
                 break
               }
             }
-            
+
             hasMore = result.hasMore
             attempts++
           }
-          
+
           // Wait a bit for React to render the new messages
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       }
     }
-    
+
     // Now try to scroll to the message
     scrollToSearchResult(message.id)
   }, [channelId, messages, fetchOlderMessages, prependMessagesToChannel])
@@ -395,7 +408,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   // Show loading state while initializing
   if (isInitializing) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/10">
+      <div className="flex-1 flex items-center justify-center bg-muted/10 h-full w-full">
         <div className="text-center space-y-4">
           <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto animate-pulse">
             <Search className="h-8 w-8 text-muted-foreground" />
@@ -414,7 +427,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   // Show error state if not authenticated
   if (sessionStatus === 'unauthenticated' || !mockCurrentUser) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/10">
+      <div className="flex-1 flex items-center justify-center bg-muted/10 h-full w-full">
         <div className="text-center space-y-4">
           <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
             <Search className="h-8 w-8 text-destructive" />
@@ -432,7 +445,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
   if (!selectedChannel) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/10">
+      <div className="flex-1 flex items-center justify-center bg-muted/10 h-full w-full">
         <div className="text-center space-y-4">
           <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto">
             <Search className="h-8 w-8 text-muted-foreground" />
@@ -468,9 +481,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       }
       return 'Direct Message'
     }
-    
+
     // Use real-time onlineUserIds for active members count
-    const activeMembers = selectedChannel.channel_members.filter(p => 
+    const activeMembers = selectedChannel.channel_members.filter(p =>
       onlineUserIds.includes(p.mongo_member_id)
     ).length
     return `${selectedChannel.channel_members.length} members, ${activeMembers} online`
@@ -480,10 +493,10 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     <TooltipProvider>
       <div className={cn("flex flex-col h-full w-full max-w-full bg-background overflow-hidden", className)}>
         {/* Header */}
-        <div className="border-b bg-card px-4 py-2 relative">
+        <div className="border-b bg-gradient-to-r from-card via-card to-card/95 px-6 py-4 relative shadow-sm">
           <div className="flex items-center justify-between">
             {/* Channel info */}
-            <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               {/* Toggle sidebar button (desktop) */}
               {onToggleSidebar && (
                 <div className="hidden lg:flex items-center">
@@ -501,41 +514,41 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   </Button>
                 </div>
               )}
-              
+
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-lg truncate">{getChannelTitle()}</h2>
-                  
+                  <h2 className="font-bold text-md truncate">{getChannelTitle()}</h2>
+
                   {selectedChannel.type === 'project' && (
-                    <Badge variant="outline" className="shrink-0">Project</Badge>
+                    <Badge variant="outline" className="shrink-0 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30">Project</Badge>
                   )}
-                  
+
                   {selectedChannel.type === 'client-support' && (
-                    <Badge variant="secondary" className="shrink-0">Client Support</Badge>
+                    <Badge variant="secondary" className="shrink-0 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30">Client Support</Badge>
                   )}
-                  
+
                   {(selectedChannel as any).is_archived && (
                     <Badge variant="secondary" className="shrink-0 gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                       <Archive className="h-3 w-3" />
                       Archived
                     </Badge>
                   )}
-                  
+
                   {!selectedChannel.is_private && !(selectedChannel as any).is_archived && (
                     <Badge variant="destructive" className="shrink-0">External</Badge>
                   )}
                 </div>
-                
-                <p className="text-sm text-muted-foreground truncate mt-1">
+
+                <p className="text-sm text-muted-foreground truncate">
                   {getChannelSubtitle()}
                 </p>
               </div>
-              
+
               {/* Online indicators for group channels */}
               {selectedChannel.channel_members.length > 2 && (
                 <div className="shrink-0">
-                  <OnlineIndicator 
-                    users={selectedChannel.channel_members as IParticipant[]} 
+                  <OnlineIndicator
+                    users={selectedChannel.channel_members as IParticipant[]}
                     onlineUserIds={onlineUserIds}
                     maxVisible={3}
                     size="sm"
@@ -555,77 +568,41 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-1 ml-4">
+            <div className="flex items-center gap-2 ml-4">
 
               {/* Search toggle */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant={isSearchVisible ? "default" : "outline"} 
+                  <Button
+                    variant={isSearchVisible ? "default" : "outline"}
                     size="sm"
                     onClick={() => setIsSearchVisible(!isSearchVisible)}
+                    className="h-9 w-9 p-0 transition-all duration-200 hover:scale-105 hover:bg-accent"
                   >
                     <Search className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Search messages</p>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Search messages <kbd className="ml-1 px-1 py-0.5 text-[10px] bg-muted rounded">⌘K</kbd></p>
                 </TooltipContent>
               </Tooltip>
 
               {/* Context panel toggle */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant={isContextPanelVisible ? "default" : "outline"} 
+                  <Button
+                    variant={isContextPanelVisible ? "default" : "outline"}
                     size="sm"
                     onClick={toggleContextPanel}
+                    className="h-9 w-9 p-0 transition-all duration-200 hover:scale-105 hover:bg-accent"
                   >
                     <Info className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Channel info</p>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Channel info</p>
                 </TooltipContent>
               </Tooltip>
-
-              {/* More options */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Pin className="h-4 w-4 mr-2" />
-                    Pin Channel
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowChannelSettings(true)}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Channel Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {selectedChannel && selectedChannel.type !== 'dm' && (
-                    <>
-                      <DropdownMenuItem 
-                        onClick={() => leaveChannel(channelId)}
-                        className="text-orange-600 focus:text-orange-600"
-                      >
-                        <LogOut className="h-4 w-4 mr-2" />
-                        Leave Channel
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => archiveChannel(channelId, (selectedChannel as any).is_archived ? 'unarchive' : 'archive')}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Archive className="h-4 w-4 mr-2" />
-                        {(selectedChannel as any).is_archived ? 'Unarchive Channel' : 'Archive Channel'}
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
 
               <FullscreenToggle mode="hide-layout" ref={fullscreenRef} onChange={onFullscreenChange} />
             </div>
@@ -633,7 +610,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
           {/* Search bar (when visible) - Positioned absolutely to overlay */}
           {isSearchVisible && (
-            <div className="absolute inset-0 bg-card border-b z-50 px-4 py-2 flex items-center animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute inset-0 bg-gradient-to-r from-card via-card to-card/95 border-b z-50 px-6 py-3 flex items-center animate-in fade-in slide-in-from-top-2 duration-300 shadow-md backdrop-blur-sm">
               <div className="flex items-center gap-2 w-full">
                 {/* Back/Close button */}
                 <Button
@@ -652,8 +629,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     type="text"
                     value={searchQuery}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="Search messages..."
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-muted/30 hover:bg-muted/50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    placeholder="Search messages in this channel..."
+                    className="w-full pl-10 pr-10 py-2.5 text-sm bg-background/50 hover:bg-background/80 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all shadow-sm"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -721,9 +698,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               <Alert className="m-4 mb-0">
                 <AlertDescription className="flex items-center justify-between">
                   {error}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setError('')}
                   >
                     Dismiss
@@ -733,13 +710,13 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
             )}
 
             {messagesLoading && (
-              <div className="flex-1 p-4 space-y-4">
+              <div className="flex-1 p-6 space-y-6">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex gap-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
+                  <div key={i} className="flex gap-4 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms` }}>
+                    <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                     <div className="space-y-2 flex-1">
-                      <Skeleton className="h-4 w-1/4" />
-                      <Skeleton className="h-16 w-3/4" />
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-20 w-4/5 rounded-2xl" />
                     </div>
                   </div>
                 ))}
@@ -750,7 +727,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
               (() => {
                 const channelMessages = (messages as unknown as Record<string, ICommunication[]>)[channelId] || []
                 const channelTypingUsers = (typingUsers as unknown as Record<string, ITypingIndicator[]>)[channelId] || []
-                
+
                 return (
                   <MessageList
                     messages={channelMessages}
@@ -801,33 +778,39 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                 onSendWithFiles={sendMessageWithFiles}
                 onSendVoice={handleSendVoice}
                 onEdit={handleEditMessage}
-                disabled={actionLoading}
+                existingAttachments={editingMessage?.attachments || []}
+                disabled={actionLoading || ((selectedChannel as any)?.admin_only_post && !selectedChannel?.channel_members.some((m) => m.mongo_member_id === mockCurrentUser._id && (m.role === 'admin' || m.role === 'owner')))}
                 placeholder={`Message ${getChannelTitle()}...`}
                 allowAttachments={true}
                 onTyping={handleTyping}
                 onStopTyping={handleStopTyping}
                 channelMembers={selectedChannel?.channel_members || []}
+                channelType={selectedChannel?.type}
               />
             )}
           </div>
 
           {/* Context panel */}
-          <ContextPanel
-            channel={selectedChannel}
-            isVisible={isContextPanelVisible}
-            onToggle={toggleContextPanel}
-          />
+          {isContextPanelVisible && (
+            <ResizableSidebar
+              defaultWidth={320}
+              minWidth={250}
+              maxWidth={maxContextPanelWidth}
+              storageKey="context-panel-width"
+              className="border-l"
+              side="right"
+            >
+              <ContextPanel
+                channel={selectedChannel}
+                isVisible={isContextPanelVisible}
+                onToggle={toggleContextPanel}
+                onPinChannel={pinChannel}
+                className="border-l-0"
+              />
+            </ResizableSidebar>
+          )}
         </div>
       </div>
-
-      {/* Channel Settings Modal */}
-      {selectedChannel && (
-        <ChannelSettingsModal
-          isOpen={showChannelSettings}
-          onClose={() => setShowChannelSettings(false)}
-          channel={selectedChannel}
-        />
-      )}
     </TooltipProvider>
   )
 }

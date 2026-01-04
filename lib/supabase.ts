@@ -13,11 +13,11 @@ const globalForSupabase = globalThis as unknown as {
 export const supabase =
   globalForSupabase.supabase ??
   createClient<Database>(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    },
+    // auth: {
+    //   autoRefreshToken: true,
+    //   persistSession: true,
+    //   detectSessionInUrl: true
+    // },
     realtime: {
       params: {
         eventsPerSecond: 10

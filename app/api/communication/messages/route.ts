@@ -6,10 +6,97 @@ import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { createClient } from '@supabase/supabase-js'
-import { executeGenericDbQuery } from '@/lib/mongodb'
-import { default as User } from '@/models/User'
-import type { IParticipant } from '@/types/communication'
 import { apiLogger as logger } from '@/lib/logger'
+
+// ============================================
+// Supabase Admin Client for Broadcasting
+// ============================================
+
+// Create a singleton admin client for broadcasting
+let supabaseAdminClient: ReturnType<typeof createClient> | null = null
+
+function getSupabaseAdmin() {
+  if (!supabaseAdminClient) {
+    supabaseAdminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      {
+        realtime: {
+          params: {
+            eventsPerSecond: 100
+          }
+        }
+      }
+    )
+  }
+  return supabaseAdminClient
+}
+
+/**
+ * Broadcast a message to a Supabase channel.
+ * This properly subscribes to the channel before sending to ensure delivery.
+ */
+async function broadcastToChannel(
+  channelName: string, 
+  event: string, 
+  payload: any,
+  timeout = 5000
+): Promise<boolean> {
+  const supabase = getSupabaseAdmin()
+  
+  return new Promise((resolve) => {
+    const channel = supabase.channel(channelName, {
+      config: {
+        broadcast: { self: false, ack: true }
+      }
+    })
+    
+    let resolved = false
+    const timeoutId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        supabase.removeChannel(channel)
+        logger.warn(`Broadcast to ${channelName} timed out`)
+        resolve(false)
+      }
+    }, timeout)
+    
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try {
+          const result = await channel.send({
+            type: 'broadcast',
+            event,
+            payload
+          })
+          
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timeoutId)
+            // Immediately remove the channel after sending
+            supabase.removeChannel(channel)
+            resolve(result === 'ok')
+          }
+        } catch (error) {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timeoutId)
+            supabase.removeChannel(channel)
+            logger.error(`Broadcast error to ${channelName}:`, error)
+            resolve(false)
+          }
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeoutId)
+          supabase.removeChannel(channel)
+          resolve(false)
+        }
+      }
+    })
+  })
+}
 
 // ============================================
 // Type Definitions
@@ -188,12 +275,6 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Unauthorized', 401)
     }
 
-    // Create Supabase admin client for broadcasting
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SECRET_KEY!
-    )
-
     // Parse and validate request body
     const body = await request.json()
     const validatedData = createMessageSchema.parse(body)
@@ -227,13 +308,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch sender info ONCE from MongoDB (this is the only MongoDB call needed)
-    const senderData = await executeGenericDbQuery(async () => {
-      return await User.findById(session.user.id)
-        .select('_id name email avatar isClient role')
-        .populate('role', 'name') // Populate role to get role name if it's a reference
-        .lean() as IMongoUser | null
-    })
+    // Use sender info from middleware (already fetched from MongoDB)
+    const senderData = user
 
     // Extract sender details for denormalization (ensure all values are strings)
     const senderName: string = String(senderData?.name || senderData?.email || 'Unknown User')
@@ -290,53 +366,104 @@ export async function POST(request: NextRequest) {
       attachments
     }
 
-    // Broadcast the message with sender data to realtime subscribers
-    try {
-      const channel = supabaseAdmin.channel(`rt_${validatedData.channel_id}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: messageWithSender
-      })
-      logger.debug('Message broadcasted to channel:', validatedData.channel_id)
-
-      // Broadcast mention notifications to mentioned users
-      if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
-        const mentionNotification = {
-          type: 'mention',
-          message_id: message.id,
-          channel_id: validatedData.channel_id,
-          sender_name: senderName,
-          sender_avatar: senderAvatar,
-          content_preview: validatedData.content.replace(/<[^>]*>/g, '').slice(0, 100),
-          created_at: message.created_at
-        }
-
-        // Broadcast to each mentioned user's personal notification channel
-        for (const mentionedUserId of validatedData.mongo_mentioned_user_ids) {
-          try {
-            const userChannel = supabaseAdmin.channel(`notifications_${mentionedUserId}`)
-            await userChannel.send({
-              type: 'broadcast',
-              event: 'mention_notification',
-              payload: mentionNotification
-            })
-            logger.debug('Mention notification sent to user:', mentionedUserId)
-          } catch (notifError) {
-            logger.error('Failed to send mention notification to:', mentionedUserId, notifError)
-          }
-        }
-      }
-    } catch (broadcastError) {
-      logger.error('Failed to broadcast message:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
-
-    return NextResponse.json({
+    // Send response immediately for fast user experience
+    const response = NextResponse.json({
       success: true,
       data: messageWithSender,
       message: 'Message sent successfully'
     })
+
+    // Broadcast asynchronously (fire-and-forget for performance)
+    setImmediate(async () => {
+      try {
+        const senderId = session.user.id
+        logger.info(`🚀 Starting broadcast. Sender ID: ${senderId}, Channel: ${validatedData.channel_id}`)
+        
+        // Broadcast the message with sender data to realtime subscribers (active channel)
+        const channelBroadcast = await broadcastToChannel(
+          `rt_${validatedData.channel_id}`,
+          'new_message',
+          messageWithSender
+        )
+        if (channelBroadcast) {
+          logger.debug('Message broadcasted to channel:', validatedData.channel_id)
+        } else {
+          logger.warn('Failed to broadcast to channel:', validatedData.channel_id)
+        }
+
+        // Broadcast mention notifications to mentioned users
+        if (validatedData.mongo_mentioned_user_ids && validatedData.mongo_mentioned_user_ids.length > 0) {
+          const mentionNotification = {
+            type: 'mention',
+            message_id: message.id,
+            channel_id: validatedData.channel_id,
+            sender_name: senderName,
+            sender_avatar: senderAvatar,
+            content_preview: validatedData.content.slice(0, 100),
+            created_at: message.created_at
+          }
+
+          // Broadcast to each mentioned user's personal notification channel
+          const mentionPromises = validatedData.mongo_mentioned_user_ids.map(async (mentionedUserId) => {
+            const success = await broadcastToChannel(
+              `notifications_${mentionedUserId}`,
+              'mention_notification',
+              mentionNotification
+            )
+            if (success) {
+              logger.debug('Mention notification sent to user:', mentionedUserId)
+            }
+            return success
+          })
+          await Promise.all(mentionPromises)
+        }
+
+        // Broadcast new message notification to all channel members except sender
+        const members = await prisma.channel_members.findMany({
+          where: { channel_id: validatedData.channel_id },
+          select: { mongo_member_id: true }
+        })
+
+        logger.info(`Broadcasting to ${members.length} channel members, sender: ${senderId} (type: ${typeof senderId})`)
+
+        // Filter out sender and broadcast to all other members in parallel
+        // Use String() comparison to avoid type mismatches
+        const recipientMembers = members.filter(member => String(member.mongo_member_id) !== String(senderId))
+        logger.info(`Recipients (excluding sender): ${recipientMembers.map(m => m.mongo_member_id).join(', ')}`)
+        
+        // Log if sender was correctly excluded
+        const senderMember = members.find(m => String(m.mongo_member_id) === String(senderId))
+        if (senderMember) {
+          logger.info(`✅ Sender correctly excluded from recipients`)
+        } else {
+          logger.warn(`⚠️ Sender not found in channel members - they might not be a member`)
+        }
+
+        const notificationPromises = recipientMembers.map(async (member) => {
+            const channelName = `notifications_${member.mongo_member_id}`
+            logger.info(`Sending notification to channel: ${channelName}`)
+            const success = await broadcastToChannel(
+              channelName,
+              'new_message',
+              { message: messageWithSender }
+            )
+            if (success) {
+              logger.info(`✅ Notification sent successfully to: ${member.mongo_member_id}`)
+            } else {
+              logger.warn(`❌ Failed to send notification to user: ${member.mongo_member_id}`)
+            }
+            return success
+          })
+        
+        await Promise.all(notificationPromises)
+        logger.info(`Broadcast complete: sent to ${notificationPromises.length} members for channel ${validatedData.channel_id}`)
+      } catch (error) {
+        logger.error('Failed to broadcast message:', error)
+        // Don't fail the request if broadcast fails
+      }
+    })
+
+    return response
   } catch (error: unknown) {
     logger.error('Error sending message:', error)
     

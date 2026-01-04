@@ -25,6 +25,8 @@ interface MentionPickerProps {
   onSearchChange?: (query: string) => void
   className?: string
   showEveryone?: boolean // Allow @everyone mention
+  channelType?: string // Channel type to determine if mentions are allowed
+  disabled?: boolean // Disable mentions for certain channel types
 }
 
 export function MentionPicker({
@@ -34,8 +36,18 @@ export function MentionPicker({
   searchQuery = "",
   onSearchChange,
   className,
-  showEveryone = true
+  showEveryone = true,
+  channelType,
+  disabled = false
 }: MentionPickerProps) {
+  
+  // Check if mentions are disabled for this channel type (like WhatsApp groups vs DMs)
+  const mentionsDisabled = disabled || channelType === 'dm' || channelType === 'client-support'
+  
+  // Early return if mentions are disabled
+  if (mentionsDisabled) {
+    return null
+  }
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -66,16 +78,22 @@ export function MentionPicker({
     )
   }, [normalizedUsers, localSearchQuery])
 
-  // Build options list (everyone + filtered users)
+  // Build options list (everyone + filtered users) - only for group channels
   const options = useMemo(() => {
     const result: Array<MentionUser | { id: "everyone"; name: "everyone"; isSpecial: true }> = []
     
-    if (showEveryone && (!localSearchQuery || "everyone".includes(localSearchQuery.toLowerCase()))) {
+    // Only show @everyone for group channels, not DMs or client support
+    const canShowEveryone = showEveryone && 
+      channelType !== 'dm' && 
+      channelType !== 'client-support' && 
+      filteredUsers.length > 1 // Only show @everyone if there are multiple users
+    
+    if (canShowEveryone && (!localSearchQuery || "everyone".includes(localSearchQuery.toLowerCase()))) {
       result.push({ id: "everyone", name: "everyone", isSpecial: true })
     }
     
     return [...result, ...filteredUsers]
-  }, [filteredUsers, showEveryone, localSearchQuery])
+  }, [filteredUsers, showEveryone, localSearchQuery, channelType])
 
   // Focus search on mount
   useEffect(() => {

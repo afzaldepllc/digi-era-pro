@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, memo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Bell,
   MessageSquare,
@@ -29,7 +28,7 @@ interface MessageNotificationProps {
   showBadge?: boolean
 }
 
-export function MessageNotification({
+export const MessageNotification = memo(function MessageNotification({
   className,
   showBadge = true
 }: MessageNotificationProps) {
@@ -41,7 +40,9 @@ export function MessageNotification({
     notifications,
     selectChannel,
     clearNotifications,
-    markAsRead
+    removeNotification,
+    markAsRead,
+    markAllChannelMessagesAsRead
   } = useCommunications()
 
   // Get channels with unread messages
@@ -51,16 +52,20 @@ export function MessageNotification({
     selectChannel(channelId)
     if (messageId) {
       markAsRead(messageId, channelId)
+      // Remove the notification for this message
+      const notificationId = `mention_${messageId}`
+      removeNotification(notificationId)
     }
     setIsOpen(false)
   }
 
-  const handleMarkAllRead = () => {
-    unreadChannels.forEach(channel => {
-      if (channel.last_message && !channel.last_message.read_receipts?.length) {
-        markAsRead(channel.last_message.id, channel.id)
-      }
-    })
+  const handleMarkAllRead = async () => {
+    // Mark all messages in all unread channels as read
+    await Promise.all(
+      unreadChannels.map(channel => 
+        markAllChannelMessagesAsRead(channel.id)
+      )
+    )
     clearNotifications()
   }
 
@@ -136,7 +141,7 @@ export function MessageNotification({
           </div>
         </div>
 
-        <ScrollArea className="max-h-96">
+        <div className="max-h-96 overflow-auto">
           {unreadChannels.length === 0 && notifications.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -146,12 +151,16 @@ export function MessageNotification({
             <div className="space-y-1 p-2">
               {/* Recent notifications */}
               {notifications.slice(0, 3).map((notification) => {
-                const sender = getUserInfo(notification.message.mongo_sender_id)
+                const sender = notification.message 
+                  ? getUserInfo(notification.message.mongo_sender_id)
+                  : { name: notification.title?.replace('Mention from ', '') || 'System', avatar: undefined };
+                const content = notification.message?.content || notification.preview || '';
+                const messageId = notification.message?.id;
 
                 return (
                   <div
                     key={notification.id}
-                    onClick={() => handleNotificationClick(notification.channelId, notification.message.id)}
+                    onClick={() => handleNotificationClick(notification.channelId, messageId)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
                     <Avatar className="h-8 w-8 mt-0.5">
@@ -176,7 +185,7 @@ export function MessageNotification({
                       </div>
 
                       <p className="text-sm text-muted-foreground line-clamp-2">
-                        {notification.message.content}
+                        {content}
                       </p>
 
                       <div className="flex items-center gap-2 mt-1">
@@ -258,7 +267,7 @@ export function MessageNotification({
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {(unreadChannels.length > 0 || notifications.length > 0) && (
           <div className="border-t p-3">
@@ -292,4 +301,4 @@ export function MessageNotification({
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
+})

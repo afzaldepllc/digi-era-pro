@@ -1,4 +1,4 @@
-import { ProfessionalLoader } from "../ui/professional-loader";
+import { ProfessionalLoader } from "./professional-loader";
 
 export default function CustomLoader({ show = true }: { show?: boolean }) {
     return (

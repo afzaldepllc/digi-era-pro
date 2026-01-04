@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { getInitials } from "@/lib/utils"
 import CustomModal from "@/components/shared/custom-modal"
 import {
   Tabs,
@@ -49,6 +50,7 @@ import {
   UserPlus,
   MessageSquareOff,
   UserCog,
+  Check,
   Lock
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -56,6 +58,7 @@ import { IChannel, IChannelMember } from "@/types/communication"
 import { useCommunications } from "@/hooks/use-communications"
 import { useSession } from "next-auth/react"
 import { toast } from "@/hooks/use-toast"
+import { useUsers } from "@/hooks/use-users"
 
 interface ChannelSettingsModalProps {
   isOpen: boolean
@@ -91,13 +94,8 @@ export function ChannelSettingsModal({
     actionLoading
   } = useCommunications()
 
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
-  const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [isSavingSettings, setIsSavingSettings] = useState(false)
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
-  
+  const { users } = useUsers()
+
   // Settings state
   const [settings, setSettings] = useState<ChannelSettings>({
     name: channel.name || '',
@@ -107,8 +105,33 @@ export function ChannelSettingsModal({
     admin_only_post: channel.admin_only_post ?? false,
     admin_only_add: channel.admin_only_add ?? false
   })
+
+  // Filter allowed users for adding members
+  const currentMemberIds = channel.channel_members.map(m => m.mongo_member_id)
+  const allowedUsers = useMemo(() => {
+    return users.filter(u => !currentMemberIds.includes(u._id)).filter(u => {
+      if (settings.allow_external_members) return true
+      // If not allowing external, only show users from same department
+      if (channel.mongo_department_id) {
+        return u.department?.toString() === channel.mongo_department_id
+      }
+      // For project channels, allow all for now (could be improved to check task assignments)
+      return true
+    })
+  }, [users, currentMemberIds, settings.allow_external_members, channel.mongo_department_id])
   
   const [hasChanges, setHasChanges] = useState(false)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+  const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  
+  // Add member state
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [selectedUsersToAdd, setSelectedUsersToAdd] = useState<string[]>([])
+  const [isAddingMembers, setIsAddingMembers] = useState(false)
 
   // Get current user's membership
   const currentMembership = channel.channel_members.find(
@@ -319,17 +342,21 @@ export function ChannelSettingsModal({
         throw new Error(error.error || 'Failed to remove member')
       }
 
+      const data = await response.json()
+      if (data.success && data.channel) {
+        // Update channel data immediately
+        onSettingsUpdate?.(data.channel)
+      } else {
+        // Fallback to refresh if no channel data returned
+        onSettingsUpdate?.({})
+      }
+
       toast({
         title: "Member removed",
         description: "The member has been removed from this channel"
       })
 
       setShowRemoveMemberConfirm(null)
-
-      // Trigger channel refresh
-      if (onSettingsUpdate) {
-        onSettingsUpdate({})
-      }
     } catch (error: any) {
       console.error('Remove member error:', error)
       toast({
@@ -363,6 +390,51 @@ export function ChannelSettingsModal({
       onClose()
     }
   }, [archiveChannel, channel.id, isArchived, onClose])
+
+  // Handle add members
+  const handleAddMembers = useCallback(async () => {
+    if (selectedUsersToAdd.length === 0) return
+
+    setIsAddingMembers(true)
+    try {
+      // Call API to add members
+      const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedUsersToAdd })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to add members')
+      }
+
+      const data = await response.json()
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: `Added ${selectedUsersToAdd.length} member(s) to the channel`
+        })
+        setSelectedUsersToAdd([])
+        setShowAddMember(false)
+        // Update channel data immediately with the returned data
+        if (data.channel) {
+          onSettingsUpdate?.(data.channel)
+        } else {
+          onSettingsUpdate?.({})
+        }
+      } else {
+        throw new Error(data.error || 'Failed to add members')
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add members",
+        variant: "destructive"
+      })
+    } finally {
+      setIsAddingMembers(false)
+    }
+  }, [selectedUsersToAdd, channel.id, onSettingsUpdate])
 
   // Don't show for DM channels
   if (channel.type === 'dm') {
@@ -626,6 +698,110 @@ export function ChannelSettingsModal({
 
           {/* Members Tab */}
           <TabsContent value="members" className="mt-4">
+            {/* Add Member Button */}
+            {isAdmin && (
+              <div className="mb-4">
+                <Button
+                  onClick={() => setShowAddMember(!showAddMember)}
+                  className="w-full"
+                  variant="outline"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add Members
+                </Button>
+              </div>
+            )}
+
+            {/* Add Member Form */}
+            {showAddMember && isAdmin && (
+              <div className="mb-4 p-4 border rounded-lg bg-muted/20">
+                <h4 className="font-medium mb-3">Select Users to Add</h4>
+                <ScrollArea className="h-[200px] pr-4">
+                  <div className="space-y-2">
+                    {users
+                      .filter(user => 
+                        !channel.channel_members.some(member => member.mongo_member_id === user._id) &&
+                        user._id !== currentUserId
+                      )
+                      .filter(user => {
+                        // If allow_external_members is false, only show users from relevant departments/projects
+                        if (!settings.allow_external_members) {
+                          if (channel.type === 'department' && channel.mongo_department_id) {
+                            return user.department?.toString() === channel.mongo_department_id
+                          }
+                          if (channel.type === 'project' && channel.mongo_project_id) {
+                            return user.department?.toString() === channel.mongo_department_id
+                          }
+                          if (channel.type === 'client-support' && channel.mongo_project_id) {
+                            return user.isClient || user.department?.toString() === channel.mongo_department_id
+                          }
+                          // For group channels, show all non-client users
+                          return !user.isClient
+                        }
+                        // If allow_external_members is true, show all users
+                        return true
+                      })
+                      .map((user) => (
+                        <div
+                          key={user._id}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded-lg cursor-pointer",
+                            "hover:bg-muted/50 transition-colors",
+                            selectedUsersToAdd.includes(user._id) && "bg-primary/10"
+                          )}
+                          onClick={() => {
+                            setSelectedUsersToAdd(prev =>
+                              prev.includes(user._id)
+                                ? prev.filter(id => id !== user._id)
+                                : [...prev, user._id]
+                            )
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={user.avatar} />
+                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                {getInitials(user.name || user.email || 'U')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="text-sm font-medium">{user.name || 'Unknown User'}</p>
+                              <p className="text-xs text-muted-foreground">{user.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {selectedUsersToAdd.includes(user._id) && (
+                              <div className="w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </ScrollArea>
+                {selectedUsersToAdd.length > 0 && (
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      onClick={handleAddMembers}
+                      disabled={isAddingMembers}
+                      size="sm"
+                    >
+                      {isAddingMembers && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Add {selectedUsersToAdd.length} Member{selectedUsersToAdd.length > 1 ? 's' : ''}
+                    </Button>
+                    <Button
+                      onClick={() => setSelectedUsersToAdd([])}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <ScrollArea className="h-[350px] pr-4">
               <div className="space-y-2">
                 {channel.channel_members.map((member) => {

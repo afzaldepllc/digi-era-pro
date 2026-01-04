@@ -2,7 +2,7 @@
 
 import { useState, useRef, useImperativeHandle, forwardRef } from "react"
 import { cn } from "@/lib/utils"
-import { CreateMessageData, ICommunication, IChannelMember } from "@/types/communication"
+import { CreateMessageData, ICommunication, IChannelMember, IAttachment } from "@/types/communication"
 import { useToast } from "@/hooks/use-toast"
 import {
   TooltipProvider,
@@ -17,10 +17,11 @@ export interface MessageInputRef {
 
 interface MessageInputProps {
   channelId: string
-  onSend: (data: CreateMessageData) => void
+  onSend: (data: CreateMessageData) => Promise<void>
   onSendWithFiles?: (data: CreateMessageData, files: File[], onProgress?: (progress: number) => void) => Promise<any>
   onSendVoice?: (audioBlob: Blob, duration: number) => Promise<void>
-  onEdit?: (messageId: string, data: CreateMessageData) => Promise<void>
+  onEdit?: (messageId: string, data: CreateMessageData, newFiles?: File[], attachmentsToRemove?: string[]) => Promise<void>
+  existingAttachments?: IAttachment[] // Existing attachments for editing
   disabled?: boolean
   placeholder?: string
   allowAttachments?: boolean
@@ -29,6 +30,7 @@ interface MessageInputProps {
   onTyping?: () => void
   onStopTyping?: () => void
   channelMembers?: IChannelMember[]
+  channelType?: string
 }
 
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
@@ -44,7 +46,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   className,
   onTyping,
   onStopTyping,
-  channelMembers = []
+  channelMembers = [],
+  channelType,
+  existingAttachments
 }, ref) => {
   const [messageHtml, setMessageHtml] = useState("")
   const [messageText, setMessageText] = useState("")
@@ -83,7 +87,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
     files: File[],
     mentionedUserIds: string[] = [],
     replyToId?: string,
-    editMessageId?: string
+    editMessageId?: string,
+    attachmentsToRemove?: string[]
   ) => {
     if ((!text || text.trim().length === 0) && files.length === 0) return false
     if (disabled || isUploading) return false
@@ -100,31 +105,43 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
       }
 
       if (editMessageId && onEdit) {
-        // Handle edit
-        await onEdit(editMessageId, messageData)
+        // Handle edit - await for synchronous update
+        await onEdit(editMessageId, messageData, files, attachmentsToRemove)
+        // Clear state
+        setReplyTo(null)
+        setEditMessage(null)
+        return true
       } else if (files.length > 0 && onSendWithFiles) {
-        // Handle new message with files
+        // Handle new message with files - await for upload
         setIsUploading(true)
         setUploadProgress(0)
         try {
           await onSendWithFiles(messageData, files, (progress) => {
             setUploadProgress(progress)
           })
+          // Clear state
+          setReplyTo(null)
+          setEditMessage(null)
+          return true
         } finally {
           setIsUploading(false)
           setUploadProgress(0)
         }
       } else {
-        // Handle new message without files
-        await onSend(messageData)
+        // Handle new text message - send in background for realtime experience
+        onSend(messageData).catch((_error) => {
+          toast({
+            title: "Error",
+            description: "Failed to send message",
+            variant: "destructive"
+          })
+        })
+        // Clear state immediately
+        setReplyTo(null)
+        setEditMessage(null)
+        return true
       }
-
-      // Clear state
-      setReplyTo(null)
-      setEditMessage(null)
-
-      return true
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: editMessageId ? "Failed to update message" : "Failed to send message",
@@ -174,8 +191,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
               channelMembers={channelMembers}
               replyTo={replyTo}
               editMessage={editMessage}
+              existingAttachments={existingAttachments}
+              onAttachmentRemove={(attachmentId) => {
+                // This will be handled by the parent component
+                console.log('Attachment to remove:', attachmentId)
+              }}
               onCancelReply={() => setReplyTo(null)}
               onCancelEdit={() => setEditMessage(null)}
+              channelType={channelType}
             />
           </div>
         </div>

@@ -251,7 +251,7 @@ export function applyCorsHeaders(
 ): NextResponse {
   const allowedOrigins = [
     'http://localhost:3000',
-    'https://yourdomain.com',
+    'https://digi-era-pro.vercel.app',
     // Add your production domains here
   ]
 

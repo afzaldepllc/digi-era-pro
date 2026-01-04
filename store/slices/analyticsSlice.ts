@@ -7,8 +7,6 @@ import type {
   AnalyticsInsight,
   AnalyticsOverview,
   AnalyticsTasks,
-  AnalyticsPhases,
-  AnalyticsMilestones,
   AnalyticsPerformance,
   AnalyticsRisk,
   AnalyticsTrends
@@ -44,8 +42,6 @@ const initialState: AnalyticsState = {
     departmentId: undefined,
     userId: undefined,
     taskStatus: [],
-    phaseStatus: [],
-    milestoneStatus: [],
   },
   sort: {
     field: 'level',
@@ -148,17 +144,6 @@ const analyticsSlice = createSlice({
       }
     },
 
-    updatePhaseMetrics: (state, action: PayloadAction<Partial<AnalyticsPhases>>) => {
-      if (state.data) {
-        state.data.phases = { ...state.data.phases, ...action.payload }
-      }
-    },
-
-    updateMilestoneMetrics: (state, action: PayloadAction<Partial<AnalyticsMilestones>>) => {
-      if (state.data) {
-        state.data.milestones = { ...state.data.milestones, ...action.payload }
-      }
-    },
 
     updatePerformanceMetrics: (state, action: PayloadAction<Partial<AnalyticsPerformance>>) => {
       if (state.data) {
@@ -266,8 +251,6 @@ export const {
   setLastUpdated,
   updateOverviewMetrics,
   updateTaskMetrics,
-  updatePhaseMetrics,
-  updateMilestoneMetrics,
   updatePerformanceMetrics,
   addRisk,
   updateRisk,
@@ -290,11 +273,6 @@ export const selectAnalyticsOverview = (analytics: EnhancedAnalyticsData | null)
 export const selectAnalyticsTaskMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.tasks || null
 
-export const selectAnalyticsPhaseMetrics = (analytics: EnhancedAnalyticsData | null) =>
-  analytics?.phases || null
-
-export const selectAnalyticsMilestoneMetrics = (analytics: EnhancedAnalyticsData | null) =>
-  analytics?.milestones || null
 
 export const selectAnalyticsPerformanceMetrics = (analytics: EnhancedAnalyticsData | null) =>
   analytics?.performance || null

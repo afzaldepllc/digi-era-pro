@@ -36,6 +36,8 @@ import {
   Settings as SettingsIcon
 } from "lucide-react"
 
+import { ResizableSidebar } from "../communication/resizable-sidebar"
+
 type MenuSubItem = {
   title: string
   href: string
@@ -291,6 +293,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(isCommunicationsRoute)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])
+  const [isDesktop, setIsDesktop] = useState(false)
 
   // Get permissions
   const { canAccess, loading: permissionsLoading } = usePermissions()
@@ -325,6 +328,16 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
       return () => clearTimeout(timer)
     }
   }, [permissionsLoading, canAccess, router])
+
+  // Handle desktop detection for resizable sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024)
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Memoized helper function to check if user can access a menu item
   const canAccessItem = useCallback((item: MenuItem | MenuSubItem): boolean => {
@@ -413,6 +426,470 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
 
   const translateClass = mobileOpen ? "translate-x-0" : (isCommunicationsRoute ? "-translate-x-full" : "-translate-x-full lg:translate-x-0")
 
+  const isWrapped = isDesktop && !isCommunicationsRoute
+
+  const sidebarClassName = cn(
+
+    "flex flex-col sidebar border-r bg-sidebar/95 backdrop-blur-sm transition-all duration-300 ease-in-out",
+
+    isCommunicationsRoute ? "fixed z-50 h-screen max-h-screen" : "lg:sticky lg:top-0 lg:h-screen lg:max-h-screen fixed z-50 h-screen max-h-screen lg:z-auto",
+
+    translateClass,
+
+    isWrapped ? "lg:w-auto" : (collapsed ? "w-16" : "w-72"),
+
+    className,
+
+  )
+
+  const sidebarContent = (
+
+    <div className={sidebarClassName}>
+
+      {/* Header */}
+
+      <div className="flex h-16 gap-2 items-center justify-between border-b bg-gradient-to-r from-sidebar/98 to-sidebar-accent/5 backdrop-blur-sm px-3  shrink-0 shadow-sm">
+
+        {!collapsed && (
+
+          <Link href="/" className="flex items-center space-x-3 min-w-0 group">
+
+            <div className="flex h-9 w-12 items-center justify-center shrink-0 overflow-hidden transition-transform duration-300 group-hover:scale-110">
+
+              <Image
+
+                src="/digi-era-logo.webp"
+
+                width={48}
+
+                height={36}
+
+                alt="Logo"
+
+                className="object-contain drop-shadow-sm max-h-full max-w-full"
+
+                style={{ width: 'auto', height: 'auto' }}
+
+                sizes="48px"
+
+              />
+
+            </div>
+
+            <div className="min-w-0">
+
+              <div className="text-lg font-bold tracking-tight text-sidebar-foreground truncate transition-colors duration-300 group-hover:text-primary">
+
+                DIGI ERA PRO
+
+              </div>
+
+              <div className="text-xs text-muted-foreground/70 font-medium truncate transition-colors duration-300 group-hover:text-sidebar-foreground/80">
+
+                Customer Relations
+
+              </div>
+
+            </div>
+
+          </Link>
+
+        )}
+
+        {/* Desktop toggle button */}
+
+        <Button
+
+          variant="ghost"
+
+          size="sm"
+
+          onClick={toggleCollapsed}
+
+          className={cn(
+
+            "p-0 hover:bg-primary hover:shadow-md transition-all duration-300 shrink-0 hover:scale-110",
+
+            collapsed ? "h-9 w-9" : "h-8 w-8",
+
+            "hidden",
+
+            !isCommunicationsRoute && "lg:flex"
+
+          )}
+
+        >
+
+          <ChevronLeft className={cn(
+
+            "transition-transform duration-300",
+
+            collapsed ? "h-9 w-9" : "h-4 w-4",
+
+            collapsed && "rotate-180"
+
+          )} />
+
+        </Button>
+
+        {/* Mobile close button */}
+
+        <Button
+
+          variant="ghost"
+
+          size="sm"
+
+          onClick={() => setMobileOpen(false)}
+
+          className={`h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 ${isCommunicationsRoute ? '' : 'lg:hidden'} shrink-0 hover:scale-110`}
+
+        >
+
+          <X className="h-4 w-4" />
+
+        </Button>
+
+      </div>
+
+      {/* Navigation */}
+
+      <ScrollArea className="flex-1 px-3 py-4">
+
+        {permissionsLoading ? (
+
+          <div className="space-y-2">
+
+            {/* Loading skeleton */}
+
+            {Array.from({ length: 6 }).map((_, index) => (
+
+              <div key={index} className="flex items-center space-x-3 px-3 py-2.5">
+
+                <div className="h-8 w-8 bg-sidebar-accent/20 rounded-lg animate-pulse" />
+
+                {!collapsed && (
+
+                  <div className="flex-1 space-y-1">
+
+                    <div className="h-4 bg-sidebar-accent/20 rounded animate-pulse" />
+
+                  </div>
+
+                )}
+
+              </div>
+
+            ))}
+
+          </div>
+
+        ) : (
+
+          <nav className="space-y-6">
+
+            {menuItems.map((section, sectionIndex) => {
+
+              // Filter items based on permissions
+
+              const accessibleItems = section.items.filter(item =>
+
+                canAccessItem(item) || hasAccessibleSubItems(item.subItems)
+
+              )
+
+              // Skip section if no accessible items
+
+              if (accessibleItems.length === 0) return null
+
+              return (
+
+                <div key={sectionIndex} className="space-y-2">
+
+                  {!collapsed && (
+
+                    <div className="flex items-center px-3 pb-2">
+
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 truncate">
+
+                        {section.title}
+
+                      </h3>
+
+                      <div className="ml-3 flex-1 border-t border-sidebar-border/40" />
+
+                    </div>
+
+                  )}
+
+                  <div className="space-y-1">
+
+                    {accessibleItems.map((item, itemIndex) => {
+
+                      const isActive = pathname === item.href ||
+
+                        (item.subItems && item.subItems.some(subItem => pathname === subItem.href))
+
+                      const isExpanded = isItemExpanded(item.title)
+
+                      // Filter accessible sub-items
+
+                      const accessibleSubItems = item.subItems?.filter(subItem => canAccessItem(subItem))
+
+                      const hasSubItems = accessibleSubItems && accessibleSubItems.length > 0
+
+                      return (
+
+                        <div key={itemIndex}>
+
+                          {hasSubItems && !collapsed ? (
+
+                            <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(item.title)}>
+
+                              <CollapsibleTrigger asChild>
+
+                                <div
+
+                                  className={cn(
+
+                                    "group flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium transition-all duration-300 cursor-pointer",
+
+                                    "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
+
+                                    "border border-transparent",
+
+                                    isActive
+
+                                      ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
+
+                                      : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
+
+                                  )}
+
+                                >
+
+                                  <div className={cn(
+
+                                    "flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-300 mr-3 shrink-0",
+
+                                    "transform group-hover:scale-110 group-hover:rotate-3",
+
+                                    isActive
+
+                                      ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
+
+                                      : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
+
+                                  )}>
+
+                                    <item.icon className="h-4 w-4" />
+
+                                  </div>
+
+                                  <span className="flex-1 text-left tracking-wide truncate min-w-0">
+
+                                    {item.title}
+
+                                  </span>
+
+                                  {item.badge && (
+
+                                    <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
+
+                                      {item.badge}
+
+                                    </span>
+
+                                  )}
+
+                                  <ChevronDown className={cn(
+
+                                    "ml-2 h-4 w-4 transition-transform duration-200 shrink-0",
+
+                                    isExpanded && "rotate-180"
+
+                                  )} />
+
+                                </div>
+
+                              </CollapsibleTrigger>
+
+                              <CollapsibleContent className="space-y-0">
+
+                                <div className="mt-2 ml-5 space-y-1">
+
+                                  {accessibleSubItems?.map((subItem, subIndex) => {
+
+                                    const isSubActive = pathname === subItem.href
+
+                                    return (
+
+                                      <div
+
+                                        key={subIndex}
+
+                                        onClick={() => navigateTo(subItem.href)}
+
+                                        className={cn(
+
+                                          "group flex items-center rounded-md px-2 py-1.5 text-sm transition-all duration-300 cursor-pointer",
+
+                                          "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
+
+                                          "border-l-2 border-transparent hover:border-sidebar-accent/50",
+
+                                          isSubActive
+
+                                            ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
+
+                                            : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
+
+                                          isNavigating && "opacity-60 cursor-not-allowed"
+
+                                        )}
+
+                                      >
+
+                                        <div className={cn(
+
+                                          "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300 mr-3 shrink-0",
+
+                                          "transform group-hover:scale-110",
+
+                                          isSubActive
+
+                                            ? "bg-primary/20 text-white shadow-sm ring-1 ring-primary/30"
+
+                                            : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent/30"
+
+                                        )}>
+
+                                          <subItem.icon className="h-3.5 w-3.5" />
+
+                                        </div>
+
+                                        <span className="tracking-wide truncate min-w-0">
+
+                                          {subItem.title}
+
+                                        </span>
+
+                                      </div>
+
+                                    )
+
+                                  })}
+
+                                </div>
+
+                              </CollapsibleContent>
+
+                            </Collapsible>
+
+                          ) : (
+
+                            canAccessItem(item) && (
+
+                              <div
+
+                                onClick={() => navigateTo(item.href)}
+
+                                className={cn(
+
+                                  "group flex items-center rounded-lg px-2 py-1.5 text-sm font-medium transition-all duration-300 cursor-pointer",
+
+                                  "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
+
+                                  "border border-transparent",
+
+                                  isActive
+
+                                    ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
+
+                                    : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
+
+                                  collapsed && "justify-center px-2",
+
+                                  isNavigating && "opacity-60 cursor-not-allowed"
+
+                                )}
+
+                              >
+
+                                <div className={cn(
+
+                                  "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+
+                                  "transform group-hover:scale-110 group-hover:rotate-3",
+
+                                  collapsed ? "h-6 w-6" : "h-6 w-6 mr-3",
+
+                                  isActive
+
+                                    ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
+
+                                    : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
+
+                                )}>
+
+                                  <item.icon className="h-4 w-4" />
+
+                                </div>
+
+                                {!collapsed && (
+
+                                  <div className="flex flex-1 items-center justify-between min-w-0">
+
+                                    <span className="tracking-wide truncate">
+
+                                      {item.title}
+
+                                    </span>
+
+                                    {item.badge && (
+
+                                      <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
+
+                                        {item.badge}
+
+                                      </span>
+
+                                    )}
+
+                                  </div>
+
+                                )}
+
+                              </div>
+
+                            )
+
+                          )}
+
+                        </div>
+
+                      )
+
+                    })}
+
+                  </div>
+
+                </div>
+
+              )
+
+            })}
+
+          </nav>
+
+        )}
+
+      </ScrollArea>
+
+    </div>
+
+  )
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -425,7 +902,7 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
         {mobileOpen ? (
           <X className="h-4 w-4" />
         ) : (
-           <svg
+          <svg
             width={24}
             height={24}
             viewBox="0 0 24 24"
@@ -436,8 +913,8 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
             <rect x="3" y="16" width="18" height="3" rx="1.5" />
           </svg>
 
-         
-         
+
+
         )}
       </button>
 
@@ -450,248 +927,19 @@ export const Sidebar = memo(function Sidebar({ className }: SidebarProps) {
       )}
 
       {/* Sidebar - Sticky positioning */}
-      <div
-        className={cn(
-          "flex flex-col sidebar border-r bg-sidebar/95 backdrop-blur-sm transition-all duration-300 ease-in-out",
-          isCommunicationsRoute ? "fixed z-50 h-screen max-h-screen" : "lg:sticky lg:top-0 lg:h-screen lg:max-h-screen fixed z-50 h-screen max-h-screen lg:z-auto",
-          translateClass,
-          // Width based on collapsed state
-          collapsed ? "w-16" : "w-72",
-          // Mobile always full width when open
-          "lg:w-auto w-72",
-          className,
-        )}
-      >
-        {/* Header */}
-        <div className="flex h-16 gap-2 items-center justify-between border-b bg-gradient-to-r from-sidebar/98 to-sidebar-accent/5 backdrop-blur-sm px-3  shrink-0 shadow-sm">
-          {!collapsed && (
-            <Link href="/" className="flex items-center space-x-3 min-w-0 group">
-              <div className="flex h-9 w-12 items-center justify-center shrink-0 overflow-hidden transition-transform duration-300 group-hover:scale-110">
-                <Image
-                  src="/digi-era-logo.webp"
-                  width={48}
-                  height={36}
-                  alt="Logo"
-                  className="object-contain drop-shadow-sm max-h-full max-w-full"
-                  style={{ width: 'auto', height: 'auto' }}
-                  sizes="48px"
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="text-lg font-bold tracking-tight text-sidebar-foreground truncate transition-colors duration-300 group-hover:text-primary">
-                  DIGI ERA PRO
-                </div>
-                <div className="text-xs text-muted-foreground/70 font-medium truncate transition-colors duration-300 group-hover:text-sidebar-foreground/80">
-                  Customer Relations
-                </div>
-              </div>
-            </Link>
-          )}
-
-          {/* Desktop toggle button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleCollapsed}
-            className={cn(
-              "p-0 hover:bg-primary hover:shadow-md transition-all duration-300 shrink-0 hover:scale-110",
-              collapsed ? "h-9 w-9" : "h-8 w-8",
-              "hidden",
-              !isCommunicationsRoute && "lg:flex"
-            )}
-          >
-            <ChevronLeft className={cn(
-              "transition-transform duration-300",
-              collapsed ? "h-9 w-9" : "h-4 w-4",
-              collapsed && "rotate-180"
-            )} />
-          </Button>
-
-          {/* Mobile close button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMobileOpen(false)}
-            className={`h-9 w-9 p-0 hover:bg-primary hover:shadow-md transition-all duration-300 ${isCommunicationsRoute ? '' : 'lg:hidden'} shrink-0 hover:scale-110`}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Navigation */}
-        <ScrollArea className="flex-1 px-3 py-4">
-          {permissionsLoading ? (
-            <div className="space-y-2">
-              {/* Loading skeleton */}
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="flex items-center space-x-3 px-3 py-2.5">
-                  <div className="h-8 w-8 bg-sidebar-accent/20 rounded-lg animate-pulse" />
-                  {!collapsed && (
-                    <div className="flex-1 space-y-1">
-                      <div className="h-4 bg-sidebar-accent/20 rounded animate-pulse" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <nav className="space-y-6">
-              {menuItems.map((section, sectionIndex) => {
-                // Filter items based on permissions
-                const accessibleItems = section.items.filter(item =>
-                  canAccessItem(item) || hasAccessibleSubItems(item.subItems)
-                )
-
-                // Skip section if no accessible items
-                if (accessibleItems.length === 0) return null
-
-                return (
-                  <div key={sectionIndex} className="space-y-2">
-                    {!collapsed && (
-                      <div className="flex items-center px-3 pb-2">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 truncate">
-                          {section.title}
-                        </h3>
-                        <div className="ml-3 flex-1 border-t border-sidebar-border/40" />
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      {accessibleItems.map((item, itemIndex) => {
-                        const isActive = pathname === item.href ||
-                          (item.subItems && item.subItems.some(subItem => pathname === subItem.href))
-                        const isExpanded = isItemExpanded(item.title)
-
-                        // Filter accessible sub-items
-                        const accessibleSubItems = item.subItems?.filter(subItem => canAccessItem(subItem))
-                        const hasSubItems = accessibleSubItems && accessibleSubItems.length > 0
-
-                        return (
-                          <div key={itemIndex}>
-                            {hasSubItems && !collapsed ? (
-                              <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(item.title)}>
-                                <CollapsibleTrigger asChild>
-                                  <div
-                                    className={cn(
-                                      "group flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium transition-all duration-300 cursor-pointer",
-                                      "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
-                                      "border border-transparent",
-                                      isActive
-                                        ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
-                                        : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
-                                    )}
-                                  >
-                                    <div className={cn(
-                                      "flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-300 mr-3 shrink-0",
-                                      "transform group-hover:scale-110 group-hover:rotate-3",
-                                      isActive
-                                        ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
-                                        : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
-                                    )}>
-                                      <item.icon className="h-4 w-4" />
-                                    </div>
-                                    <span className="flex-1 text-left tracking-wide truncate min-w-0">
-                                      {item.title}
-                                    </span>
-                                    {item.badge && (
-                                      <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
-                                        {item.badge}
-                                      </span>
-                                    )}
-                                    <ChevronDown className={cn(
-                                      "ml-2 h-4 w-4 transition-transform duration-200 shrink-0",
-                                      isExpanded && "rotate-180"
-                                    )} />
-                                  </div>
-                                </CollapsibleTrigger>
-
-                                <CollapsibleContent className="space-y-0">
-                                  <div className="mt-2 ml-5 space-y-1">
-                                    {accessibleSubItems?.map((subItem, subIndex) => {
-                                      const isSubActive = pathname === subItem.href
-                                      return (
-                                        <div
-                                          key={subIndex}
-                                          onClick={() => navigateTo(subItem.href)}
-                                          className={cn(
-                                            "group flex items-center rounded-md px-2 py-1.5 text-sm transition-all duration-300 cursor-pointer",
-                                            "hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground hover:translate-x-1 hover:shadow-md",
-                                            "border-l-2 border-transparent hover:border-sidebar-accent/50",
-                                            isSubActive
-                                              ? "bg-primary text-white font-medium text-base hover:bg-primary-80 hover:text-primary-foreground border-l-primary shadow-md"
-                                              : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
-                                            isNavigating && "opacity-60 cursor-not-allowed"
-                                          )}
-                                        >
-                                          <div className={cn(
-                                            "flex h-6 w-6 items-center justify-center rounded-md transition-all duration-300 mr-3 shrink-0",
-                                            "transform group-hover:scale-110",
-                                            isSubActive
-                                              ? "bg-primary/20 text-white shadow-sm ring-1 ring-primary/30"
-                                              : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent/30"
-                                          )}>
-                                            <subItem.icon className="h-3.5 w-3.5" />
-                                          </div>
-                                          <span className="tracking-wide truncate min-w-0">
-                                            {subItem.title}
-                                          </span>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                </CollapsibleContent>
-                              </Collapsible>
-                            ) : (
-                              canAccessItem(item) && (
-                                <div
-                                  onClick={() => navigateTo(item.href)}
-                                  className={cn(
-                                    "group flex items-center rounded-lg px-2 py-1.5 text-sm font-medium transition-all duration-300 cursor-pointer",
-                                    "hover:bg-gradient-to-r hover:from-sidebar-accent hover:to-sidebar-accent/50 hover:shadow-lg hover:scale-[1.02] hover:border-sidebar-accent/20",
-                                    "border border-transparent",
-                                    isActive
-                                      ? "bg-gradient-to-r from-primary/10 via-sidebar-accent to-sidebar-accent/60 text-sidebar-accent-foreground shadow-lg font-semibold border-sidebar-accent/30"
-                                      : "text-sidebar-foreground hover:text-sidebar-accent-foreground",
-                                    collapsed && "justify-center px-2",
-                                    isNavigating && "opacity-60 cursor-not-allowed"
-                                  )}
-                                >
-                                  <div className={cn(
-                                    "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                                    "transform group-hover:scale-110 group-hover:rotate-3",
-                                    collapsed ? "h-6 w-6" : "h-6 w-6 mr-3",
-                                    isActive
-                                      ? "bg-primary/20 text-primary shadow-md ring-2 ring-primary/20"
-                                      : "bg-sidebar-accent/20 text-sidebar-foreground/70 group-hover:bg-sidebar-accent/50 group-hover:text-sidebar-foreground group-hover:shadow-md"
-                                  )}>
-                                    <item.icon className="h-4 w-4" />
-                                  </div>
-                                  {!collapsed && (
-                                    <div className="flex flex-1 items-center justify-between min-w-0">
-                                      <span className="tracking-wide truncate">
-                                        {item.title}
-                                      </span>
-                                      {item.badge && (
-                                        <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary shrink-0">
-                                          {item.badge}
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </nav>
-          )}
-        </ScrollArea>
-      </div>
+      {isWrapped ? (
+        <ResizableSidebar
+          defaultWidth={collapsed ? 64 : 288}
+          minWidth={collapsed ? 64 : 200}
+          maxWidth={collapsed ? 64 : 500}
+          storageKey="main-sidebar"
+          className="hidden lg:flex border-r"
+        >
+          {sidebarContent}
+        </ResizableSidebar>
+      ) : (
+        sidebarContent
+      )}
     </>
   )
 })

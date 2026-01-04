@@ -89,16 +89,6 @@ export const messageOperations = {
         sender_avatar: data.sender_avatar,
         sender_role: data.sender_role ?? 'User',
       },
-      include: {
-        messages: true, // parent_message
-        other_messages: { // replies
-          take: 3,
-          orderBy: { created_at: 'asc' },
-        },
-        read_receipts: true,
-        reactions: true,
-        attachments: true,
-      },
     })
 
     // If this is a reply, increment parent's reply_count

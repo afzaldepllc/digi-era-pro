@@ -22,7 +22,7 @@ export const Header = memo(function Header() {
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false)
   
   // Memoize user data to prevent unnecessary re-renders
-  const sessionUser = useMemo(() => user, [user])
+  const sessionUser = useMemo(() => user, [user]) 
 
   const handleSignOut = useCallback(async () => {
     await logout()

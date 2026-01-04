@@ -599,44 +599,76 @@ export const MessageReactions = memo(function MessageReactions({
   return (
     <TooltipProvider>
       <div className={cn("flex flex-wrap gap-1 mt-1", className)}>
-        {reactions.map(reaction => (
-          <Tooltip key={reaction.emoji}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "h-6 px-1.5 py-0 text-xs gap-1 rounded-full border",
-                  reaction.hasCurrentUserReacted
-                    ? "bg-primary/10 border-primary/30 hover:bg-primary/20"
-                    : "bg-muted/50 hover:bg-muted"
-                )}
-                onClick={() => onReactionClick(reaction.emoji)}
-              >
-                <span className="text-sm">{reaction.emoji}</span>
-                <span className={cn(
-                  "font-medium",
-                  reaction.hasCurrentUserReacted ? "text-primary" : "text-muted-foreground"
-                )}>
-                  {reaction.count}
-                </span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
-              <div className="text-xs">
-                {reaction.users.slice(0, 10).map(u => u.name || 'Someone').join(', ')}
-                {reaction.users.length > 10 && ` and ${reaction.users.length - 10} more`}
-                {' reacted with '}{reaction.emoji}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        ))}
+        {reactions.map((reaction, index) => {
+          // Comprehensive emoji validation and fallback
+          let displayEmoji = reaction.emoji
+          
+          console.log(`🔍 [MessageReactions] Processing reaction ${index}:`, {
+            originalEmoji: reaction.emoji,
+            reactionObject: reaction,
+            users: reaction.users
+          })
+          
+          // Check if emoji field contains UUID or invalid data
+          if (!displayEmoji || 
+              displayEmoji.length > 10 || 
+              displayEmoji.includes('-') ||
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(displayEmoji)) {
+            console.warn('⚠️ [MessageReactions] Invalid emoji detected:', displayEmoji, 'using fallback')
+            displayEmoji = '👍'
+          }
+          
+          console.log(`✅ [MessageReactions] Will display emoji:`, displayEmoji)
+          
+          const userNames = reaction.users
+            .slice(0, 10)
+            .map(u => u.name || 'Someone')
+            .join(', ')
+          
+          const tooltipText = reaction.users.length > 10 
+            ? `${userNames} and ${reaction.users.length - 10} more reacted with ${displayEmoji}`
+            : `${userNames} reacted with ${displayEmoji}`
+
+          return (
+            <Tooltip key={`reaction-${index}-${displayEmoji}-${reaction.count}`}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-6 px-1.5 py-0 text-xs gap-1 rounded-full border transition-all",
+                    reaction.hasCurrentUserReacted
+                      ? "bg-primary/10 border-primary/30 hover:bg-primary/20 text-primary"
+                      : "bg-muted/50 hover:bg-muted border-muted"
+                  )}
+                  onClick={() => {
+                    console.log(`🖱️ [MessageReactions] Clicked reaction, sending emoji:`, displayEmoji)
+                    onReactionClick(displayEmoji)
+                  }}
+                >
+                  <span className="text-sm leading-none select-none">{displayEmoji}</span>
+                  <span className={cn(
+                    "font-medium text-xs",
+                    reaction.hasCurrentUserReacted ? "text-primary" : "text-muted-foreground"
+                  )}>
+                    {reaction.count}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <div className="text-xs">
+                  {tooltipText}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
         
-        {/* Add reaction button */}
+        {/* Add reaction button - WhatsApp style */}
         <EmojiPicker
           onSelect={onReactionClick}
           showQuickAccess={false}
-          triggerClassName="h-6 w-6 rounded-full border bg-muted/30 hover:bg-muted"
+          triggerClassName="h-6 w-6 rounded-full border bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           side="top"
         />
       </div>

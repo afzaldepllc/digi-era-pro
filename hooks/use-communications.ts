@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from './redux'
 import { useSession } from 'next-auth/react'
 import type { User } from '@/types'
+import { useUsers } from './use-users'
 import {
   setActiveChannel,
   clearActiveChannel,
@@ -36,8 +37,12 @@ import {
   setError,
   addNotification,
   clearNotifications,
+  clearNotificationsForChannel,
+  removeNotification,
   setChannelsInitialized,
   resetState,
+  decrementUnreadCount,
+  incrementUnreadCount,
   // Channel real-time updates (Phase 3)
   addChannel,
   updateChannel,
@@ -62,7 +67,8 @@ import type {
   ITypingIndicator,
   IParticipant,
   ICommunication,
-  IChannel
+  IChannel,
+  IAttachment
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/utils/api-client'
@@ -78,6 +84,7 @@ export function useCommunications() {
   const dispatch = useAppDispatch()
   const { toast } = useToast()
   const { data: session, status } = useSession()
+  const { users: allUsers, loading: usersLoading } = useUsers()
   const realtimeManager = useMemo(() => getRealtimeManager(), [])
   const hasInitialized = useRef(false)  
   const hasUsersInitialized = useRef(false)
@@ -92,10 +99,6 @@ export function useCommunications() {
     toastRef.current = toast
   }, [toast])
   
-  // State for real users data
-  const [allUsers, setAllUsers] = useState<User[]>([])
-  const [usersLoading, setUsersLoading] = useState(false)
-
   const {
     channels,
     activeChannelId,
@@ -123,6 +126,19 @@ export function useCommunications() {
     trashedMessagesLoading,
     trashedMessagesPagination
   } = useAppSelector((state) => state.communications)
+
+  // Refs to get current values without causing re-renders
+  const currentMessagesRef = useRef(messages)
+  const currentChannelsRef = useRef(channels)
+  
+  // Update refs when values change
+  useEffect(() => {
+    currentMessagesRef.current = messages
+  }, [messages])
+  
+  useEffect(() => {
+    currentChannelsRef.current = channels
+  }, [channels])
 
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
@@ -277,7 +293,18 @@ export function useCommunications() {
     })
   }, [dispatch])
 
-  // Handle reaction added (real-time)
+  // Handle user pin updates (real-time)
+  const onUserPin = useCallback((data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => {
+    logger.debug('User pin update:', data)
+    // Only process if it's for the current user
+    if (data.pinner_id !== sessionUserId) return
+
+    // For now, we don't have a Redux state for pinned users, so we'll rely on components to refetch
+    // In the future, we could add a pinnedUsers state to the slice
+    console.log(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
+  }, [sessionUserId])
+
+  // Handle reaction added (real-time) - WhatsApp style
   const onReactionAdd = useCallback((data: {
     id: string;
     message_id: string;
@@ -287,24 +314,28 @@ export function useCommunications() {
     emoji: string;
     created_at: string;
   }) => {
-    logger.debug('Reaction added:', data)
+    logger.debug('Reaction added via realtime:', data)
+    
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
+    
+    // Ensure we have proper user info and emoji
+    const reactionData = {
+      id: data.id,
+      mongo_user_id: data.mongo_user_id,
+      user_name: data.user_name || 'Someone',
+      emoji: data.emoji, // Ensure emoji is preserved properly
+      created_at: data.created_at
+    }
     
     dispatch(addReactionToMessage({
       channelId: data.channel_id,
       messageId: data.message_id,
-      reaction: {
-        id: data.id,
-        mongo_user_id: data.mongo_user_id,
-        user_name: data.user_name,
-        emoji: data.emoji,
-        created_at: data.created_at
-      }
+      reaction: reactionData
     }))
   }, [dispatch, sessionUserId])
 
-  // Handle reaction removed (real-time)
+  // Handle reaction removed (real-time) - WhatsApp style
   const onReactionRemove = useCallback((data: {
     id: string;
     message_id: string;
@@ -312,7 +343,8 @@ export function useCommunications() {
     mongo_user_id: string;
     emoji: string;
   }) => {
-    logger.debug('Reaction removed:', data)
+    logger.debug('Reaction removed via realtime:', data)
+    
     // Skip reactions from self (already handled optimistically)
     if (data.mongo_user_id === sessionUserId) return
     
@@ -329,32 +361,72 @@ export function useCommunications() {
   // Channel Real-time Event Handlers (Phase 3)
   // ============================================
 
-  // Handle channel update (archive/unarchive, settings changes, etc.)
+  // Handle channel update (archive/unarchive, settings changes, new channels, etc.)
   const onChannelUpdate = useCallback((data: {
     id: string;
-    type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel';
-    channel?: IChannel & { members?: Array<{ user_id: string }> };
+    type: 'update' | 'archive' | 'unarchive' | 'member_left' | 'new_channel' | 'channel_removed' | 'member_added' | 'member_removed';
+    channel?: any;
     member_id?: string;
+    members?: any[];
+    channelId?: string;
+    memberId?: string;
+    user?: any;
   }) => {
-    logger.debug('Channel update received:', data)
+    logger.debug('🔄 Channel update received:', data)
     
     if (data.type === 'new_channel' && data.channel) {
-      // New channel created - add it if current user is a member
-      const isMember = data.channel.members?.some((m: { user_id: string }) => m.user_id === sessionUserId)
+      // New channel created - check if current user is a member
+      const channelMembers = data.channel.channel_members || data.channel.members || []
+      const isMember = channelMembers.some((m: any) => 
+        m.mongo_member_id === sessionUserId || m.user_id === sessionUserId || m.id === sessionUserId
+      )
+      
+      logger.debug('🆕 New channel received, isMember:', isMember, 'userId:', sessionUserId)
+      
       if (isMember) {
         dispatch(addChannel(data.channel as IChannel))
         // Update cache
         communicationCache.addChannelToCache(data.channel)
         toastRef.current({
           title: "New Channel",
-          description: `You've been added to #${data.channel.name}`,
+          description: `You've been added to #${data.channel.name || 'the new channel'}`,
         })
+        logger.debug('✅ Channel added to store and cache')
+      } else {
+        logger.debug('⚠️ User is not a member of this channel, skipping')
       }
-    } else if (data.type === 'member_left' && data.member_id === sessionUserId) {
-      // Current user was removed or left - remove channel from list
+    } else if (data.type === 'channel_removed') {
+      // Current user was removed from channel
       dispatch(removeChannel(data.id))
       // Update cache
       communicationCache.removeChannelFromCache(data.id)
+      toastRef.current({
+        title: "Removed from Channel",
+        description: `You've been removed from a channel`,
+        variant: "destructive"
+      })
+      logger.debug('👋 Current user removed from channel:', data.id)
+    } else if (data.type === 'member_added' && data.memberId === sessionUserId) {
+      // Current user was added to channel
+      // Note: This should be handled by the 'new_channel' event, but as backup
+      logger.debug('➕ Current user added to channel:', data.channelId)
+    } else if (data.type === 'member_removed' && data.memberId === sessionUserId) {
+      // Current user was removed from channel
+      dispatch(removeChannel(data.channelId || data.id))
+      // Update cache
+      communicationCache.removeChannelFromCache(data.channelId || data.id)
+      toastRef.current({
+        title: "Removed from Channel",
+        description: `You've been removed from a channel`,
+        variant: "destructive"
+      })
+      logger.debug('👋 Current user removed from channel:', data.channelId || data.id)
+    } else if (data.type === 'member_left' && data.member_id === sessionUserId) {
+      // Current user left channel
+      dispatch(removeChannel(data.id))
+      // Update cache
+      communicationCache.removeChannelFromCache(data.id)
+      logger.debug('👋 Current user left channel:', data.id)
     } else if (data.channel) {
       // Channel updated (archive/unarchive, name change, etc.)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -365,8 +437,28 @@ export function useCommunications() {
       }))
       // Update cache
       communicationCache.updateChannelInCache(data.id, data.channel)
+      logger.debug('📝 Channel updated:', data.id)
     }
   }, [dispatch, sessionUserId])
+
+  // Handle attachments added to message (real-time)
+  const onAttachmentsAdded = useCallback((data: { channelId: string; messageId?: string; attachments: any[] }) => {
+    logger.debug('📎 Attachments added to message:', data)
+    
+    if (data.messageId && data.attachments?.length > 0) {
+      // Update the message with new attachments
+      dispatch(updateMessage({
+        channelId: data.channelId,
+        messageId: data.messageId,
+        updates: { attachments: data.attachments }
+      }))
+      
+      toastRef.current({
+        title: "Files uploaded",
+        description: `${data.attachments.length} file(s) uploaded successfully`,
+      })
+    }
+  }, [dispatch])
 
   // ============================================
   // Trash-Related Event Handlers (Phase 2)
@@ -490,37 +582,25 @@ export function useCommunications() {
     }
   }, [sessionUserId, sessionUserName, sessionUserAvatar, realtimeManager])
 
-  // Fetch all users
-  useEffect(() => {
-    const fetchAllUsers = async () => {
-      if (sessionUserId && !globalFetchedUsers.get(sessionUserId) && allUsers.length === 0 && !usersLoading && !hasUsersInitialized.current) {
-        globalFetchedUsers.set(sessionUserId, true)
-        hasFetchedUsersRef.current = true
-        hasUsersInitialized.current = true
-        try {
-          setUsersLoading(true)
-          const response = await apiRequest('/api/users')
-          setAllUsers(response.users || [])
-        } catch (error) {
-          logger.error('Failed to fetch users:', error)
-        } finally {
-          setUsersLoading(false)
-        }
-      }
-    }
-    
-    fetchAllUsers()
-  }, [sessionUserId])
-
-  // Fetch channels on mount - but only if not already initialized globally
+  // Fetch channels on mount - check cache expiry first
   useEffect(() => {
     logger.debug('Channels fetch useEffect running, hasFetchedChannels:', hasFetchedChannelsRef.current, 'sessionUserId:', sessionUserId, 'loading:', loading)
-    if (sessionUserId && !globalFetchedChannels.get(sessionUserId) && !loading) {
-      globalFetchedChannels.set(sessionUserId, true)
-      hasFetchedChannelsRef.current = true
-      channelsFetchedRef.current = true
-      logger.debug('Fetching channels')
-      fetchChannels()
+    if (sessionUserId && !loading) {
+      // Check if we need to fetch channels
+      const cachedChannels = communicationCache.getChannels()
+      const shouldFetch = !cachedChannels || !globalFetchedChannels.get(sessionUserId)
+      
+      if (shouldFetch) {
+        globalFetchedChannels.set(sessionUserId, true)
+        hasFetchedChannelsRef.current = true
+        channelsFetchedRef.current = true
+        logger.debug('Fetching channels')
+        fetchChannels()
+      } else {
+        logger.debug('Using cached channels, skipping fetch')
+        // Still dispatch cached channels to ensure state is set
+        dispatch(setChannels(cachedChannels))
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId]) // Only depend on sessionUserId
@@ -532,7 +612,7 @@ export function useCommunications() {
         logger.debug('Subscribing to channel:', activeChannelId)
         try {
           await realtimeManager.subscribeToChannel(activeChannelId)
-          fetchMessages({ channel_id: activeChannelId })
+          // fetchMessages is now handled in selectChannel
         } catch (error) {
           logger.error('Failed to subscribe to channel:', error)
         }
@@ -571,22 +651,27 @@ export function useCommunications() {
       onMentionNotification,
       onReactionAdd,
       onReactionRemove,
-      onChannelUpdate
+      onChannelUpdate,
+      onUserPin,
+      onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
   // Subscribe to notifications when user is logged in
+  // NOTE: We don't unsubscribe on cleanup because notifications should persist
+  // across component lifecycle. The RealtimeProvider manages the global lifecycle.
   useEffect(() => {
     if (sessionUserId) {
       realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
         logger.error('Failed to subscribe to notifications:', err)
       })
+      realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
+        logger.error('Failed to subscribe to user channels:', err)
+      })
     }
-    
-    return () => {
-      realtimeManager.unsubscribeFromNotifications()
-    }
+    // No cleanup - notification subscriptions are managed by RealtimeProvider
+    // and should persist for the entire session
   }, [sessionUserId, realtimeManager])
 
   // Channel operations
@@ -642,16 +727,6 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed toast from dependencies to prevent infinite loop
 
-  const selectChannel = useCallback((channel_id: string) => {
-    dispatch(setActiveChannel(channel_id))
-    // Clear messages to force re-fetch with enriched data
-    dispatch(setMessages({ channelId: channel_id, messages: [] }))
-  }, [dispatch])
-
-  const clearChannel = useCallback(() => {
-    dispatch(clearActiveChannel())
-  }, [dispatch])
-
   // Message operations
   const fetchMessages = useCallback(async (params: FetchMessagesParams) => {
     try {
@@ -683,6 +758,64 @@ export function useCommunications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]) // Removed toast to prevent infinite loop
 
+  const selectChannel = useCallback(async (channel_id: string) => {
+    // Get current unread count before any updates
+    const currentChannels = currentChannelsRef.current
+    const channel = currentChannels.find(c => c.id === channel_id)
+    const currentUnread = channel?.unreadCount || 0
+
+    // Set active channel and clear notifications for this channel
+    dispatch(setActiveChannel(channel_id))
+    dispatch(clearNotificationsForChannel(channel_id))
+    
+    // Optimistically reset unread count immediately
+    if (currentUnread > 0) {
+      dispatch(updateChannel({
+        id: channel_id,
+        unreadCount: 0
+      }))
+      dispatch(decrementUnreadCount(currentUnread))
+    }
+
+    // Clear messages to force re-fetch with enriched data
+    dispatch(setMessages({ channelId: channel_id, messages: [] }))
+
+    // Mark all messages in this channel as read using the bulk API
+    // This is done in parallel with fetching messages for better UX
+    const markAllReadPromise = (async () => {
+      if (currentUnread > 0) {
+        try {
+          await apiRequest('/api/communication/read-receipts', {
+            method: 'POST',
+            body: JSON.stringify({ 
+              channel_id,
+              mark_all: true
+            })
+          })
+          logger.debug(`Marked all messages as read in channel ${channel_id}`)
+        } catch (apiError) {
+          // Revert optimistic update on failure
+          dispatch(updateChannel({
+            id: channel_id,
+            unreadCount: currentUnread
+          }))
+          dispatch(incrementUnreadCount(currentUnread))
+          logger.error('Failed to mark messages as read when selecting channel:', apiError)
+        }
+      }
+    })()
+
+    // Always fetch messages to ensure fresh data, even for the same channel
+    const fetchMessagesPromise = fetchMessages({ channel_id })
+
+    // Wait for both operations to complete
+    await Promise.all([markAllReadPromise, fetchMessagesPromise])
+  }, [dispatch, fetchMessages])
+
+  const clearChannel = useCallback(() => {
+    dispatch(clearActiveChannel())
+  }, [dispatch])
+
   // Fetch older messages (pagination - prepend to existing)
   const fetchOlderMessages = useCallback(async (params: FetchMessagesParams & { offset: number }) => {
     try {
@@ -709,19 +842,16 @@ export function useCommunications() {
   // Search messages in a channel
   const searchMessages = useCallback(async (channelId: string, query: string, limit = 20, offset = 0) => {
     try {
-      const queryParams = new URLSearchParams({
-        channel_id: channelId,
-        query,
-        limit: limit.toString(),
-        offset: offset.toString()
-      })
-      
-      const response = await apiRequest(`/api/communication/messages/search?${queryParams.toString()}`)
-      
-      return {
-        messages: response.data || [],
-        total: response.meta?.total || 0,
-        hasMore: response.meta?.hasMore || false
+      const response = await fetch(`/api/communication/messages/search?channel_id=${channelId}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
+      const data = await response.json()
+      if (data.success) {
+        return {
+          messages: data.data || [],
+          total: data.meta?.total || 0,
+          hasMore: data.meta?.hasMore || false
+        }
+      } else {
+        return { messages: [], total: 0, hasMore: false }
       }
     } catch (error) {
       logger.error('Failed to search messages:', error)
@@ -946,19 +1076,16 @@ export function useCommunications() {
         xhr.send(formData)
       })
 
-      // Update optimistic message with real data
+      // Update optimistic message with real ID (keep optimistic attachments until real-time update)
       if (response?.id) {
-        // Clean up object URLs
-        optimisticAttachments.forEach(att => {
-          if (att.file_url?.startsWith('blob:')) {
-            URL.revokeObjectURL(att.file_url)
-          }
-        })
-
         dispatch(updateMessage({
           channelId: messageData.channel_id,
           messageId: tempId,
-          updates: { ...response, isOptimistic: false }
+          updates: { 
+            id: response.id, 
+            isOptimistic: false,
+            // Keep optimistic attachments until real-time update with actual attachments
+          }
         }))
       }
 
@@ -991,7 +1118,7 @@ export function useCommunications() {
   }, [dispatch, sessionUserId, sessionUser])
 
   // Update an existing message (for editing)
-  const editMessage = useCallback(async (messageId: string, updates: { content?: string }) => {
+  const editMessage = useCallback(async (messageId: string, updates: { content?: string; newFiles?: File[]; attachmentsToRemove?: string[] }) => {
     try {
       dispatch(setActionLoading(true))
 
@@ -1009,21 +1136,82 @@ export function useCommunications() {
         throw new Error('Message not found')
       }
 
+      // Prepare the update payload
+      let requestBody: any
+      let headers: any = {}
+
+      // If we have new files, use FormData
+      if (updates.newFiles && updates.newFiles.length > 0) {
+        const formData = new FormData()
+        formData.append('content', updates.content || '')
+        
+        if (updates.attachmentsToRemove && updates.attachmentsToRemove.length > 0) {
+          formData.append('attachments_to_remove', JSON.stringify(updates.attachmentsToRemove))
+        }
+        
+        updates.newFiles.forEach(file => {
+          formData.append('files', file)
+        })
+        
+        requestBody = formData
+        // Don't set Content-Type header - let the browser set it for FormData
+      } else {
+        // Use JSON for content-only updates
+        requestBody = JSON.stringify({
+          content: updates.content,
+          attachments_to_remove: updates.attachmentsToRemove || []
+        })
+        headers['Content-Type'] = 'application/json'
+      }
+
       // Optimistically update the message
+      const optimisticUpdates: any = {
+        content: updates.content,
+        is_edited: true,
+        edited_at: new Date().toISOString()
+      }
+
+      // Handle attachment changes optimistically
+      const currentMessage = messages[channelId]?.find((m: ICommunication) => m.id === messageId)
+      if (currentMessage) {
+        let updatedAttachments = [...(currentMessage.attachments || [])]
+        
+        // Remove attachments
+        if (updates.attachmentsToRemove) {
+          updatedAttachments = updatedAttachments.filter(att => 
+            !updates.attachmentsToRemove!.includes(att.id)
+          )
+        }
+        
+        // For new files, we'll add placeholder attachments (they'll be replaced by real data from API)
+        if (updates.newFiles && updates.newFiles.length > 0) {
+          const placeholderAttachments: IAttachment[] = updates.newFiles.map(file => ({
+            id: `temp-${Date.now()}-${Math.random()}`,
+            message_id: messageId,
+            file_name: file.name,
+            file_size: file.size,
+            file_type: file.type,
+            file_url: undefined,
+            uploaded_by: sessionUserId,
+            created_at: new Date().toISOString()
+          }))
+          updatedAttachments = [...updatedAttachments, ...placeholderAttachments]
+        }
+        
+        optimisticUpdates.attachments = updatedAttachments
+      }
+
       dispatch(updateMessage({
         channelId,
         messageId,
-        updates: {
-          ...updates,
-          is_edited: true,
-          edited_at: new Date().toISOString()
-        }
+        updates: optimisticUpdates
       }))
 
       // Send to API
       const response = await apiRequest(`/api/communication/messages/${messageId}`, {
         method: 'PUT',
-        body: JSON.stringify(updates)
+        headers,
+        body: requestBody
       })
 
       if (response?.id) {
@@ -1051,7 +1239,7 @@ export function useCommunications() {
     } finally {
       dispatch(setActionLoading(false))
     }
-  }, [dispatch, messages])
+  }, [dispatch, messages, sessionUserId])
 
   const createChannel = useCallback(async (channelData: CreateChannelData) => {
     try {
@@ -1113,17 +1301,12 @@ export function useCommunications() {
         method: 'POST'
       }, false)
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update pin status')
-      }
-
       toastRef.current({
-        title: response.data.is_pinned ? "Channel pinned" : "Channel unpinned",
-        description: response.message,
+        title: response.is_pinned ? "Channel pinned" : "Channel unpinned",
+        description: "Channel pin status updated successfully",
       })
 
-      // Refresh channels to get proper sort order
-      await fetchChannels()
+      // No need to refresh channels - optimistic update and real-time sync handle it
     } catch (error: any) {
       // Revert optimistic update
       dispatch(updateChannel({
@@ -1134,7 +1317,35 @@ export function useCommunications() {
 
       throw error
     }
-  }, [dispatch, sessionUserId, fetchChannels])
+  }, [dispatch, sessionUserId])
+
+  /**
+   * Toggle pin status for a user
+   * User can pin up to 10 users
+   */
+  const pinUser = useCallback(async (userId: string, currentlyPinned: boolean): Promise<void> => {
+    if (!sessionUserId) {
+      throw new Error('Not authenticated')
+    }
+
+    // Optimistic update - we need to handle this in the component since users are not in Redux
+    // For now, we'll just make the API call and rely on real-time updates
+
+    try {
+      const response = await apiRequest(`/api/communication/users/${userId}/pin`, {
+        method: 'POST'
+      }, false)
+
+      toastRef.current({
+        title: response.is_pinned ? "User pinned" : "User unpinned",
+        description: "User pin status updated successfully",
+      })
+
+      // Real-time sync will handle the update
+    } catch (error: any) {
+      throw error
+    }
+  }, [sessionUserId])
 
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
@@ -1142,7 +1353,19 @@ export function useCommunications() {
         method: 'POST',
         body: JSON.stringify({ message_id: messageId, channel_id })
       })
-      
+
+      // Remove notification for this message
+      dispatch(removeNotification(`message_${messageId}`))
+
+      // Update unread count in Redux store
+      const channel = channels.find(c => c.id === channel_id)
+      const newUnreadCount = Math.max(0, (channel?.unreadCount || 0) - 1)
+      dispatch(updateChannel({
+        id: channel_id,
+        unreadCount: newUnreadCount
+      }))
+      dispatch(decrementUnreadCount(1))
+
       // Broadcast read receipt to other users in the channel
       if (sessionUserId) {
         await realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
@@ -1150,7 +1373,49 @@ export function useCommunications() {
     } catch (error) {
       logger.error('Failed to mark message as read:', error)
     }
-  }, [realtimeManager, sessionUserId])
+  }, [channels, dispatch, realtimeManager, sessionUserId])
+
+  /**
+   * Mark all messages in a channel as read.
+   * Uses the bulk API endpoint for efficiency.
+   */
+  const markAllChannelMessagesAsRead = useCallback(async (channelId: string) => {
+    try {
+      const channel = channels.find(c => c.id === channelId)
+      const currentUnread = channel?.unreadCount || 0
+      
+      if (currentUnread === 0) return
+      
+      // Optimistically update Redux state
+      dispatch(updateChannel({
+        id: channelId,
+        unreadCount: 0
+      }))
+      dispatch(decrementUnreadCount(currentUnread))
+      dispatch(clearNotificationsForChannel(channelId))
+
+      // Call the bulk API
+      await apiRequest('/api/communication/read-receipts', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          channel_id: channelId,
+          mark_all: true
+        })
+      })
+      
+      logger.debug(`Marked all messages as read in channel ${channelId}`)
+    } catch (error) {
+      // Revert optimistic update
+      const channel = channels.find(c => c.id === channelId)
+      const currentUnread = channel?.unreadCount || 0
+      dispatch(updateChannel({
+        id: channelId,
+        unreadCount: currentUnread
+      }))
+      dispatch(incrementUnreadCount(currentUnread))
+      logger.error('Failed to mark all channel messages as read:', error)
+    }
+  }, [channels, dispatch])
 
   // ============================================
   // Reaction Operations
@@ -1162,7 +1427,20 @@ export function useCommunications() {
    * Otherwise, it will be added.
    */
   const toggleReaction = useCallback(async (messageId: string, channelId: string, emoji: string) => {
+    console.log(`🚀 [toggleReaction] Called with:`, { messageId, channelId, emoji, sessionUserId })
+    
     if (!sessionUserId) return
+    
+    // Validate emoji parameter before proceeding
+    if (!emoji || emoji.length > 10 || emoji.includes('-') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji)) {
+      console.error('❌ [toggleReaction] Invalid emoji received:', emoji)
+      toastRef.current({
+        title: "Error",
+        description: "Invalid emoji detected. Please try again.",
+        variant: "destructive"
+      })
+      return
+    }
 
     try {
       // Check if user already reacted with this emoji
@@ -1173,6 +1451,7 @@ export function useCommunications() {
       )
 
       if (existingReaction) {
+        console.log(`➖ [toggleReaction] Removing existing reaction:`, existingReaction)
         // Optimistically remove the reaction
         dispatch(removeReactionFromMessage({
           channelId,
@@ -1182,37 +1461,51 @@ export function useCommunications() {
           emoji
         }))
       } else {
-        // Optimistically add the reaction
+        console.log(`➕ [toggleReaction] Adding new reaction with emoji:`, emoji)
+        // Optimistically add the reaction with proper user info
         const tempReactionId = crypto.randomUUID()
+        const optimisticReaction = {
+          id: tempReactionId,
+          mongo_user_id: sessionUserId,
+          user_name: sessionUserName || 'You',
+          emoji: emoji, // Ensure emoji is properly set
+          created_at: new Date().toISOString()
+        }
+        
         dispatch(addReactionToMessage({
           channelId,
           messageId,
-          reaction: {
-            id: tempReactionId,
-            mongo_user_id: sessionUserId,
-            user_name: sessionUserName,
-            emoji,
-            created_at: new Date().toISOString()
-          }
+          reaction: optimisticReaction
         }))
       }
 
+      // Prepare API request data
+      const apiData = {
+        message_id: messageId,
+        channel_id: channelId,
+        emoji: emoji
+      }
+      
+      console.log(`📡 [toggleReaction] Sending API request with data:`, apiData)
+
       // Send to API (toggle behavior handled on server)
-      // apiRequest returns the data directly on success, or throws on error
       const result = await apiRequest('/api/communication/reactions', {
         method: 'POST',
-        body: JSON.stringify({
-          message_id: messageId,
-          channel_id: channelId,
-          emoji
-        })
+        body: JSON.stringify(apiData)
       }, false) // Don't show error toast, we handle it ourselves
 
-      logger.debug('Reaction toggled:', result)
+      console.log(`✅ [toggleReaction] API response:`, result)
+      logger.debug('Reaction toggled successfully:', { 
+        action: result?.action,
+        emoji,
+        messageId,
+        userId: sessionUserId 
+      })
     } catch (error: any) {
+      console.error('❌ [toggleReaction] Error:', error)
       logger.error('Failed to toggle reaction:', error)
       
-      // Check if user already reacted with this emoji (for reverting)
+      // Check if user already reacted with this emoji (for reverting optimistic update)
       const channelMessages = messages[channelId] || []
       const message = channelMessages.find(m => m.id === messageId)
       const existingReaction = message?.reactions?.find(
@@ -1239,7 +1532,7 @@ export function useCommunications() {
       
       toastRef.current({
         title: "Error",
-        description: error?.error || "Failed to add reaction",
+        description: error?.error || "Failed to toggle reaction",
         variant: "destructive"
       })
     }
@@ -1606,13 +1899,17 @@ export function useCommunications() {
     dispatch(clearNotifications())
   }, [dispatch])
 
+  const handleRemoveNotification = useCallback((notificationId: string) => {
+    dispatch(removeNotification(notificationId))
+  }, [dispatch])
+
   // Utility operations
   const handleResetState = useCallback(() => {
     dispatch(resetState())
   }, [dispatch])
 
   const refreshChannels = useCallback(() => {
-    return fetchChannels()
+    return fetchChannels({ forceRefresh: true })
   }, [fetchChannels])
 
   const refreshMessages = useCallback(() => {
@@ -1824,6 +2121,7 @@ export function useCommunications() {
     selectChannel,
     clearActiveChannel: clearChannel,
     pinChannel,
+    pinUser,
 
     // Message operations
     fetchMessages,
@@ -1837,6 +2135,7 @@ export function useCommunications() {
     updateMessage: editMessage,
     createChannel,
     markAsRead,
+    markAllChannelMessagesAsRead,
 
     // Channel leave/archive operations (Phase 2)
     leaveChannel,
@@ -1867,6 +2166,7 @@ export function useCommunications() {
     // Notifications
     addNotification: handleAddNotification,
     clearNotifications: handleClearNotifications,
+    removeNotification: handleRemoveNotification,
 
     // Utility operations
     resetState: handleResetState,

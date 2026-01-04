@@ -116,15 +116,47 @@ export async function GET(request: NextRequest) {
       sortedChannels.map((channel: any) => enrichChannelWithUserData(channel, allUsers))
     )
 
-    // Add pin info to each channel for easy access
-    const channelsWithPinInfo = enrichedChannels.map((channel: any) => {
+    // Add pin info and unread count to each channel for easy access
+    const channelsWithPinInfo = await Promise.all(enrichedChannels.map(async (channel: any) => {
       const memberInfo = channel.channel_members?.find((m: any) => m.mongo_member_id === session.user.id)
+      
+      // Calculate unread count
+      let unreadCount = 0
+      try {
+        // Get all message ids in the channel not from user and not trashed
+        const messageIds = await prisma.messages.findMany({
+          where: {
+            channel_id: channel.id,
+            mongo_sender_id: { not: session.user.id },
+            is_trashed: false
+          },
+          select: { id: true }
+        })
+        
+        const messageIdsArray = messageIds.map(m => m.id)
+        
+        if (messageIdsArray.length > 0) {
+          // Count read receipts for those message ids
+          const readReceiptsCount = await prisma.read_receipts.count({
+            where: {
+              message_id: { in: messageIdsArray },
+              mongo_user_id: session.user.id
+            }
+          })
+          unreadCount = Math.max(0, messageIdsArray.length - readReceiptsCount)
+        }
+      } catch (error) {
+        logger.warn('Failed to calculate unread count for channel:', channel.id, error)
+        unreadCount = 0
+      }
+      
       return {
         ...channel,
         is_pinned: memberInfo?.is_pinned || false,
-        pinned_at: memberInfo?.pinned_at || null
+        pinned_at: memberInfo?.pinned_at || null,
+        unreadCount
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -242,6 +274,11 @@ export async function POST(request: NextRequest) {
         member_count: memberIds.length,
         created_at: new Date(),
         updated_at: new Date(),
+        // Channel settings
+        auto_sync_enabled: validatedData.auto_sync_enabled ?? true,
+        allow_external_members: validatedData.allow_external_members ?? false,
+        admin_only_post: validatedData.admin_only_post ?? false,
+        admin_only_add: validatedData.admin_only_add ?? false,
       },
     })
 
@@ -275,23 +312,28 @@ export async function POST(request: NextRequest) {
     const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
 
     // Broadcast new channel to all members for real-time sync
+    // Note: Broadcast happens without subscription in Supabase Realtime (it's a fire-and-forget event)
     try {
       // Broadcast to each member's personal notification channel
       for (const memberId of memberIds) {
-        const rtChannel = supabase.channel(`user:${memberId}:channels`)
-        await rtChannel.send({
-          type: 'broadcast',
-          event: 'channel_update',
-          payload: {
-            id: enrichedChannel.id,
-            type: 'new_channel',
-            channel: enrichedChannel
-          }
-        })
-        await supabase.removeChannel(rtChannel)
+        try {
+          await supabase.channel(`user:${memberId}:channels`).send({
+            type: 'broadcast',
+            event: 'new_channel',
+            payload: {
+              id: enrichedChannel.id,
+              type: 'new_channel',
+              channel: enrichedChannel,
+              members: enrichedChannel.channel_members || []
+            }
+          })
+          logger.debug(`✅ Broadcasted new channel to user ${memberId}`)
+        } catch (memberError) {
+          logger.warn(`⚠️ Failed to broadcast to member ${memberId}:`, memberError)
+        }
       }
     } catch (broadcastError) {
-      logger.warn('Failed to broadcast new channel:', broadcastError)
+      logger.warn('Failed to setup broadcast for new channel:', broadcastError)
     }
 
     return NextResponse.json({

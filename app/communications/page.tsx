@@ -1,30 +1,20 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useAppDispatch } from "@/hooks/redux"
+import { addChannel } from "@/store/slices/communicationSlice"
 import { Button } from "@/components/ui/button"
 import { ChatWindow } from "@/components/communication/chat-window"
 import { CommunicationSidebar } from "@/components/communication/communication-sidebar"
 import { OnlineIndicator } from "@/components/communication/online-indicator"
-import PageHeader from "@/components/shared/page-header"
 import {
   MessageSquare,
   Plus,
-  Menu,
-  X,
-  Users,
-  Search,
-  Settings,
-  AlignLeft,
-  AlignRight
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
-import { useDepartments } from "@/hooks/use-departments"
 import { usePermissions } from "@/hooks/use-permissions"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Skeleton } from "@/components/ui/skeleton"
 
 import {
   Sheet,
@@ -34,79 +24,67 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { handleAPIError } from "@/lib/utils/api-client"
 import { CreateChannelModal } from "@/components/communication/create-channel-modal"
 import { ResizableSidebar } from "@/components/communication/resizable-sidebar"
-import FullscreenToggle, { FullscreenToggleRef } from '@/components/shared/FullscreenToggle';
+import { FullscreenToggleRef } from '@/components/shared/FullscreenToggle';
 
 export default function CommunicationsPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const dispatch = useAppDispatch()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false)
-  const { canCreate } = usePermissions()
-  const lastChannelParam = useRef<string | null>(null)
+  const hasInitializedChannel = useRef(false)
 
-  // Department integration for filtering
-  const { allDepartments } = useDepartments()
-
-  // Memoize available departments to prevent unnecessary re-renders
-  const availableDepartments = useMemo(() => {
-    if (allDepartments && allDepartments.length > 0) {
-      return allDepartments.map((dept: any) => ({
-        value: dept._id,
-        label: dept.name,
-      }))
-    }
-    return []
-  }, [allDepartments])
 
   const {
     channels,
     activeChannelId,
-    selectedChannel,
     loading,
     error,
-    currentUser,
     onlineUsers,
     onlineUserIds,
     unreadCount,
     hasChannels,
-    fetchChannels,
+    refreshChannels,
     selectChannel,
-    createChannel,
     setError,
     setFilters,
     filters,
-    mockUsers,
     mockCurrentUser,
     pinChannel
   } = useCommunications()
 
-  // Handle URL params for direct channel access
+  // Update URL when channel changes
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (activeChannelId && typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      const currentChannelParam = url.searchParams.get('channel')
+      if (currentChannelParam !== activeChannelId) {
+        url.searchParams.set('channel', activeChannelId)
+        window.history.replaceState({}, '', url.toString())
+        // Also store in localStorage as backup
+        localStorage.setItem('lastActiveChannel', activeChannelId)
+      }
+    }
+  }, [activeChannelId])
+
+  // Handle URL params and localStorage for channel persistence
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasInitializedChannel.current) return
+
     const url = new URL(window.location.href)
     const channelParam = url.searchParams.get('channel')
-    if (channelParam && channelParam !== lastChannelParam.current && channelParam !== activeChannelId) {
-      lastChannelParam.current = channelParam
-      selectChannel(channelParam)
+    const storedChannel = localStorage.getItem('lastActiveChannel')
+
+    // Priority: URL param > localStorage > none
+    const channelToSelect = channelParam || storedChannel
+
+    if (channelToSelect && channelToSelect !== activeChannelId) {
+      hasInitializedChannel.current = true
+      selectChannel(channelToSelect)
     }
-  }, [activeChannelId, selectChannel])
+  }, []) // Only run once on mount
   const fullscreenRef = useRef<FullscreenToggleRef>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // Update URL when channel changes
-  // useEffect(() => {
-  //   if (activeChannelId) {
-  //     const url = new URL(window.location.href)
-  //     const currentChannelParam = url.searchParams.get('channel')
-  //     if (currentChannelParam !== activeChannelId) {
-  //       url.searchParams.set('channel', activeChannelId)
-  //       window.history.replaceState({}, '', url.toString())
-  //     }
-  //   }
-  // }, [activeChannelId])
 
   // Handle responsive behavior
   useEffect(() => {
@@ -121,10 +99,6 @@ export default function CommunicationsPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Fetch available departments for filter
-  const fetchAvailableDepartments = useCallback(async () => {
-    // No longer needed since we use the memoized value directly
-  }, [])
 
   const handleChannelSelect = useCallback((channelId: string) => {
     selectChannel(channelId)
@@ -137,40 +111,45 @@ export default function CommunicationsPage() {
     console.log('Create new channel')
   }, [])
 
-  const handleRefresh = () => {
-    fetchChannels()
-  }
 
-  const handleDepartmentFilter = (departmentId: string) => {
-    if (departmentId === 'all') {
-      setFilters({ ...filters, mongoDepartmentId: undefined })
-    } else {
-      setFilters({ ...filters, mongoDepartmentId: departmentId })
-    }
-  }
+  // Memoize maxWidth to prevent unnecessary re-renders
+  const maxSidebarWidth = useMemo(() => {
+    return typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.5) : 500
+  }, [])
 
-  const [channelName, setChannelName] = useState("")
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  // const [users, setUsers] = useState<{ _id: string, name: string, email: string }[]>([])
-  const [chat_users, setChatUsers] = useState<any[]>(mockUsers)
-  const [usersLoading, setUsersLoading] = useState(false)
+  // Memoize current user ID to prevent unnecessary re-renders
+  const currentUserId = useMemo(() => mockCurrentUser?._id || '', [mockCurrentUser?._id])
 
-  console.log("fullscreenRef154", fullscreenRef);
-  const handleMemberSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const options = Array.from(e.target.selectedOptions)
-    setSelectedMembers(options.map(opt => opt.value))
-  }
-  console.log("isFullscreen150", isFullscreen)
+  // Memoize sidebar props to prevent unnecessary re-renders
+  const sidebarProps = useMemo(() => ({
+    channels,
+    activeChannelId,
+    onChannelSelect: handleChannelSelect,
+    currentUserId,
+    onlineUserIds,
+    onCreateChannel: handleCreateChannel,
+    onPinChannel: pinChannel,
+    loading
+  }), [
+    channels,
+    activeChannelId,
+    handleChannelSelect,
+    currentUserId,
+    onlineUserIds,
+    handleCreateChannel,
+    pinChannel,
+    loading
+  ])
   return (
     <div className={`${isFullscreen ? 'h-[100vh]' : 'h-[calc(100vh-64px)]'}  flex flex-col bg-background`}>
-    {/* <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}> */}
+      {/* <div className={`h-[calc(100vh-64px)]  flex flex-col bg-background`}> */}
       {/* Mobile header */}
-      <div className="lg:hidden border-b bg-card p-4">
+      <div className="lg:hidden border-b bg-gradient-to-r from-card via-card to-card/95 p-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
-                <button className="h-9 w-9  border-0 shadow-sm hover:text-primary transition-all duration-300  flex items-center justify-center hover:scale-110">
+                <button className="h-10 w-10 border-0 shadow-sm hover:text-primary transition-all duration-300 flex items-center justify-center hover:scale-110 hover:bg-accent rounded-lg">
                   {/* <AlignLeft className="h-6 w-6" /> */}
                   <svg
                     width={24}
@@ -190,22 +169,15 @@ export default function CommunicationsPage() {
                   <SheetDescription>Navigate through your channels and conversations</SheetDescription>
                 </SheetHeader>
                 <CommunicationSidebar
-                  channels={channels}
-                  activeChannelId={activeChannelId}
-                  onChannelSelect={handleChannelSelect}
-                  currentUserId={mockCurrentUser?._id || ''}
-                  onlineUserIds={onlineUserIds}
-                  onCreateChannel={handleCreateChannel}
-                  onPinChannel={pinChannel}
-                  loading={loading}
+                  {...sidebarProps}
                 />
               </SheetContent>
             </Sheet>
 
-            <h1 className="font-semibold text-lg">Messages</h1>
+            <h1 className="font-bold text-xl">Messages</h1>
 
             {unreadCount > 0 && (
-              <Badge variant="default" className="ml-2">
+              <Badge variant="default" className="ml-2 px-2 py-1 text-xs font-semibold shadow-sm animate-pulse">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Badge>
             )}
@@ -217,23 +189,13 @@ export default function CommunicationsPage() {
             )}
 
             {/* {canCreate('communications', 'create') && ( */}
-            <Button variant="outline" size="sm" onClick={handleCreateChannel}>
+            <Button variant="default" size="sm" onClick={handleCreateChannel} className="h-9 w-9 p-0 shadow-sm hover:scale-110 transition-all duration-200">
               <Plus className="h-4 w-4" />
             </Button>
             {/* )} */}
           </div>
         </div>
       </div>
-
-      {/* Desktop header */}
-      {/* <div className="hidden lg:block">
-        <PageHeader
-          title="Communications"
-          subtitle="Real-time messaging and collaboration"
-          addButtonText="New Channel"
-          onAddClick={handleCreateChannel}
-        />
-      </div> */}
 
       {/* Error display */}
       {error && (
@@ -257,19 +219,12 @@ export default function CommunicationsPage() {
         <ResizableSidebar
           defaultWidth={300}
           minWidth={200}
-          maxWidth={500}
+          maxWidth={maxSidebarWidth}
           storageKey="communication-sidebar"
           className="hidden lg:flex border-r"
         >
           <CommunicationSidebar
-            channels={channels}
-            activeChannelId={activeChannelId}
-            onChannelSelect={handleChannelSelect}
-            currentUserId={mockCurrentUser?._id || ''}
-            onlineUserIds={onlineUserIds}
-            onCreateChannel={handleCreateChannel}
-            onPinChannel={pinChannel}
-            loading={loading}
+            {...sidebarProps}
           />
         </ResizableSidebar>
 
@@ -284,29 +239,30 @@ export default function CommunicationsPage() {
               onFullscreenChange={setIsFullscreen}
             />
           ) : (
-            <div className="h-full flex items-center justify-center bg-muted/10">
-              <div className="text-center space-y-4 max-w-md mx-auto p-8">
-                <div className="h-20 w-20 bg-muted rounded-full flex items-center justify-center mx-auto">
-                  <MessageSquare className="h-10 w-10 text-muted-foreground" />
+            <div className="h-full flex items-center justify-center bg-gradient-to-br from-muted/5 via-muted/10 to-muted/5">
+              <div className="text-center space-y-6 max-w-md mx-auto p-8 animate-in fade-in duration-500">
+                <div className="h-24 w-24 bg-gradient-to-br from-primary/10 to-accent/20 rounded-2xl flex items-center justify-center mx-auto shadow-lg border border-primary/10 animate-in zoom-in duration-300">
+                  <MessageSquare className="h-12 w-12 text-primary" />
                 </div>
 
-                <div className="space-y-2">
-                  <h2 className="font-semibold text-xl">Welcome to Communications</h2>
-                  <p className="text-muted-foreground">
+                <div className="space-y-3">
+                  <h2 className="font-bold text-2xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Welcome to Communications</h2>
+                  <p className="text-muted-foreground text-base leading-relaxed">
                     Stay connected with your team and clients through real-time messaging
                   </p>
                 </div>
 
                 {hasChannels ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
                       Select a conversation from the sidebar to get started
                     </p>
 
                     <div className="lg:hidden">
                       <Button
-                        variant="outline"
+                        variant="default"
                         onClick={() => setIsMobileMenuOpen(true)}
+                        className="shadow-sm hover:shadow-md transition-all duration-200"
                       >
                         <MessageSquare className="h-4 w-4 mr-2" />
                         View Conversations
@@ -314,13 +270,13 @@ export default function CommunicationsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
                       No conversations yet. Create a new channel to start messaging.
                     </p>
 
                     {/* {canCreate('communications', 'create') && ( */}
-                    <Button onClick={handleCreateChannel}>
+                    <Button onClick={handleCreateChannel} className="shadow-sm hover:shadow-md transition-all duration-200">
                       <Plus className="h-4 w-4 mr-2" />
                       Create New Channel
                     </Button>
@@ -329,18 +285,18 @@ export default function CommunicationsPage() {
                 )}
 
                 {/* Quick stats */}
-                <div className="flex justify-center gap-6 pt-4 border-t text-sm text-muted-foreground">
+                <div className="flex justify-center gap-8 pt-6 border-t text-sm">
                   <div className="text-center">
-                    <div className="font-medium text-lg text-foreground">{channels.length}</div>
-                    <div>Channels</div>
+                    <div className="font-bold text-2xl text-primary mb-1">{channels.length}</div>
+                    <div className="text-muted-foreground text-xs">Channels</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-medium text-lg text-foreground">{onlineUsers.length}</div>
-                    <div>Online</div>
+                    <div className="font-bold text-2xl text-green-600 dark:text-green-400 mb-1">{onlineUsers.length}</div>
+                    <div className="text-muted-foreground text-xs">Online</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-medium text-lg text-foreground">{unreadCount}</div>
-                    <div>Unread</div>
+                    <div className="font-bold text-2xl text-orange-600 dark:text-orange-400 mb-1">{unreadCount}</div>
+                    <div className="text-muted-foreground text-xs">Unread</div>
                   </div>
                 </div>
               </div>
@@ -353,8 +309,15 @@ export default function CommunicationsPage() {
       <CreateChannelModal
         isOpen={isCreateChannelOpen}
         onClose={() => setIsCreateChannelOpen(false)}
+        onChannelCreatedRaw={async (channel) => {
+          // Optimistic update: Add channel to Redux store immediately
+          // This ensures the channel appears in the list instantly without waiting for realtime
+          console.log('🔄 Adding channel to Redux store immediately:', channel.id)
+          dispatch(addChannel(channel))
+        }}
         onChannelCreated={(channel) => {
           if (channel) {
+            console.log('📢 Channel created, selecting channel:', channel.id)
             selectChannel(channel.id)
             // Update URL
             const url = new URL(window.location.href)

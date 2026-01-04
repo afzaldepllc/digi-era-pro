@@ -45,6 +45,8 @@ export interface RealtimeEventHandlers {
     content_preview: string
     created_at: string
   }) => void
+  onUserPin?: (data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => void
+  onNewMessageNotification?: (data: { message: any }) => void
 }
 
 export interface PresenceState {
@@ -351,48 +353,136 @@ export class RealtimeManager {
   
   private notificationChannel: RealtimeChannel | null = null
   private userChannelsChannel: RealtimeChannel | null = null
+  private notificationUserId: string | null = null
+  private notificationRetryCount: number = 0
+  private readonly MAX_NOTIFICATION_RETRIES = 3
 
   async subscribeToNotifications(userId: string): Promise<void> {
+    // Check if already subscribed with active connection
     if (this.notificationChannel) {
-      console.log('🔔 Already subscribed to notifications')
-      return
+      // @ts-ignore - accessing internal state property
+      const channelState = this.notificationChannel.state
+      if (channelState === 'joined' || channelState === 'joining') {
+        console.log('🔔 Already subscribed to notifications for user:', userId, 'state:', channelState)
+        return
+      }
+      // Channel exists but not active - remove it and resubscribe
+      console.log('🔔 Notification channel exists but state is:', channelState, '- resubscribing')
+      supabase.removeChannel(this.notificationChannel)
+      this.notificationChannel = null
     }
 
     console.log('🔔 Subscribing to notifications for user:', userId)
+    const channelName = `notifications_${userId}`
+    this.notificationUserId = userId
 
     return new Promise((resolve, reject) => {
-      this.notificationChannel = supabase.channel(`notifications_${userId}`)
+      this.notificationChannel = supabase.channel(channelName, {
+        config: {
+          broadcast: { self: false }
+        }
+      })
 
       this.notificationChannel
         .on('broadcast', { event: 'mention_notification' }, (payload) => {
           console.log('📬 Received mention notification:', payload.payload)
           this.eventHandlers.onMentionNotification?.(payload.payload)
         })
+        .on('broadcast', { event: 'new_message' }, (payload) => {
+          console.log('📨 Received new message notification on channel:', channelName, payload.payload)
+          if (this.eventHandlers.onNewMessageNotification) {
+            console.log('📨 Handler exists, calling onNewMessageNotification')
+            this.eventHandlers.onNewMessageNotification(payload.payload)
+          } else {
+            console.warn('📨 No onNewMessageNotification handler registered!')
+          }
+        })
 
       this.notificationChannel.subscribe((status, err) => {
+        console.log(`🔔 Notification channel ${channelName} status:`, status)
+        
         if (err) {
           console.error('❌ Notification subscription error:', err)
-          reject(err)
+          this.handleNotificationChannelError(userId, resolve, reject)
           return
         }
         
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Notification channel subscribed')
+          console.log('✅ Notification channel subscribed successfully:', channelName)
+          this.notificationRetryCount = 0 // Reset retry count on success
           // Also subscribe to user's channel updates
           this.subscribeToUserChannels(userId).catch(err => {
             console.warn('⚠️ Failed to subscribe to user channels:', err)
           })
           resolve()
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Notification channel error:', channelName)
+          this.handleNotificationChannelError(userId, resolve, reject)
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ Notification channel timed out:', channelName)
+          this.handleNotificationChannelError(userId, resolve, reject)
+        } else if (status === 'CLOSED') {
+          // Unexpected closure - attempt to reconnect
+          console.warn('🔔 Notification channel unexpectedly closed, will reconnect...')
+          this.notificationChannel = null
+          // Auto-reconnect after short delay
+          setTimeout(() => {
+            if (this.notificationUserId) {
+              console.log('🔔 Auto-reconnecting notification channel for:', this.notificationUserId)
+              this.subscribeToNotifications(this.notificationUserId).catch(err => {
+                console.error('❌ Failed to reconnect notifications:', err)
+              })
+            }
+          }, 1000)
         }
       })
     })
   }
 
+  // Handle notification channel errors with retry logic
+  private handleNotificationChannelError(
+    userId: string, 
+    resolve: () => void, 
+    reject: (reason?: any) => void
+  ): void {
+    // Clean up the failed channel
+    if (this.notificationChannel) {
+      supabase.removeChannel(this.notificationChannel)
+      this.notificationChannel = null
+    }
+
+    this.notificationRetryCount++
+    
+    if (this.notificationRetryCount <= this.MAX_NOTIFICATION_RETRIES) {
+      const delay = Math.min(1000 * Math.pow(2, this.notificationRetryCount - 1), 5000)
+      console.log(`🔔 Retrying notification subscription (attempt ${this.notificationRetryCount}/${this.MAX_NOTIFICATION_RETRIES}) in ${delay}ms...`)
+      
+      setTimeout(() => {
+        this.subscribeToNotifications(userId)
+          .then(resolve)
+          .catch(reject)
+      }, delay)
+    } else {
+      console.error(`❌ Failed to subscribe to notifications after ${this.MAX_NOTIFICATION_RETRIES} attempts`)
+      this.notificationRetryCount = 0 // Reset for future attempts
+      reject(new Error(`Failed to subscribe to notifications after ${this.MAX_NOTIFICATION_RETRIES} attempts`))
+    }
+  }
+
   // Subscribe to user's channel updates (new channels created, etc.)
   async subscribeToUserChannels(userId: string): Promise<void> {
+    // Check if already subscribed with active connection
     if (this.userChannelsChannel) {
-      console.log('📢 Already subscribed to user channels')
-      return
+      // @ts-ignore - accessing internal state property
+      const channelState = this.userChannelsChannel.state
+      if (channelState === 'joined' || channelState === 'joining') {
+        console.log('📢 Already subscribed to user channels, state:', channelState)
+        return
+      }
+      // Channel exists but not active - remove it and resubscribe
+      console.log('📢 User channels channel state is:', channelState, '- resubscribing')
+      supabase.removeChannel(this.userChannelsChannel)
+      this.userChannelsChannel = null
     }
 
     console.log('📢 Subscribing to user channels for:', userId)
@@ -401,9 +491,13 @@ export class RealtimeManager {
       this.userChannelsChannel = supabase.channel(`user:${userId}:channels`)
 
       this.userChannelsChannel
-        .on('broadcast', { event: 'channel_update' }, (payload) => {
-          console.log('📢 Received channel update:', payload.payload)
+        .on('broadcast', { event: 'new_channel' }, (payload) => {
+          console.log('📢 Received new channel:', payload.payload)
           this.eventHandlers.onChannelUpdate?.(payload.payload)
+        })
+        .on('broadcast', { event: 'user_pin_update' }, (payload) => {
+          console.log('📌 Received user pin update:', payload.payload)
+          this.eventHandlers.onUserPin?.(payload.payload)
         })
 
       this.userChannelsChannel.subscribe((status, err) => {
@@ -462,7 +556,7 @@ export class RealtimeManager {
       const rtChannel = supabase.channel(`rt_${channelId}`, {
         config: {
           broadcast: {
-            self: false, // Prevent sender from receiving own broadcasts
+            self: true, // Allow sender to receive own broadcasts for attachments updates
           },
         },
       })
@@ -518,6 +612,11 @@ export class RealtimeManager {
           console.log('🔔 Realtime: Channel update', payload)
           this.eventHandlers.onChannelUpdate?.(payload.payload)
         })
+        .on('broadcast', { event: 'member_update' }, (payload) => {
+          console.log('👥 Realtime: Member update', payload)
+          // Handle member updates (add/remove) - can use the same handler
+          this.eventHandlers.onChannelUpdate?.(payload.payload)
+        })
         .on('broadcast', { event: 'message_read' }, (payload) => {
           console.log('👁️ Realtime: Message read', payload)
           this.eventHandlers.onMessageRead?.(payload.payload)
@@ -528,7 +627,11 @@ export class RealtimeManager {
         })
         .on('broadcast', { event: 'attachments_added' }, (payload) => {
           console.log('📎 Realtime: Attachments added', payload)
-          this.eventHandlers.onAttachmentsAdded?.(payload.payload)
+          // Add channelId to payload since it's not included in the broadcast
+          this.eventHandlers.onAttachmentsAdded?.({
+            ...payload.payload,
+            channelId
+          })
         })
         .on('broadcast', { event: 'reaction_added' }, (payload) => {
           console.log('👍 Realtime: Reaction added', payload)
@@ -537,6 +640,25 @@ export class RealtimeManager {
         .on('broadcast', { event: 'reaction_removed' }, (payload) => {
           console.log('👎 Realtime: Reaction removed', payload)
           this.eventHandlers.onReactionRemove?.(payload.payload)
+        })
+        .on('broadcast', { event: 'bulk_message_read' }, (payload) => {
+          console.log('👁️ Realtime: Bulk message read', payload)
+          // Handle bulk read receipts - update all message read receipts
+          const { userId, channelId: readChannelId, messageIds, readAt } = payload.payload
+          // Skip if it's our own read receipt
+          if (userId === this.currentUserId) return
+          
+          // Call onMessageRead for each message
+          if (Array.isArray(messageIds)) {
+            messageIds.forEach((messageId: string) => {
+              this.eventHandlers.onMessageRead?.({
+                messageId,
+                userId,
+                channelId: readChannelId || channelId,
+                readAt
+              })
+            })
+          }
         })
 
       rtChannel.subscribe((status, err) => {

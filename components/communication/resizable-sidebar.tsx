@@ -12,6 +12,7 @@ interface ResizableSidebarProps {
   storageKey?: string
   className?: string
   dragHandleClassName?: string
+  side?: 'left' | 'right'
   onWidthChange?: (width: number) => void
 }
 
@@ -25,6 +26,7 @@ export function ResizableSidebar({
   storageKey = "communication",
   className,
   dragHandleClassName,
+  side = 'left',
   onWidthChange
 }: ResizableSidebarProps) {
   const [width, setWidth] = useState(defaultWidth)
@@ -45,6 +47,13 @@ export function ResizableSidebar({
     }
   }, [storageKey, minWidth, maxWidth])
 
+  // Update width when props change
+  useEffect(() => {
+    const clampedWidth = Math.max(minWidth, Math.min(maxWidth, defaultWidth))
+    setWidth(clampedWidth)
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${storageKey}`, String(clampedWidth))
+  }, [defaultWidth, minWidth, maxWidth, storageKey])
+
   // Save width to localStorage when it changes
   const saveWidth = useCallback((newWidth: number) => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${storageKey}`, String(newWidth))
@@ -64,7 +73,9 @@ export function ResizableSidebar({
       if (!isResizing) return
 
       const delta = e.clientX - startXRef.current
-      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidthRef.current + delta))
+      // For right-side panels, reverse the delta direction
+      const adjustedDelta = side === 'right' ? -delta : delta
+      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidthRef.current + adjustedDelta))
       
       setWidth(newWidth)
       onWidthChange?.(newWidth)
@@ -105,7 +116,9 @@ export function ResizableSidebar({
       if (!isResizing) return
 
       const delta = e.touches[0].clientX - startXRef.current
-      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidthRef.current + delta))
+      // For right-side panels, reverse the delta direction
+      const adjustedDelta = side === 'right' ? -delta : delta
+      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidthRef.current + adjustedDelta))
       
       setWidth(newWidth)
       onWidthChange?.(newWidth)
@@ -153,11 +166,12 @@ export function ResizableSidebar({
       {/* Drag handle */}
       <div
         className={cn(
-          "absolute top-0 right-0 w-1.5 h-full cursor-col-resize",
+          "absolute top-0 w-1.5 h-full cursor-col-resize",
           "flex items-center justify-center",
           "transition-colors duration-150",
           "hover:bg-primary/20",
           isResizing && "bg-primary/30",
+          side === 'right' ? "left-0" : "right-0",
           dragHandleClassName
         )}
         onMouseDown={handleMouseDown}
@@ -171,10 +185,11 @@ export function ResizableSidebar({
         <div
           className={cn(
             "absolute top-1/2 -translate-y-1/2",
-            "w-4 h-8 -right-1.5",
+            "w-4 h-8",
             "flex items-center justify-center",
             "rounded bg-muted border border-border shadow-sm",
             "opacity-0 transition-opacity duration-150",
+            side === 'right' ? "-left-1.5" : "-right-1.5",
             (isHovering || isResizing) && "opacity-100"
           )}
         >
