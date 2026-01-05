@@ -29,6 +29,7 @@ import { formatDistanceToNow } from "date-fns"
 import Image from "next/image"
 import { AttachmentShareMenu } from "./attachment-share-menu"
 import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 interface AttachmentPreviewProps {
   attachment: IAttachment
@@ -420,6 +421,7 @@ export const AttachmentPreview = memo(function AttachmentPreview({
 }: AttachmentPreviewProps) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const { toast } = useToast()
 
   const { downloadAttachment } = useChatAttachments()
 
@@ -445,10 +447,15 @@ export const AttachmentPreview = memo(function AttachmentPreview({
       await downloadAttachment(attachment)
     } catch (error) {
       logger.error('Download failed:', error)
+      toast({
+        title: "Download Failed",
+        description: "Could not download the file. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setIsDownloading(false)
     }
-  }, [downloadAttachment, attachment])
+  }, [downloadAttachment, attachment, toast])
 
   // Image attachment
   if (category === 'image' && attachment.file_url) {

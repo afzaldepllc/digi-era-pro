@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getRealtimeManager } from "@/lib/realtime-manager"
+import { communicationLogger as logger } from "@/lib/logger"
 
 type ConnectionState = 'connected' | 'disconnected' | 'reconnecting' | 'error'
 
@@ -94,6 +95,7 @@ export function ConnectionStatus({
         window.location.reload()
       }
     } catch (error) {
+      logger.error('Manual reconnect failed:', error)
       setConnectionState('error')
     } finally {
       setIsManualReconnecting(false)

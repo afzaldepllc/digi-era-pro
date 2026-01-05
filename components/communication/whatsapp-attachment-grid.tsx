@@ -29,6 +29,7 @@ import { IAttachment } from "@/types/communication"
 import { formatFileSize, formatDuration } from "@/lib/utils/file-preview"
 import { AttachmentShareMenu } from "./attachment-share-menu"
 import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 interface WhatsAppAttachmentGridProps {
   attachments: IAttachment[]
@@ -272,6 +273,7 @@ export const WhatsAppAttachmentGrid = memo(function WhatsAppAttachmentGrid({
 }: WhatsAppAttachmentGridProps) {
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
+  const { toast } = useToast()
   
   if (!attachments.length) return null
   
@@ -322,8 +324,13 @@ export const WhatsAppAttachmentGrid = memo(function WhatsAppAttachmentGrid({
       }
     } catch (error) {
       logger.error('Download failed:', error)
+      toast({
+        title: "Download Failed",
+        description: "Could not download the file. Please try again.",
+        variant: "destructive"
+      })
     }
-  }, [])
+  }, [toast])
   
   // Render a single grid item
   const renderGridItem = (attachment: IAttachment, index: number, totalVisible: number) => {

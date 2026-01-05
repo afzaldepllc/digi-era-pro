@@ -42,6 +42,7 @@ import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns"
 import Image from "next/image"
 import { AttachmentShareMenu } from "./attachment-share-menu"
 import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 type GalleryFilter = 'all' | 'media' | 'documents' | 'links'
 
@@ -441,6 +442,7 @@ export const AttachmentGallery = memo(function AttachmentGallery({
   const [isLoading, setIsLoading] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
+  const { toast } = useToast()
 
   const { fetchChannelAttachments, downloadAttachment } = useChatAttachments()
 
@@ -458,6 +460,11 @@ export const AttachmentGallery = memo(function AttachmentGallery({
         setAttachments(result.attachments)
       } catch (error) {
         logger.error('Failed to load gallery:', error)
+        toast({
+          title: "Failed to Load",
+          description: "Could not load attachments. Please try again.",
+          variant: "destructive"
+        })
       } finally {
         setIsLoading(false)
       }
