@@ -110,12 +110,16 @@ export async function POST(request: NextRequest) {
             content: forwardedContent,
             content_type: originalMsg.content_type,
             ...senderInfo
+          },
+          include: {
+            attachments: true
           }
         })
 
         channelMessages.push(forwardedMessage.id)
 
         // Copy attachments if any
+        let copiedAttachments: any[] = []
         if (originalMsg.attachments.length > 0) {
           await prisma.attachments.createMany({
             data: originalMsg.attachments.map(att => ({
@@ -130,17 +134,43 @@ export async function POST(request: NextRequest) {
               file_type: att.file_type
             }))
           })
+          
+          // Fetch the created attachments
+          copiedAttachments = await prisma.attachments.findMany({
+            where: { message_id: forwardedMessage.id }
+          })
         }
 
-        // Broadcast new message
+        // Build full message object for broadcast (matching what onNewMessage expects)
+        const messageForBroadcast = {
+          id: forwardedMessage.id,
+          channel_id: forwardedMessage.channel_id,
+          mongo_sender_id: forwardedMessage.mongo_sender_id,
+          content: forwardedMessage.content,
+          content_type: forwardedMessage.content_type,
+          sender_name: forwardedMessage.sender_name,
+          sender_email: forwardedMessage.sender_email,
+          sender_avatar: forwardedMessage.sender_avatar,
+          sender_role: forwardedMessage.sender_role,
+          created_at: forwardedMessage.created_at.toISOString(),
+          is_edited: forwardedMessage.is_edited,
+          is_trashed: forwardedMessage.is_trashed,
+          attachments: copiedAttachments.map(att => ({
+            id: att.id,
+            file_name: att.file_name,
+            file_url: att.file_url,
+            file_size: att.file_size,
+            file_type: att.file_type
+          })),
+          reactions: [],
+          forwarded: true
+        }
+
+        // Broadcast new message with full payload
         broadcastToChannel({
           channelId: targetChannelId,
           event: 'new_message',
-          payload: {
-            channel_id: targetChannelId,
-            message_id: forwardedMessage.id,
-            forwarded: true
-          }
+          payload: messageForBroadcast
         }).catch((err: Error) => logger.error('Failed to broadcast forwarded message:', err))
       }
 

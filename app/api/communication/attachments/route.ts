@@ -381,17 +381,50 @@ export async function PATCH(request: NextRequest) {
       optionalMessage: message
     })
 
-    // Broadcast forwarded message events to target channels
+    // Fetch and broadcast full message data for each forwarded message
     for (const result of results) {
-      broadcastToChannel({
-        channelId: result.channelId,
-        event: 'new_message',
-        payload: {
-          channel_id: result.channelId,
-          message_id: result.messageId,
-          forwarded: true // Custom flag for client-side handling
+      try {
+        // Get the full message with attachments for proper broadcast
+        const fullMessage = await prisma.messages.findUnique({
+          where: { id: result.messageId },
+          include: { attachments: true }
+        })
+
+        if (fullMessage) {
+          // Build message object matching what onNewMessage expects
+          const messageForBroadcast = {
+            id: fullMessage.id,
+            channel_id: fullMessage.channel_id,
+            mongo_sender_id: fullMessage.mongo_sender_id,
+            content: fullMessage.content,
+            content_type: fullMessage.content_type,
+            sender_name: fullMessage.sender_name || 'Unknown User',
+            sender_email: fullMessage.sender_email || '',
+            sender_avatar: fullMessage.sender_avatar,
+            sender_role: fullMessage.sender_role || 'User',
+            created_at: fullMessage.created_at.toISOString(),
+            is_edited: fullMessage.is_edited,
+            is_trashed: fullMessage.is_trashed,
+            attachments: fullMessage.attachments.map(att => ({
+              id: att.id,
+              file_name: att.file_name,
+              file_url: att.file_url,
+              file_size: att.file_size,
+              file_type: att.file_type
+            })),
+            reactions: [],
+            forwarded: true
+          }
+
+          broadcastToChannel({
+            channelId: result.channelId,
+            event: 'new_message',
+            payload: messageForBroadcast
+          }).catch(err => logger.error('Failed to broadcast forward event:', err))
         }
-      }).catch(err => logger.error('Failed to broadcast forward event:', err))
+      } catch (err) {
+        logger.error('Failed to fetch/broadcast forwarded message:', err)
+      }
     }
 
     return NextResponse.json({
