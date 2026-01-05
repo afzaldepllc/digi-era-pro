@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Check,
   CheckCheck,
@@ -17,11 +18,15 @@ import {
   CornerDownRight,
   Loader2,
   Smile,
-  EyeOff
+  EyeOff,
+  Forward,
+  CheckSquare,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment, IGroupedReaction } from "@/types/communication"
 import { AttachmentGrid } from "./attachment-preview"
+import { WhatsAppAttachmentGrid } from "./whatsapp-attachment-grid"
 import { AudioPlayer } from "./attachment-preview"
 import { QuickReactionBar, MessageReactions } from "./reaction-picker"
 import { formatDistanceToNow, format } from "date-fns"
@@ -55,11 +60,16 @@ interface MessageListProps {
   onReaction?: (messageId: string, emoji: string) => void
   onScrollToMessage?: (messageId: string) => void
   onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
+  onForwardMessages?: (messageIds: string[]) => void
   hasMoreMessages?: boolean
   isLoadingMore?: boolean
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
   channel_members?: IParticipant[] // For showing who read
+  selectMode?: boolean
+  selectedMessageIds?: Set<string>
+  onSelectionChange?: (selectedIds: Set<string>) => void
+  onToggleSelectMode?: () => void
 }
 
 export function MessageList({
@@ -75,11 +85,16 @@ export function MessageList({
   onReaction,
   onScrollToMessage,
   onLoadMore,
+  onForwardMessages,
   hasMoreMessages = true,
   isLoadingMore = false,
   className,
   readReceipts = [],
-  channel_members = []
+  channel_members = [],
+  selectMode = false,
+  selectedMessageIds = new Set(),
+  onSelectionChange,
+  onToggleSelectMode
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -218,6 +233,22 @@ export function MessageList({
     if (!parentId) return undefined
     return messages.find(m => m.id === parentId)
   }, [messages])
+
+  // Helper to parse forwarded content for WhatsApp-style display
+  const parseForwardedContent = useCallback((content: string): { isForwarded: boolean; cleanContent: string; forwardedFrom?: string } => {
+    if (content.startsWith('[Forwarded]')) {
+      const withoutForwarded = content.replace(/^\[Forwarded\]\n?/, '')
+      return {
+        isForwarded: true,
+        cleanContent: withoutForwarded,
+        forwardedFrom: undefined // Could add sender info if needed
+      }
+    }
+    return {
+      isForwarded: false,
+      cleanContent: content
+    }
+  }, [])
   const formatMessageTime = (date: Date) => {
     const now = new Date()
     const messageDate = new Date(date)
@@ -241,8 +272,31 @@ export function MessageList({
   const renderAttachments = (attachments: IAttachment[]) => {
     if (!attachments || attachments.length === 0) return null
 
+    // Use WhatsApp-style grid for media-heavy attachments
+    const hasMedia = attachments.some(a => {
+      const type = a.file_type?.toLowerCase() || ''
+      return type.startsWith('image/') || type.startsWith('video/')
+    })
+
+    if (hasMedia) {
+      return (
+        <div className="mt-1.5">
+          <WhatsAppAttachmentGrid
+            attachments={attachments}
+            maxVisible={4}
+            onForward={onForwardMessages ? (atts) => {
+              // For attachments, we need to forward via messages
+              // This opens the forward modal with the attachment IDs
+              // The parent component handles the actual forwarding
+            } : undefined}
+          />
+        </div>
+      )
+    }
+
+    // Use regular grid for documents/files
     return (
-      <div className="mt-2">
+      <div className="mt-1.5">
         <AttachmentGrid attachments={attachments} />
       </div>
     )
@@ -252,35 +306,17 @@ export function MessageList({
   const groupReactions = (reactions: ICommunication['reactions']): IGroupedReaction[] => {
     if (!reactions || reactions.length === 0) return []
 
-    console.log('🔍 [groupReactions] Raw reactions from database:', reactions)
-
     const grouped: Record<string, IGroupedReaction> = {}
 
-    reactions.forEach((reaction, index) => {
-      console.log(`🔍 [groupReactions] Processing reaction ${index}:`, {
-        id: reaction.id,
-        emoji: reaction.emoji,
-        user_name: reaction.user_name,
-        mongo_user_id: reaction.mongo_user_id,
-        fullReaction: reaction
-      })
-      
+    reactions.forEach((reaction) => {
       // Robust emoji validation - handle potential data corruption
       let emojiKey = reaction.emoji
-      
+
       // Check if emoji field is corrupted (contains UUID or is too long)
       if (!emojiKey || emojiKey.length > 10 || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey)) {
-        console.warn('⚠️ [groupReactions] Invalid emoji detected in reaction:', {
-          originalEmoji: emojiKey,
-          reactionId: reaction.id,
-          isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey || ''),
-          length: emojiKey?.length
-        })
-        emojiKey = '👍'
+        emojiKey = '👍' // Fallback to default emoji
       }
-      
-      console.log(`✅ [groupReactions] Using emoji key:`, emojiKey)
-      
+
       if (!grouped[emojiKey]) {
         grouped[emojiKey] = {
           emoji: emojiKey,
@@ -290,28 +326,25 @@ export function MessageList({
         }
       }
       grouped[emojiKey].count++
-      
-      // Ensure we have proper user name fallback
+
+      // Ensure we have proper user name - use the stored user_name from reaction
       const userName = reaction.user_name || 'Someone'
-      
+
       grouped[emojiKey].users.push({
         id: reaction.id,
         mongo_user_id: reaction.mongo_user_id,
         name: userName
       })
-      
+
       if (reaction.mongo_user_id === currentUserId) {
         grouped[emojiKey].hasCurrentUserReacted = true
       }
     })
 
-    const result = Object.values(grouped).sort((a, b) => {
+    return Object.values(grouped).sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count
       return a.emoji.localeCompare(b.emoji)
     })
-    
-    console.log('✅ [groupReactions] Final grouped result:', result)
-    return result
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
@@ -369,6 +402,20 @@ export function MessageList({
       return <Check className="h-3 w-3 text-muted-foreground" />
     }
 
+    const isSelected = selectedMessageIds.has(message.id)
+
+    const handleMessageClick = () => {
+      if (selectMode && onSelectionChange) {
+        const newSelected = new Set(selectedMessageIds)
+        if (isSelected) {
+          newSelected.delete(message.id)
+        } else {
+          newSelected.add(message.id)
+        }
+        onSelectionChange(newSelected)
+      }
+    }
+
     return (
       <div
         data-message-id={message.id}
@@ -376,10 +423,24 @@ export function MessageList({
           if (el) messageRefs.current.set(message.id, el)
         }}
         className={cn(
-          "flex gap-3 px-4 py-2 group transition-all duration-200 hover:bg-muted/30",
-          isOwn && "flex-row-reverse"
+          "flex gap-2 px-3 py-1 group transition-all duration-150 hover:bg-muted/20",
+          isOwn && "flex-row-reverse",
+          selectMode && "cursor-pointer",
+          isSelected && "bg-primary/10"
         )}
+        onClick={handleMessageClick}
       >
+        {/* Selection checkbox in select mode */}
+        {selectMode && (
+          <div className="flex items-start pt-2 shrink-0">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={handleMessageClick}
+              className="h-5 w-5"
+            />
+          </div>
+        )}
+
         {/* Avatar */}
         <div className="shrink-0">
           {/* <Avatar className="h-8 w-8">
@@ -388,9 +449,9 @@ export function MessageList({
               {sender?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
             </AvatarFallback>
           </Avatar> */}
-          <Avatar className="h-8 w-8 transition-transform duration-200 group-hover:scale-110">
+          <Avatar className="h-7 w-7 transition-transform duration-150 group-hover:scale-105">
             <AvatarImage src={sender?.avatar} alt={sender?.name} />
-            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold text-sm">
+            <AvatarFallback className="bg-gradient-to-br from-primary/15 to-accent/30 text-primary font-medium text-xs">
               {sender?.name
                 ? (() => {
                   const parts = sender.name.trim().split(' ');
@@ -405,40 +466,61 @@ export function MessageList({
         </div>
 
         {/* Message content */}
-        <div className={cn("flex-1 space-y-1.5 flex flex-col", isOwn && "text-right")}>
+        <div className={cn("flex-1 space-y-0.5 flex flex-col", isOwn && "text-right")}>
           {/* Header */}
-          <div className={cn("flex items-center gap-2", isOwn && "flex-row-reverse")}>
-            <span className="font-semibold text-sm">{sender?.name}</span>
+          <div className={cn("flex items-center gap-1.5", isOwn && "flex-row-reverse")}>
+            <span className="font-medium text-[13px]">{sender?.name}</span>
 
             {sender?.role && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 py-0 rounded-full border-primary/20 bg-primary/5 text-primary">
+              <Badge variant="outline" className="text-[9px] h-[14px] px-1 py-0 rounded-full border-primary/20 bg-primary/5 text-primary font-normal">
                 {sender?.role}
               </Badge>
             )}
 
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {formatMessageTime(new Date(message.created_at))}
             </span>
 
             {/* Message actions (visible on hover) */}
-            <div className="opacity-0 group-hover:opacity-100 transition-all duration-200">
+            <div className="opacity-0 group-hover:opacity-100 transition-all duration-150">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent hover:scale-110 transition-all">
-                    <MoreVertical className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-accent transition-all">
+                    <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align={isOwn ? "end" : "start"}>
+                <DropdownMenuContent align={isOwn ? "end" : "start"} className="min-w-[140px]">
                   {onReply && (
-                    <DropdownMenuItem onClick={() => onReply(message)}>
-                      <Reply className="h-4 w-4 mr-2" />
+                    <DropdownMenuItem onClick={() => onReply(message)} className="text-xs py-1.5">
+                      <Reply className="h-3.5 w-3.5 mr-2" />
                       Reply
                     </DropdownMenuItem>
                   )}
                   {isOwn && onEdit && (
-                    <DropdownMenuItem onClick={() => onEdit(message)}>
-                      <Edit className="h-4 w-4 mr-2" />
+                    <DropdownMenuItem onClick={() => onEdit(message)} className="text-xs py-1.5">
+                      <Edit className="h-3.5 w-3.5 mr-2" />
                       Edit
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Forward message */}
+                  {onForwardMessages && (
+                    <DropdownMenuItem onClick={() => onForwardMessages([message.id])} className="text-xs py-1.5">
+                      <Forward className="h-3.5 w-3.5 mr-2" />
+                      Forward
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Select for multi-forward */}
+                  {onToggleSelectMode && (
+                    <DropdownMenuItem onClick={() => {
+                      onToggleSelectMode()
+                      if (onSelectionChange) {
+                        onSelectionChange(new Set([message.id]))
+                      }
+                    }} className="text-xs py-1.5">
+                      <CheckSquare className="h-3.5 w-3.5 mr-2" />
+                      Select
                     </DropdownMenuItem>
                   )}
 
@@ -451,9 +533,9 @@ export function MessageList({
                   {onHideForSelf && (
                     <DropdownMenuItem
                       onClick={() => onHideForSelf(message.id, message.channel_id)}
-                      className="text-muted-foreground"
+                      className="text-muted-foreground text-xs py-1.5"
                     >
-                      <EyeOff className="h-4 w-4 mr-2" />
+                      <EyeOff className="h-3.5 w-3.5 mr-2" />
                       Delete for Me
                     </DropdownMenuItem>
                   )}
@@ -462,9 +544,9 @@ export function MessageList({
                   {isOwn && onMoveToTrash && (
                     <DropdownMenuItem
                       onClick={() => onMoveToTrash(message.id, message.channel_id)}
-                      className="text-amber-600"
+                      className="text-amber-600 text-xs py-1.5"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
                       Delete for everyone
                     </DropdownMenuItem>
                   )}
@@ -473,9 +555,9 @@ export function MessageList({
                   {isOwn && onDelete && !onMoveToTrash && (
                     <DropdownMenuItem
                       onClick={() => onDelete(message.id)}
-                      className="text-destructive"
+                      className="text-destructive text-xs py-1.5"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
                       Delete
                     </DropdownMenuItem>
                   )}
@@ -486,29 +568,29 @@ export function MessageList({
 
           {/* Message text */}
           <div className={cn(
-            "relative rounded-2xl px-4 py-3 shadow-md border max-w-[75%] w-auto overflow-visible transition-all duration-200 group-hover:shadow-lg",
+            "relative rounded-xl px-3 py-2 shadow-sm border max-w-[65%] w-auto overflow-visible transition-all duration-150 group-hover:shadow-md",
             isOwn
-              ? "bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground ml-auto self-end border-primary/20"
-              : "bg-gradient-to-br from-card to-card/95 mr-auto self-start border-border/50 hover:border-border"
+              ? "bg-gradient-to-br from-primary to-primary/95 text-white ml-auto self-end border-primary/20"
+              : "bg-card mr-auto self-start border-border/40 hover:border-border/60"
           )}>
             {/* Reply preview */}
             {parentMessage && (
               <button
                 onClick={() => scrollToMessage(parentMessage.id)}
                 className={cn(
-                  "flex items-start gap-2 mb-3 p-2.5 rounded-lg text-xs w-full text-left transition-all duration-200 border-l-2",
+                  "flex items-start gap-1.5 mb-2 px-2 py-1.5 rounded-md text-[11px] w-full text-left transition-colors border-l-2",
                   isOwn
-                    ? "bg-primary-foreground/10 hover:bg-primary-foreground/20 border-primary-foreground/30"
-                    : "bg-muted/50 hover:bg-muted border-primary/50"
+                    ? "bg-primary-foreground/10 hover:bg-primary-foreground/15 border-primary-foreground/30"
+                    : "bg-muted/40 hover:bg-muted/60 border-primary/40"
                 )}
               >
-                <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0 opacity-70" />
+                <CornerDownRight className="h-2.5 w-2.5 mt-0.5 shrink-0 opacity-60" />
                 <div className="min-w-0 flex-1">
-                  <p className={cn("font-medium truncate", isOwn ? "text-primary-foreground" : "text-foreground")}>
+                  <p className={cn("font-medium truncate text-[11px]", isOwn ? "text-primary-foreground" : "text-foreground")}>
                     {parentMessage.sender?.name || parentMessage.sender_name}
                   </p>
-                  <p className={cn("truncate opacity-70", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
-                    {extractTextFromHtml(parentMessage.content, 60)}
+                  <p className={cn("truncate opacity-70 text-[10px]", isOwn ? "text-primary-foreground" : "text-muted-foreground")}>
+                    {extractTextFromHtml(parentMessage.content, 50)}
                   </p>
                 </div>
               </button>
@@ -516,7 +598,7 @@ export function MessageList({
 
             {/* Render content based on type */}
             {message.content_type === 'audio' && message.attachments && message.attachments.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {/* Voice message content */}
                 {message.content && message.content !== '🎤 Voice message' && (
                   <HtmlTextRenderer
@@ -524,7 +606,10 @@ export function MessageList({
                     fallbackText=""
                     showFallback={false}
                     renderAsHtml={true}
-                    className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
+                    className={cn(
+                      "text-[13px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]",
+                      isOwn && "text-white"
+                    )}
                     truncateHtml={false}
                   />
                 )}
@@ -538,28 +623,73 @@ export function MessageList({
                   />
                 )}
               </div>
-            ) : (
-              <>
-                <HtmlTextRenderer
-                  content={message.content}
-                  fallbackText="No description"
-                  showFallback={true}
-                  renderAsHtml={true}
-                  className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word]"
-                  truncateHtml={false}
-                />
+            ) : (() => {
+              const { isForwarded, cleanContent } = parseForwardedContent(message.content || '')
+              const hasAttachments = message.attachments && message.attachments.length > 0
 
-                {/* Attachments */}
-                {message.attachments && message.attachments.length > 0 &&
-                  renderAttachments(message.attachments)
-                }
-              </>
-            )}
+              return (
+                <>
+                  {/* WhatsApp-style forwarded message layout */}
+                  {isForwarded && (
+                    <div className={cn(
+                      "text-[11px] font-medium mb-1.5 italic flex items-center gap-1",
+                      isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
+                    )}>
+                      <Forward className="h-3 w-3" />
+                      Forwarded
+                    </div>
+                  )}
+
+                  {/* For forwarded messages with attachments: show attachments first, then content */}
+                  {isForwarded && hasAttachments ? (
+                    <>
+                      {/* Attachments first */}
+                      {renderAttachments(message.attachments)}
+
+                      {/* Then content (if any) */}
+                      {cleanContent.trim() && (
+                        <div className="mt-2">
+                          <HtmlTextRenderer
+                            content={cleanContent}
+                            fallbackText=""
+                            showFallback={false}
+                            renderAsHtml={true}
+                            className={cn(
+                              "text-[13px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]",
+                              isOwn && "text-white"
+                            )}
+                            truncateHtml={false}
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Normal message or forwarded without attachments: content first */}
+                      <HtmlTextRenderer
+                        content={isForwarded ? cleanContent : message.content}
+                        fallbackText="No description"
+                        showFallback={true}
+                        renderAsHtml={true}
+                        className={cn(
+                          "text-[13px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]",
+                          isOwn && "text-white"
+                        )}
+                        truncateHtml={false}
+                      />
+
+                      {/* Then attachments */}
+                      {hasAttachments && renderAttachments(message.attachments)}
+                    </>
+                  )}
+                </>
+              )
+            })()}
 
             {/* Quick reaction bar (visible on hover) */}
             {onReaction && (
               <div className={cn(
-                "absolute -top-4 opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:scale-100 scale-95 z-10 shadow-lg",
+                "absolute -top-3 opacity-0 group-hover:opacity-100 transition-all duration-150 transform group-hover:scale-100 scale-90 z-10 shadow-md",
                 isOwn ? "left-0" : "right-0"
               )}>
                 <QuickReactionBar
@@ -580,7 +710,7 @@ export function MessageList({
           )}
 
           {/* Status and read receipts UI */}
-          <div className={cn("flex items-center gap-1 text-xs text-muted-foreground", isOwn && "justify-end")}>
+          <div className={cn("flex items-center gap-0.5 text-[10px] text-muted-foreground", isOwn && "justify-end")}>
             {isOwn && (
               <TooltipProvider>
                 <Tooltip>
@@ -594,12 +724,12 @@ export function MessageList({
                       <p>Failed to send</p>
                     ) : readers.length > 0 ? (
                       <div>
-                        <p className="font-medium">Read by {readers.length}</p>
-                        <div className="flex flex-col gap-1 mt-1 max-h-32 overflow-y-auto">
+                        <p className="font-medium text-xs">Read by {readers.length}</p>
+                        <div className="flex flex-col gap-0.5 mt-1 max-h-28 overflow-y-auto">
                           {readers.map(r => {
                             const receipt = receipts.find(rr => rr.mongo_user_id === r.mongo_member_id)
                             return (
-                              <span key={`reader-${r.mongo_member_id}`} className="flex items-center gap-1 text-xs">
+                              <span key={`reader-${r.mongo_member_id}`} className="flex items-center gap-1 text-[10px]">
                                 <span>{r.name}</span>
                                 {receipt && (
                                   <span className="text-muted-foreground ml-1">
@@ -620,7 +750,7 @@ export function MessageList({
             )}
 
             {message.edited_at && message.edited_at !== message.created_at && (
-              <span className="italic">(edited)</span>
+              <span className="italic text-[10px]">(edited)</span>
             )}
           </div>
         </div>
@@ -631,6 +761,47 @@ export function MessageList({
   return (
     <TooltipProvider>
       <>
+        {/* Multi-select action bar */}
+        {selectMode && (
+          <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-primary/10 border-b">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onToggleSelectMode?.()
+                  onSelectionChange?.(new Set())
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+              <span className="text-sm font-medium">
+                {selectedMessageIds.size} message{selectedMessageIds.size !== 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSelectionChange?.(new Set())}
+                disabled={selectedMessageIds.size === 0}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onForwardMessages?.(Array.from(selectedMessageIds))}
+                disabled={selectedMessageIds.size === 0}
+              >
+                <Forward className="h-4 w-4 mr-1" />
+                Forward ({selectedMessageIds.size})
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div
           ref={messagesContainerRef}

@@ -16,7 +16,9 @@ import {
   Filter,
   Archive,
   Pin,
-  PinOff
+  PinOff,
+  CheckCheck,
+  BellOff
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant } from "@/types/communication"
@@ -173,6 +175,10 @@ export const ChannelList = memo(function ChannelList({
     const isPinned = (channel as any).is_pinned || false
     const isPinLoading = pinLoading === channel.id
 
+    // Check if notifications are muted for this channel (per-user setting)
+    const currentMember = channel.channel_members.find(m => m.mongo_member_id === currentUserId)
+    const isMuted = currentMember?.notifications_enabled === false
+
     // Check if user is online using real-time onlineUserIds from Supabase
     const isAvatarUserOnline = avatar ? (
       onlineUserIds.length > 0
@@ -184,62 +190,68 @@ export const ChannelList = memo(function ChannelList({
       <div
         onClick={() => onChannelSelect(channel.id)}
         className={cn(
-          "flex items-center gap-3 p-3 cursor-pointer transition-all duration-200 rounded-xl group relative",
-          "hover:bg-accent/50 hover:shadow-md hover:scale-[1.01]",
+          "flex items-center gap-2.5 p-2 cursor-pointer transition-all duration-200 rounded-lg group relative",
+          "hover:bg-primary/90 hover:shadow-sm hover:scale-[1.005] hover:text-white",
           "border border-transparent hover:border-accent/50",
           isActive && "bg-primary/10 shadow-sm border-primary/30",
           hasUnread && "bg-accent/20 border-accent/30",
           isArchived && "opacity-60 bg-muted/30",
-          isPinned && "bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20"
+          isPinned && "border-primary/20"
         )}
       >
-        {/* Pin indicator */}
-        {isPinned && (
-          <div className="absolute top-1 right-1">
-            <Pin className="h-3 w-3 text-primary fill-primary rotate-45" />
-          </div>
-        )}
 
-        {/* Pin/Unpin button - visible on hover */}
-        {onPinChannel && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
+        {/* {onPinChannel && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all",
+              "hover:bg-white hover:text-primary",
+              "group/button",
+              isPinned && "opacity-100"
+            )}
+            onClick={(e) => handlePinToggle(e, channel)}
+            disabled={isPinLoading}
+          >
+            {isPinLoading ? (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent group-hover:border-white group-hover/button:border-primary" />
+            ) : isPinned ? (
+              <>
+                <Pin
+                  className={cn(
+                    "h-3 w-3 text-white transition-opacity group-hover:opacity-0",
+                    "group-hover/button:text-primary"
+                  )}
+                />
+                <PinOff
+                  className={cn(
+                    "absolute inset-0 h-3 w-3 text-white opacity-0 group-hover:opacity-100 transition-opacity",
+                    "group-hover/button:text-primary"
+                  )}
+                />
+              </>
+            ) : (
+              <Pin
                 className={cn(
-                  "absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity",
-                  isPinned && "opacity-100"
+                  "h-3 w-3 text-white opacity-0 group-hover:opacity-100 transition-opacity",
+                  "group-hover/button:text-primary"
                 )}
-                onClick={(e) => handlePinToggle(e, channel)}
-                disabled={isPinLoading}
-              >
-                {isPinLoading ? (
-                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                ) : isPinned ? (
-                  <PinOff className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                ) : (
-                  <Pin className="h-3 w-3 text-muted-foreground hover:text-primary" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isPinned ? 'Unpin channel' : 'Pin channel'}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
+              />
+            )}
+          </Button>
+        )} */}
 
         {/* Avatar or Icon */}
         <div className="relative shrink-0">
           {avatar ? (
             <>
               <Avatar className={cn(
-                "h-11 w-11 transition-all duration-200 group-hover:scale-110 shadow-sm",
+                "h-7 w-7 transition-all duration-200 group-hover:scale-105 shadow-sm",
                 // WhatsApp-style green ring for online users
-                isAvatarUserOnline && "ring-2 ring-green-500 dark:ring-green-400 ring-offset-2 ring-offset-background shadow-green-200 dark:shadow-green-900"
+                isAvatarUserOnline && "ring-2 ring-green-500 dark:ring-green-400 ring-offset-1 ring-offset-background"
               )}>
                 <AvatarImage src={avatar.avatar} alt={avatar.name} />
-                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
+                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold group-hover:text-white group-hover:bg-gradient-to-br group-hover:from-white/30 group-hover:to-white/20">
                   {avatar.name ? (() => {
                     const parts = avatar.name.trim().split(' ');
                     if (parts.length === 1) {
@@ -252,11 +264,11 @@ export const ChannelList = memo(function ChannelList({
               </Avatar>
               {/* Online indicator dot */}
               {isAvatarUserOnline && (
-                <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-green-500 dark:bg-green-400 border-2 border-background animate-pulse shadow-sm" />
+                <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 dark:bg-green-400 border-2 border-background animate-pulse shadow-sm transition-transform group-hover:scale-110" />
               )}
             </>
           ) : (
-            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-muted to-accent/30 flex items-center justify-center transition-all duration-200 group-hover:scale-110 group-hover:shadow-md group-hover:from-primary/20 group-hover:to-accent/40 shadow-sm">
+            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-muted to-accent/30 flex items-center justify-center transition-all duration-200 group-hover:scale-105 group-hover:shadow-sm group-hover:from-white/30 group-hover:to-white/20 group-hover:text-white">
               {getChannelIcon(channel)}
             </div>
           )}
@@ -264,9 +276,9 @@ export const ChannelList = memo(function ChannelList({
 
         {/* Channel info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-1.5">
             <h3 className={cn(
-              "font-semibold text-sm truncate tracking-tight transition-colors",
+              "font-semibold text-[13px] truncate transition-all group-hover:text-white group-hover:scale-[1.02]",
               hasUnread && "font-bold text-foreground",
               isActive && "text-primary"
             )}>
@@ -275,7 +287,7 @@ export const ChannelList = memo(function ChannelList({
 
             {channel.last_message && (
               <span className={cn(
-                "text-[10px] font-medium shrink-0 transition-colors",
+                "text-[9px] font-medium shrink-0 transition-all group-hover:text-white group-hover:scale-105",
                 hasUnread ? "text-primary" : "text-muted-foreground"
               )}>
                 {formatLastMessageTime(channel.last_message.created_at)}
@@ -283,25 +295,20 @@ export const ChannelList = memo(function ChannelList({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-1.5">
             {/* Subtitle or last message */}
             <div className="flex-1 min-w-0">
               {channel.last_message ? (
-                // <p className={cn(
-                //   "text-sm truncate leading-tight transition-colors",
-                //   hasUnread ? "text-foreground font-medium" : "text-muted-foreground/80"
-                // )}>
                 <HtmlTextRenderer
                   content={channel.last_message.content}
                   fallbackText="No description"
                   showFallback={true}
                   renderAsHtml={true}
-                  className="line-clamp-1 text-xs"
+                  className="line-clamp-1 text-[11px]"
                   truncateHtml={true}
                 />
-                // </p>
               ) : (
-                <p className="text-xs text-muted-foreground/60 font-medium">
+                <p className="text-[11px] text-muted-foreground/60 font-medium group-hover:text-white transition-all group-hover:scale-[1.02]">
                   {subtitle}
                 </p>
               )}
@@ -311,7 +318,7 @@ export const ChannelList = memo(function ChannelList({
             {hasUnread && (
               <Badge
                 variant="default"
-                className="ml-2 h-5 min-w-[20px] px-1.5 flex items-center justify-center text-[10px] font-bold bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all hover:scale-110"
+                className="ml-1.5 h-4 min-w-[18px] px-1 flex items-center justify-center text-[9px] font-bold bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm transition-all group-hover:scale-110 group-hover:bg-white group-hover:text-accent group-hover:border-white"
               >
                 {(channel.unreadCount || 0) > 99 ? '99+' : (channel.unreadCount || 0)}
               </Badge>
@@ -319,20 +326,16 @@ export const ChannelList = memo(function ChannelList({
           </div>
 
           {/* Channel type indicator */}
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 h-4 rounded-full bg-background/50 border-accent/40 text-muted-foreground">
-              {channel.type === 'dm' ? 'Direct' : channel.type === 'client-support' ? 'Support' : channel.type.replace('-', ' ')}
-            </Badge>
-
+          <div className="flex items-center gap-0.5 mt-0.5">
             {isArchived && (
-              <Badge variant="secondary" className="text-[10px] h-4 gap-1 px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                <Archive className="h-2.5 w-2.5" />
+              <Badge variant="secondary" className="text-[9px] h-3.5 gap-0.5 px-1 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 group-hover:bg-white/20 group-hover:text-white group-hover:border-white/40 transition-all group-hover:scale-105">
+                <Archive className="h-2 w-2" />
                 Archived
               </Badge>
             )}
 
             {!channel.is_private && !isArchived && (
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 py-0 rounded-full">
+              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 py-0 rounded-full group-hover:bg-white/20 group-hover:text-white group-hover:border-white/40 transition-all group-hover:scale-105">
                 External
               </Badge>
             )}
@@ -343,132 +346,116 @@ export const ChannelList = memo(function ChannelList({
   }
 
   return (
-    <TooltipProvider>
-      <div className={cn("flex flex-col h-full w-full max-w-full bg-gradient-to-b from-card to-card/95 border-r border-border/50 shadow-sm overflow-hidden", className)}>
-        {/* Header */}
-        {showHeader && (
-          <div className="p-3 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
-            {/* Search */}
-            {showSearch && (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
-                <Input
-                  placeholder="Search conversations..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20 hover:border-primary/30"
-                />
-              </div>
-            )}
-          </div>
-        )}
+    <div className={cn("flex flex-col h-full w-full max-w-full bg-gradient-to-b from-card to-card/95 border-r border-border/50 shadow-sm overflow-hidden", className)}>
+      {/* Header */}
+      {showHeader && (
+        <div className="p-3 pr-4 border-b border-border/30 bg-gradient-to-r from-background via-accent/5 to-primary/5 shadow-sm">
+          {/* Search */}
+          {showSearch && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
+              <Input
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20 hover:border-primary/30"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Channel list */}
-        <div className="flex-1 w-full max-w-full overflow-auto">
-          <div className="p-3 space-y-2 w-full max-w-full">
-            {filteredChannels.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No conversations found</p>
-                {searchQuery && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    onClick={() => setSearchQuery('')}
-                    className="mt-2"
-                  >
-                    Clear search
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Pinned Channels Section */}
-                {pinnedChannels.length > 0 && (
+      {/* Channel list */}
+      <div className="flex-1 w-full max-w-full overflow-auto">
+        <div className="p-2 space-y-1 w-full max-w-full">
+          {filteredChannels.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No conversations found</p>
+              {searchQuery && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="mt-2"
+                >
+                  Clear search
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Pinned Channels Section */}
+              {pinnedChannels.length > 0 && (
+                <>
+                  <div className="py-2 px-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+                      <Pin className="h-3 w-3" />
+                      <span>Pinned ({pinnedChannels.length}/5)</span>
+                    </div>
+                  </div>
+                  {pinnedChannels.map((channel) => (
+                    <ChannelItem key={channel.id} channel={channel} />
+                  ))}
+                  {/* Separator after pinned */}
+                  <div className="py-2 px-2">
+                    <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+                  </div>
+                </>
+              )}
+
+              {/* Unpinned Channels - DM and Other */}
+              {(() => {
+                const dmChannels = unpinnedChannels.filter(channel => channel.type === 'dm')
+                const otherChannels = unpinnedChannels.filter(channel => channel.type !== 'dm')
+
+                return (
                   <>
-                    <div className="py-2 px-2">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                        <Pin className="h-3 w-3" />
-                        <span>Pinned ({pinnedChannels.length}/5)</span>
+                    {/* DM Unread */}
+                    {dmChannels
+                      .filter(channel => (channel.unreadCount || 0) > 0)
+                      .map((channel) => (
+                        <ChannelItem key={channel.id} channel={channel} />
+                      ))
+                    }
+
+                    {/* DM Read */}
+                    {dmChannels
+                      .filter(channel => (channel.unreadCount || 0) === 0)
+                      .map((channel) => (
+                        <ChannelItem key={channel.id} channel={channel} />
+                      ))
+                    }
+
+                    {/* Separator between DM and other channels */}
+                    {dmChannels.length > 0 && otherChannels.length > 0 && (
+                      <div className="py-2 px-2">
+                        <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-50" />
                       </div>
-                    </div>
-                    {pinnedChannels.map((channel) => (
-                      <ChannelItem key={channel.id} channel={channel} />
-                    ))}
-                    {/* Separator after pinned */}
-                    <div className="py-3 px-2">
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                          <div className="w-full border-t border-border/40" />
-                        </div>
-                        <div className="relative flex justify-center text-xs text-muted-foreground">
-                          <span className="bg-card px-2 font-medium">All Chats</span>
-                        </div>
-                      </div>
-                    </div>
+                    )}
+
+                    {/* Other Channels Unread */}
+                    {otherChannels
+                      .filter(channel => (channel.unreadCount || 0) > 0)
+                      .map((channel) => (
+                        <ChannelItem key={channel.id} channel={channel} />
+                      ))
+                    }
+
+                    {/* Other Channels Read */}
+                    {otherChannels
+                      .filter(channel => (channel.unreadCount || 0) === 0)
+                      .map((channel) => (
+                        <ChannelItem key={channel.id} channel={channel} />
+                      ))
+                    }
                   </>
-                )}
-
-                {/* Unpinned Channels - DM and Other */}
-                {(() => {
-                  const dmChannels = unpinnedChannels.filter(channel => channel.type === 'dm')
-                  const otherChannels = unpinnedChannels.filter(channel => channel.type !== 'dm')
-
-                  return (
-                    <>
-                      {/* DM Unread */}
-                      {dmChannels
-                        .filter(channel => (channel.unreadCount || 0) > 0)
-                        .map((channel) => (
-                          <ChannelItem key={channel.id} channel={channel} />
-                        ))
-                      }
-
-                      {/* DM Read */}
-                      {dmChannels
-                        .filter(channel => (channel.unreadCount || 0) === 0)
-                        .map((channel) => (
-                          <ChannelItem key={channel.id} channel={channel} />
-                        ))
-                      }
-
-                      {/* Separator between DM and other channels */}
-                      {dmChannels.length > 0 && otherChannels.length > 0 && (
-                        <div className="py-3 px-2">
-                          <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                              <div className="w-full border-t border-border/40" />
-                            </div>
-                            <div className="relative flex justify-center text-xs text-muted-foreground">
-                              <span className="bg-card px-2 font-medium">Channels</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Other Channels Unread */}
-                      {otherChannels
-                        .filter(channel => (channel.unreadCount || 0) > 0)
-                        .map((channel) => (
-                          <ChannelItem key={channel.id} channel={channel} />
-                        ))
-                      }
-
-                      {/* Other Channels Read */}
-                      {otherChannels
-                        .filter(channel => (channel.unreadCount || 0) === 0)
-                        .map((channel) => (
-                          <ChannelItem key={channel.id} channel={channel} />
-                        ))
-                      }
-                    </>
-                  )
-                })()}
-              </>
-            )}
-          </div>
+                )
+              })()}
+            </>
+          )}
         </div>
       </div>
-    </TooltipProvider>
+    </div>
   )
 })

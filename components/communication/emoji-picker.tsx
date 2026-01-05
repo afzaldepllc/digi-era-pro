@@ -118,11 +118,11 @@ interface EmojiGridProps {
   size?: "sm" | "md" | "lg"
 }
 
-const EmojiGrid = memo(function EmojiGrid({ 
-  emojis, 
-  onSelect, 
+const EmojiGrid = memo(function EmojiGrid({
+  emojis,
+  onSelect,
   columns = 8,
-  size = "md" 
+  size = "md"
 }: EmojiGridProps) {
   const sizeClasses = {
     sm: "h-6 w-6 text-sm",
@@ -187,7 +187,7 @@ export const EmojiPicker = memo(function EmojiPicker({
   // Filter emojis based on search
   const filteredEmojis = useMemo(() => {
     if (!searchQuery.trim()) return null
-    
+
     const allEmojis: string[] = []
     Object.values(EMOJI_CATEGORIES).forEach(emojis => {
       emojis.forEach(emoji => {
@@ -196,7 +196,7 @@ export const EmojiPicker = memo(function EmojiPicker({
         }
       })
     })
-    
+
     // Return all emojis when searching (in production, use emoji keywords for real search)
     return allEmojis.slice(0, 60)
   }, [searchQuery])
@@ -309,9 +309,9 @@ export const EmojiPicker = memo(function EmojiPicker({
               <p className="text-xs font-medium text-muted-foreground mb-2 px-1">
                 {activeCategory}
               </p>
-              <EmojiGrid 
-                emojis={EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES] || []} 
-                onSelect={handleSelect} 
+              <EmojiGrid
+                emojis={EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES] || []}
+                onSelect={handleSelect}
               />
             </div>
           )}
@@ -336,8 +336,8 @@ export const EmojiPicker = memo(function EmojiPicker({
           {triggerIcon || <Smile className="h-4 w-4 text-muted-foreground" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className={cn("w-80 p-0", className)} 
+      <PopoverContent
+        className={cn("w-80 p-0", className)}
         align={align}
         side={side}
         sideOffset={5}
@@ -392,7 +392,7 @@ export function InlineEmojiPicker({ onSelect, onClose, className }: InlineEmojiP
   // Filter emojis based on search
   const filteredEmojis = useMemo(() => {
     if (!searchQuery.trim()) return null
-    
+
     const allEmojis: string[] = []
     Object.values(EMOJI_CATEGORIES).forEach(emojis => {
       emojis.forEach(emoji => {
@@ -401,7 +401,7 @@ export function InlineEmojiPicker({ onSelect, onClose, className }: InlineEmojiP
         }
       })
     })
-    
+
     return allEmojis.slice(0, 50)
   }, [searchQuery])
 
@@ -545,7 +545,7 @@ export const QuickReactionBar = memo(function QuickReactionBar({
 }: QuickReactionBarProps) {
   return (
     <div className={cn(
-      "flex items-center gap-0.5 bg-background border rounded-full px-1 py-0.5 shadow-md",
+      "flex items-center gap-0.5 bg-background/95 backdrop-blur-sm border rounded-full px-0.5 py-0.5 shadow-sm",
       className
     )}>
       {QUICK_REACTIONS.slice(0, 6).map(emoji => (
@@ -553,7 +553,7 @@ export const QuickReactionBar = memo(function QuickReactionBar({
           key={emoji}
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-0 text-sm hover:bg-muted hover:scale-125 transition-transform rounded-full"
+          className="h-5 w-5 p-0 text-xs hover:bg-muted hover:scale-110 transition-transform rounded-full"
           onClick={() => onSelect(emoji)}
         >
           {emoji}
@@ -562,7 +562,7 @@ export const QuickReactionBar = memo(function QuickReactionBar({
       <EmojiPicker
         onSelect={onSelect}
         showQuickAccess={false}
-        triggerClassName="h-6 w-6 rounded-full"
+        triggerClassName="h-5 w-5 rounded-full"
         side="top"
         align="end"
       />
@@ -598,34 +598,25 @@ export const MessageReactions = memo(function MessageReactions({
 
   return (
     <TooltipProvider>
-      <div className={cn("flex flex-wrap gap-1 mt-1", className)}>
+      <div className={cn("flex flex-wrap gap-0.5 mt-0.5", className)}>
         {reactions.map((reaction, index) => {
           // Comprehensive emoji validation and fallback
           let displayEmoji = reaction.emoji
-          
-          console.log(`🔍 [MessageReactions] Processing reaction ${index}:`, {
-            originalEmoji: reaction.emoji,
-            reactionObject: reaction,
-            users: reaction.users
-          })
-          
+
           // Check if emoji field contains UUID or invalid data
-          if (!displayEmoji || 
-              displayEmoji.length > 10 || 
-              displayEmoji.includes('-') ||
-              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(displayEmoji)) {
-            console.warn('⚠️ [MessageReactions] Invalid emoji detected:', displayEmoji, 'using fallback')
-            displayEmoji = '👍'
+          if (!displayEmoji ||
+            displayEmoji.length > 10 ||
+            displayEmoji.includes('-') ||
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(displayEmoji)) {
+            displayEmoji = '👍' // Fallback to default emoji
           }
-          
-          console.log(`✅ [MessageReactions] Will display emoji:`, displayEmoji)
-          
+
           const userNames = reaction.users
             .slice(0, 10)
             .map(u => u.name || 'Someone')
             .join(', ')
-          
-          const tooltipText = reaction.users.length > 10 
+
+          const tooltipText = reaction.users.length > 10
             ? `${userNames} and ${reaction.users.length - 10} more reacted with ${displayEmoji}`
             : `${userNames} reacted with ${displayEmoji}`
 
@@ -636,19 +627,16 @@ export const MessageReactions = memo(function MessageReactions({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-6 px-1.5 py-0 text-xs gap-1 rounded-full border transition-all",
+                    "h-5 px-1 py-0 text-[10px] gap-0.5 rounded-full border transition-all",
                     reaction.hasCurrentUserReacted
                       ? "bg-primary/10 border-primary/30 hover:bg-primary/20 text-primary"
-                      : "bg-muted/50 hover:bg-muted border-muted"
+                      : "bg-muted/40 hover:bg-muted border-muted"
                   )}
-                  onClick={() => {
-                    console.log(`🖱️ [MessageReactions] Clicked reaction, sending emoji:`, displayEmoji)
-                    onReactionClick(displayEmoji)
-                  }}
+                  onClick={() => onReactionClick(displayEmoji)}
                 >
-                  <span className="text-sm leading-none select-none">{displayEmoji}</span>
+                  <span className="text-xs leading-none select-none">{displayEmoji}</span>
                   <span className={cn(
-                    "font-medium text-xs",
+                    "font-medium text-[10px]",
                     reaction.hasCurrentUserReacted ? "text-primary" : "text-muted-foreground"
                   )}>
                     {reaction.count}
@@ -656,19 +644,19 @@ export const MessageReactions = memo(function MessageReactions({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs">
-                <div className="text-xs">
+                <div className="text-[10px]">
                   {tooltipText}
                 </div>
               </TooltipContent>
             </Tooltip>
           )
         })}
-        
+
         {/* Add reaction button - WhatsApp style */}
         <EmojiPicker
           onSelect={onReactionClick}
           showQuickAccess={false}
-          triggerClassName="h-6 w-6 rounded-full border bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          triggerClassName="h-5 w-5 rounded-full border bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           side="top"
         />
       </div>

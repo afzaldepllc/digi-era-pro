@@ -3,10 +3,8 @@ import { S3Service } from '@/lib/services/s3-service'
 import { deleteFileSchema, fileMetadataSchema } from '@/lib/validations/s3'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 
-interface RouteParams {
-    params: {
-        key: string
-    }
+type RouteParams = {
+    params: Promise<{ key: string }>
 }
 
 // GET /api/files/[key] - Get file metadata
@@ -15,7 +13,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Security & Authentication
         const { session, user } = await genericApiRoutesMiddleware(request, 'files', 'read')
 
-        const key = decodeURIComponent(params.key)
+        const { key: rawKey } = await params
+        const key = decodeURIComponent(rawKey)
 
         const validation = fileMetadataSchema.safeParse({ key })
         if (!validation.success) {
@@ -57,7 +56,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         // Security & Authentication
         const { session, user } = await genericApiRoutesMiddleware(request, 'files', 'delete')
 
-        const key = decodeURIComponent(params.key)
+        const { key: rawKey } = await params
+        const key = decodeURIComponent(rawKey)
 
         const validation = deleteFileSchema.safeParse({ key })
         if (!validation.success) {

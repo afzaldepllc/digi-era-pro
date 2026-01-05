@@ -67,7 +67,7 @@ interface CommunicationState {
     message?: ICommunication
     messageId?: string
     preview?: string
-    timestamp: Date
+    timestamp: string  // ISO string for Redux serialization
     read: boolean
   }>
   
@@ -178,8 +178,14 @@ const communicationSlice = createSlice({
         channel.last_message = message
         channel.last_message_at = message.created_at
         
-        // Update unread count if not active channel and not from current user
-        if (channelId !== state.activeChannelId && message.mongo_sender_id !== state.currentUserId) {
+        // Update unread count ONLY if:
+        // 1. Not the active channel
+        // 2. currentUserId is set (to avoid false positives)
+        // 3. Message is NOT from the current user
+        const isActiveChannel = channelId === state.activeChannelId
+        const isFromCurrentUser = state.currentUserId && message.mongo_sender_id === state.currentUserId
+        
+        if (!isActiveChannel && !isFromCurrentUser && state.currentUserId) {
           channel.unreadCount = (channel.unreadCount || 0) + 1
           state.unreadCount += 1
         }
@@ -525,6 +531,13 @@ const communicationSlice = createSlice({
       preview?: string
       read?: boolean
     }>) => {
+      // Check for duplicate notifications
+      const exists = state.notifications.some(n => n.id === action.payload.id)
+      if (exists) {
+        console.log('📨 Notification already exists, skipping:', action.payload.id)
+        return
+      }
+      
       state.notifications.push({
         id: action.payload.id,
         type: action.payload.type,
@@ -533,7 +546,7 @@ const communicationSlice = createSlice({
         message: action.payload.message,
         messageId: action.payload.messageId,
         preview: action.payload.preview,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(), // Use ISO string for serialization
         read: action.payload.read ?? false
       })
     },
@@ -610,22 +623,18 @@ const communicationSlice = createSlice({
     
     // Data setters for TanStack Query integration
     setChannels: (state, action: PayloadAction<IChannel[]>) => {
-      // Only update if channels actually changed (prevent infinite loops)
-      const newChannelIds = action.payload.map(c => c.id).sort().join(',')
-      const currentChannelIds = state.channels.map(c => c.id).sort().join(',')
-      
-      if (newChannelIds === currentChannelIds) {
-        // Channels are the same, skip update
-        return
-      }
-      
-      // Create fresh copies to avoid mutating frozen payload
-      state.channels = action.payload.map(channel => ({
-        ...channel,
-        unreadCount: channel.unreadCount ?? 0
-      }))
+      // Create fresh copies and transform messages array to last_message
+      state.channels = action.payload.map(channel => {
+        // Transform messages array to last_message for convenience
+        const lastMessage = (channel as any).messages?.[0] || (channel as any).last_message || null
+        return {
+          ...channel,
+          last_message: lastMessage,
+          unreadCount: channel.unreadCount ?? 0
+        }
+      })
       state.channelsInitialized = true // Mark as initialized to prevent duplicate fetches
-      // Calculate total unread count
+      // Calculate total unread count from all channels
       state.unreadCount = state.channels.reduce((total, channel) => total + (channel.unreadCount || 0), 0)
     },
     

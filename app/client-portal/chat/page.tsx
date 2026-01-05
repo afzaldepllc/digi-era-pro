@@ -46,7 +46,7 @@ export default function ClientChatPage() {
 
   useEffect(() => {
     if (channels.length === 0) {
-      fetchChannels({ is_private: false })
+      fetchChannels()
     }
   }, [channels.length, fetchChannels])
 
@@ -319,8 +319,8 @@ export default function ClientChatPage() {
                 ) : (
                   currentUser && supportChannel && (
                     <MessageList
-                      messages={messages}
-                      typingUsers={typingUsers}
+                      messages={messages[supportChannel.id] || []}
+                      typingUsers={typingUsers[supportChannel.id] || []}
                       currentUserId={currentUser.mongo_member_id}
                       onMessageRead={handleMessageRead}
                       channel_members={supportChannel.channel_members || []}

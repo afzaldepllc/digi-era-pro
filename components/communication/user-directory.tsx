@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, memo } from "react"
+import { useState, useEffect, useMemo, memo, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,13 +10,19 @@ import {
   MessageSquare,
   Users,
   UserCheck,
-  Clock
+  Clock,
+  Check,
+  CheckCheck
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
 import { useUsers } from "@/hooks/use-users"
 import { useSession } from "next-auth/react"
 import { User } from "@/types"
+import { formatDistanceToNow } from "date-fns"
+import { HtmlTextRenderer } from "@/components/shared/html-text-renderer"
+import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserDirectoryProps {
   onStartDM?: (userId: string) => void
@@ -27,63 +33,78 @@ interface UserDirectoryProps {
 export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelSelect, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [pinnedUsers, setPinnedUsers] = useState<Set<string>>(new Set())
   const [pinLoading, setPinLoading] = useState<string | null>(null)
-  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds, pinUser } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds, pinUser, pinChannel } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
+  const { toast } = useToast()
+  
+  const currentUserId = (session?.user as any)?.id
 
-  // Load pinned users from localStorage
-  useEffect(() => {
-    const currentUserId = (session?.user as any)?.id
-    if (currentUserId) {
-      const stored = localStorage.getItem(`pinnedUsers_${currentUserId}`)
-      if (stored) {
-        try {
-          const pinnedArray = JSON.parse(stored)
-          setPinnedUsers(new Set(pinnedArray))
-        } catch (error) {
-          console.error('Failed to parse pinned users from localStorage:', error)
+  // Derive pinned users from pinned DM channels (Feature 30: Pin Sync)
+  // This ensures pin status is always in sync between user_directory and chat_lists
+  const pinnedUsers = useMemo(() => {
+    if (!currentUserId) return new Set<string>()
+    
+    const pinnedUserIds = new Set<string>()
+    channels.forEach(channel => {
+      if (channel.type === 'dm' && channel.is_pinned) {
+        // Find the other user in this DM channel
+        const otherMember = channel.channel_members.find(
+          m => m.mongo_member_id !== currentUserId
+        )
+        if (otherMember) {
+          pinnedUserIds.add(otherMember.mongo_member_id)
         }
       }
-    }
-  }, [(session?.user as any)?.id])
-
-  // Save pinned users to localStorage
-  useEffect(() => {
-    const currentUserId = (session?.user as any)?.id
-    if (currentUserId) {
-      localStorage.setItem(`pinnedUsers_${currentUserId}`, JSON.stringify(Array.from(pinnedUsers)))
-    }
-  }, [pinnedUsers, (session?.user as any)?.id])
+    })
+    return pinnedUserIds
+  }, [channels, currentUserId])
 
   // Filter active users (exclude current user)
   const activeUsers = useMemo(() => {
     return users.filter(user =>
-      user._id.toString() !== (session?.user as any)?.id
+      user._id.toString() !== currentUserId
       //  &&
       // user.isClient === false
     )
-  }, [users, (session?.user as any)?.id]);
+  }, [users, currentUserId]);
   
-  const getUserUnreadCount = (user: User) => {
-    const currentUserId = (session?.user as any)?.id
-    if (!currentUserId) return 0
+  // Get DM channel for a user (if exists)
+  const getUserDMChannel = (user: User) => {
+    if (!currentUserId) return null
     
-    // Find DM channel with this user
-    const dmChannel = channels.find(channel => {
+    return channels.find(channel => {
       if (channel.type !== 'dm') return false
       const memberIds = channel.channel_members.map(m => m.mongo_member_id)
       return memberIds.includes(currentUserId) && memberIds.includes(user._id.toString())
-    })
-    
+    }) || null
+  }
+  
+  const getUserUnreadCount = (user: User) => {
+    const dmChannel = getUserDMChannel(user)
     return dmChannel ? (dmChannel.unreadCount || 0) : 0
+  }
+  
+  // Get last message info for a user
+  const getUserLastMessage = (user: User) => {
+    const dmChannel = getUserDMChannel(user)
+    if (!dmChannel?.last_message) return null
+    
+    const lastMsg = dmChannel.last_message
+    const isFromMe = lastMsg.mongo_sender_id === currentUserId
+    
+    return {
+      content: lastMsg.content,
+      isFromMe,
+      time: lastMsg.created_at,
+      hasRead: false // TODO: Track if message is read
+    }
   }
   
   // Sort users by recent message activity
   // Users with recent DM messages appear first
   const sortedUsers = useMemo(() => {
-    const currentUserId = (session?.user as any)?.id
     if (!currentUserId) return activeUsers
     
     // Create a map of userId -> last_message_at from DM channels
@@ -160,7 +181,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
 
   const handleStartDM = async (user: User) => {
     if (!(session?.user as any)?.id) {
-      console.error('No current user found or user id missing')
+      logger.error('No current user found or user id missing')
       return
     }
 
@@ -193,28 +214,63 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
         }
       }
     } catch (error) {
-      console.error('Failed to create DM:', error)
+      logger.error('Failed to create DM:', error)
+      toast({
+        title: "Failed to start conversation",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      })
     }
   }
 
+  // Get the DM channel for a user (for pin sync)
+  const getUserDMChannelId = useCallback((userId: string): string | null => {
+    if (!currentUserId) return null
+    
+    const dmChannel = channels.find(channel => {
+      if (channel.type !== 'dm') return false
+      const memberIds = channel.channel_members.map(m => m.mongo_member_id)
+      return memberIds.includes(currentUserId) && memberIds.includes(userId)
+    })
+    
+    return dmChannel?.id || null
+  }, [channels, currentUserId])
+
   const handlePinToggle = async (userId: string) => {
     const isPinned = pinnedUsers.has(userId)
-    setPinLoading(userId)
+    const channelId = getUserDMChannelId(userId)
     
+    // If no DM channel exists, we need to create one first or use the old API
+    if (!channelId) {
+      // Use the legacy pinUser API for users without DM channels
+      setPinLoading(userId)
+      try {
+        await pinUser(userId, isPinned)
+      } catch (error) {
+        logger.error('Failed to toggle pin:', error)
+        toast({
+          title: "Failed to pin user",
+          description: "Something went wrong. Please try again.",
+          variant: "destructive"
+        })
+      } finally {
+        setPinLoading(null)
+      }
+      return
+    }
+    
+    // Pin/unpin the DM channel - this syncs with channel list
+    setPinLoading(userId)
     try {
-      await pinUser(userId, isPinned)
-      // Update local state
-      setPinnedUsers(prev => {
-        const newSet = new Set(prev)
-        if (isPinned) {
-          newSet.delete(userId)
-        } else {
-          newSet.add(userId)
-        }
-        return newSet
-      })
+      await pinChannel(channelId, isPinned)
+      // The channel update will propagate through Redux and update pinnedUsers via useMemo
     } catch (error) {
-      console.error('Failed to toggle pin:', error)
+      logger.error('Failed to toggle pin:', error)
+      toast({
+        title: "Failed to pin channel",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setPinLoading(null)
     }
@@ -275,55 +331,102 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                 const unreadCount = getUserUnreadCount(user)
                 const hasUnread = unreadCount > 0
                 const isPinLoading = pinLoading === user._id.toString()
+                const lastMessage = getUserLastMessage(user)
                 
                 return (
                   <div
                     key={user._id as string}
-                    className="flex items-center gap-2 py-2 px-1 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group"
+                    className={cn(
+                      "flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group",
+                      hasUnread && "bg-accent/30"
+                    )}
                     onClick={() => !channelLoading && handleStartDM(user)}
                   >
                     {/* Avatar */}
-                    <div className="relative">
+                    <div className="relative shrink-0">
                       <Avatar className={cn(
-                        "h-8 w-8",
+                        "h-11 w-11",
                         // WhatsApp-style green ring for online users
                         getUserStatus(user) === 'online' && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
                       )}>
                         <AvatarImage src={user.avatar} alt={user.name || user.email} />
-                        <AvatarFallback>{user.name
-                          ? (() => {
-                            const parts = user.name.trim().split(' ');
-                            if (parts.length === 1) {
-                              return parts[0][0].toUpperCase();
-                            }
-                            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                          })()
-                          : user.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/40 text-primary font-semibold">
+                          {user.name
+                            ? (() => {
+                              const parts = user.name.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0].toUpperCase();
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                            : user.email?.[0]?.toUpperCase() || 'U'}
+                        </AvatarFallback>
                       </Avatar>
                       {/* Online indicator dot */}
                       <div className={cn(
-                        "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background",
-                        getUserStatus(user) === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'
+                        "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-background",
+                        getUserStatus(user) === 'online' ? 'bg-emerald-500 animate-pulse shadow-sm' : 'bg-gray-400'
                       )} />
-                      {/* Unread badge */}
-                      {hasUnread && (
-                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center border border-background px-1">
-                          {unreadCount}
-                        </div>
-                      )}
                     </div>
 
-                    {/* User Info */}
+                    {/* User Info with Last Message */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm truncate">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cn(
+                          "font-medium text-sm truncate",
+                          hasUnread && "font-semibold"
+                        )}>
                           {user.name || user.email}
                         </p>
-                        {/* {user.role && (
-                          <Badge variant="secondary" className={cn("text-xs", getRoleColor(user.role))}>
-                            {typeof user.role === 'string' ? user.role : 'user'}
+                        {/* Time of last message */}
+                        {lastMessage && (
+                          <span className={cn(
+                            "text-[10px] font-medium shrink-0",
+                            hasUnread ? "text-primary" : "text-muted-foreground"
+                          )}>
+                            {formatDistanceToNow(new Date(lastMessage.time), { addSuffix: false })}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Last message preview */}
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          {/* Read status for sent messages */}
+                          {lastMessage?.isFromMe && (
+                            <CheckCheck className={cn(
+                              "h-3.5 w-3.5 shrink-0",
+                              lastMessage.hasRead ? "text-blue-500" : "text-muted-foreground"
+                            )} />
+                          )}
+                          {lastMessage ? (
+                            <HtmlTextRenderer
+                              content={lastMessage.content}
+                              fallbackText=""
+                              showFallback={false}
+                              renderAsHtml={true}
+                              className={cn(
+                                "line-clamp-1 text-xs",
+                                hasUnread ? "text-foreground font-medium" : "text-muted-foreground"
+                              )}
+                              truncateHtml={true}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground/60">
+                              Start a conversation
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Unread badge */}
+                        {hasUnread && (
+                          <Badge
+                            variant="default"
+                            className="ml-1 h-5 min-w-[20px] px-1.5 flex items-center justify-center text-[10px] font-bold bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm"
+                          >
+                            {unreadCount > 99 ? '99+' : unreadCount}
                           </Badge>
-                        )} */}
+                        )}
                       </div>
                     </div>
 
@@ -331,7 +434,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0 shrink-0"
                       onClick={(e) => {
                         e.stopPropagation()
                         handlePinToggle(user._id.toString())

@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
                 email: user.email,
                 name: user.name,
                 status: user.status,
-                role: user.role?.name || 'No role assigned',
-                department: user.department?.name || 'No department assigned',
+                role: (user.role as { name?: string } | null)?.name || 'No role assigned',
+                department: (user.department as { name?: string } | null)?.name || 'No department assigned',
                 twoFactorEnabled: user.twoFactorEnabled,
                 createdAt: user.createdAt
             },

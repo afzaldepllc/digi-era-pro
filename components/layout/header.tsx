@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { MessageNotification } from "@/components/communication/message-notification"
+import SystemNotificationBell from "@/components/layout/system-notification-bell"
 import CustomModal from "@/components/shared/custom-modal"
 import { ProfileSettings } from '@/components/profile/profile-setting'
 
@@ -41,6 +42,8 @@ export const Header = memo(function Header() {
           <ThemeToggle />
 
           <MessageNotification className="h-8 w-8 lg:h-9 lg:w-9" />
+          
+          <SystemNotificationBell />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

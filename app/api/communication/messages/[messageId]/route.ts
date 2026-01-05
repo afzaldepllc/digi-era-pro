@@ -1,3 +1,10 @@
+/**
+ * Messages [messageId] API Route - CONSOLIDATED (Phase 2)
+ * 
+ * Uses centralized services from Phase 1:
+ * - messageOps from operations.ts for database operations
+ * - broadcastToChannel, broadcastMessageUpdate, broadcastMessageDelete from broadcast.ts
+ */
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from '@/lib/prisma'
 import { messageOperations } from '@/lib/db-utils'
@@ -7,11 +14,17 @@ import { getClientInfo } from '@/lib/security/error-handler'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { createAPIErrorResponse } from "@/lib/utils/api-responses"
 import { apiLogger as logger } from '@/lib/logger'
-import { createClient } from '@supabase/supabase-js'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import MessageAuditLog from '@/models/MessageAuditLog'
 import mongoose from 'mongoose'
 import { S3Service } from "@/lib/services/s3-service"
+// Phase 2: Use centralized services from Phase 1
+import { messageOps } from '@/lib/communication/operations'
+import { 
+  broadcastToChannel, 
+  broadcastMessageUpdate, 
+  broadcastMessageDelete 
+} from '@/lib/communication/broadcast'
 
 // Delete types for the trash system
 type DeleteType = 'trash' | 'self' | 'permanent'
@@ -25,24 +38,7 @@ function createErrorResponse(message: string, status: number, details?: any) {
   }, { status })
 }
 
-// Helper: Broadcast via Supabase Realtime
-async function broadcastMessageEvent(channelId: string, event: string, payload: any) {
-  try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const channel = supabaseAdmin.channel(`rt_${channelId}`)
-    await channel.send({
-      type: 'broadcast',
-      event,
-      payload
-    })
-    logger.debug(`Broadcasted ${event} to channel:`, channelId)
-  } catch (e) {
-    logger.error(`Failed to broadcast ${event}:`, e)
-  }
-}
+// NOTE: Broadcast now handled by @/lib/communication/broadcast.ts (Phase 1)
 
 // Type for messages with trash fields (until prisma generate is run)
 type MessageWithTrash = {
@@ -176,12 +172,13 @@ export async function PUT(
             data: {
               id: crypto.randomUUID(),
               message_id: validatedParams.messageId,
+              channel_id: message.channel_id,
+              mongo_uploader_id: session.user.id,
               file_name: file.name,
-              file_url: uploadResult.url,
-              s3_key: uploadResult.key,
+              file_url: uploadResult.data?.url || '',
+              s3_key: uploadResult.data?.key || '',
               file_size: file.size,
               file_type: file.type,
-              uploaded_by: session.user.id,
             }
           })
 
@@ -196,14 +193,12 @@ export async function PUT(
     // Update message using messageOperations
     const updatedMessage = await messageOperations.update(validatedParams.messageId, validatedData.content)
 
-    // Broadcast message update
-    await broadcastMessageEvent(message.channel_id, 'message_updated', {
-      messageId: validatedParams.messageId,
-      channelId: message.channel_id,
+    // Broadcast message update using Phase 1 function
+    broadcastMessageUpdate(message.channel_id, validatedParams.messageId, {
       content: validatedData.content,
       attachmentsAdded: uploadedAttachments.length,
       attachmentsRemoved: validatedData.attachments_to_remove?.length || 0
-    })
+    }).catch(err => logger.error('Failed to broadcast message update:', err))
 
     return NextResponse.json({
       success: true,
@@ -288,11 +283,15 @@ export async function DELETE(
       })
 
       // Broadcast hide event (only to the user who hid it - via notifications channel)
-      await broadcastMessageEvent(message.channel_id, 'message_hidden', {
-        messageId,
+      broadcastToChannel({
         channelId: message.channel_id,
-        hiddenBy: userId
-      })
+        event: 'message_hidden',
+        payload: {
+          messageId,
+          channelId: message.channel_id,
+          hiddenBy: userId
+        }
+      }).catch(err => logger.error('Failed to broadcast message hidden:', err))
 
       return NextResponse.json({ 
         success: true, 
@@ -335,12 +334,16 @@ export async function DELETE(
         })
       })
 
-      // Broadcast via Supabase Realtime
-      await broadcastMessageEvent(message.channel_id, 'message_trashed', {
-        messageId,
+      // Broadcast via Supabase Realtime using Phase 1 function
+      broadcastToChannel({
         channelId: message.channel_id,
-        trashedBy: userId
-      })
+        event: 'message_trash',
+        payload: {
+          messageId,
+          channelId: message.channel_id,
+          trashedBy: userId
+        }
+      }).catch(err => logger.error('Failed to broadcast message trash:', err))
 
       return NextResponse.json({ 
         success: true, 
@@ -362,15 +365,16 @@ export async function DELETE(
       })
 
       // Delete files from S3
+      type AttachmentWithS3 = { id: string; s3_key: string | null; file_name: string }
       const s3DeletePromises = attachments
-        .filter(att => att.s3_key) // Only delete if s3_key exists
-        .map(att => S3Service.deleteFile(att.s3_key!))
+        .filter((att: AttachmentWithS3) => att.s3_key) // Only delete if s3_key exists
+        .map((att: AttachmentWithS3) => S3Service.deleteFile(att.s3_key!))
 
       const s3DeleteResults = await Promise.allSettled(s3DeletePromises)
       const s3DeleteErrors = s3DeleteResults
-        .filter(result => result.status === 'rejected')
-        .map((result, index) => ({
-          file: attachments.filter(att => att.s3_key)[index]?.file_name || 'unknown',
+        .filter((result: PromiseSettledResult<unknown>) => result.status === 'rejected')
+        .map((result: PromiseSettledResult<unknown>, index: number) => ({
+          file: attachments.filter((att: AttachmentWithS3) => att.s3_key)[index]?.file_name || 'unknown',
           error: (result as PromiseRejectedResult).reason
         }))
 
@@ -407,12 +411,9 @@ export async function DELETE(
       // Delete message permanently (cascade deletes reactions, attachments, etc.)
       await messageOperations.delete(messageId)
 
-      // Broadcast permanent deletion
-      await broadcastMessageEvent(message.channel_id, 'message_deleted', {
-        messageId,
-        channelId: message.channel_id,
-        deletedBy: userId
-      })
+      // Broadcast permanent deletion using Phase 1 function
+      broadcastMessageDelete(message.channel_id, messageId, userId)
+        .catch(err => logger.error('Failed to broadcast message deletion:', err))
 
       return NextResponse.json({
         success: true,
@@ -427,5 +428,133 @@ export async function DELETE(
   } catch (error: any) {
     logger.error('Error deleting message:', error)
     return createAPIErrorResponse('Failed to delete message', 500, undefined, getClientInfo(request))
+  }
+}
+
+// POST /api/communication/messages/[messageId] - Restore message (CONSOLIDATED)
+// Supports: ?action=restore
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ messageId: string }> }
+) {
+  try {
+    const params = await paramsPromise
+    const { session, isSuperAdmin } = await genericApiRoutesMiddleware(request, 'communication', 'update')
+
+    if (!session?.user?.id) {
+      return createErrorResponse('Unauthorized', 401)
+    }
+
+    const validatedParams = messageIdSchema.parse(params)
+    const messageId = validatedParams.messageId
+
+    const searchParams = request.nextUrl.searchParams
+    const action = searchParams.get('action')
+
+    // Action: restore - Restore message from trash
+    if (action === 'restore') {
+      const message = await prisma.messages.findUnique({
+        where: { id: messageId },
+        include: {
+          channels: { select: { id: true, name: true, type: true } },
+          reactions: true,
+          attachments: true,
+          read_receipts: true
+        }
+      })
+
+      if (!message) {
+        return createErrorResponse('Message not found', 404)
+      }
+
+      const messageWithTrash = message as typeof message & {
+        is_trashed?: boolean
+        trashed_at?: Date | null
+      }
+
+      if (!messageWithTrash.is_trashed) {
+        return createErrorResponse('Message is not in trash', 400)
+      }
+
+      const userId = session.user.id
+      const isOwner = message.mongo_sender_id === userId
+
+      if (!isOwner && !isSuperAdmin) {
+        return createErrorResponse('You can only restore your own messages', 403)
+      }
+
+      // Check 30-day window
+      const trashedAt = new Date(messageWithTrash.trashed_at!)
+      const now = new Date()
+      const daysSinceTrashed = Math.floor((now.getTime() - trashedAt.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (daysSinceTrashed > 30) {
+        return createErrorResponse('Message cannot be restored. It has been in trash for more than 30 days.', 400)
+      }
+
+      // Restore message
+      const restoredMessage = await prisma.messages.update({
+        where: { id: messageId },
+        data: {
+          is_trashed: false,
+          trashed_at: null,
+          trashed_by: null,
+          trash_reason: null
+        } as any,
+        include: {
+          channels: { select: { id: true, name: true, type: true } },
+          reactions: true,
+          attachments: true,
+          read_receipts: true
+        }
+      })
+
+      // Create audit log in MongoDB
+      await executeGenericDbQuery(async () => {
+        return await MessageAuditLog.create({
+          supabase_message_id: messageId,
+          supabase_channel_id: message.channel_id,
+          action: 'restored',
+          actor_id: new mongoose.Types.ObjectId(userId),
+          actor_name: (session.user as any).name || 'Unknown',
+          actor_email: (session.user as any).email || '',
+          actor_role: isSuperAdmin ? 'super_admin' : 'user',
+          new_content: message.content,
+          metadata: { days_in_trash: daysSinceTrashed }
+        })
+      })
+
+      // Transform for response
+      const transformedMessage = {
+        ...restoredMessage,
+        sender: {
+          mongo_member_id: restoredMessage.mongo_sender_id,
+          name: restoredMessage.sender_name || 'Unknown User',
+          email: restoredMessage.sender_email || '',
+          avatar: restoredMessage.sender_avatar || '',
+          role: restoredMessage.sender_role || 'User',
+          userType: 'User' as const,
+          isOnline: false
+        }
+      }
+
+      // Broadcast restoration
+      broadcastToChannel({
+        channelId: message.channel_id,
+        event: 'message_restore',
+        payload: { messageId, channelId: message.channel_id, restoredBy: userId, message: transformedMessage }
+      }).catch(err => logger.error('Failed to broadcast message restoration:', err))
+
+      return NextResponse.json({ 
+        success: true, 
+        data: transformedMessage,
+        message: 'Message restored successfully'
+      })
+    }
+
+    return createErrorResponse('Invalid action. Use restore', 400)
+  } catch (error: any) {
+    logger.error('Error in POST message:', error)
+    return createAPIErrorResponse('Failed to process request', 500, undefined, getClientInfo(request))
   }
 }

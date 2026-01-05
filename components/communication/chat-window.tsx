@@ -9,6 +9,7 @@ import { OnlineIndicator } from "@/components/communication/online-indicator"
 import { TypingIndicator } from "@/components/communication/typing-indicator"
 import { ContextPanel } from "@/components/communication/context-panel"
 import { ChannelSettingsModal } from "@/components/communication/channel-settings-modal"
+import { ChatSelectorModal } from "@/components/communication/chat-selector-modal"
 import { ResizableSidebar } from "@/components/communication/resizable-sidebar"
 import FullscreenToggle from '@/components/shared/FullscreenToggle'
 import {
@@ -25,6 +26,8 @@ import {
 import { cn } from "@/lib/utils"
 import { ChatWindowProps, CreateMessageData, ICommunication, ITypingIndicator, IParticipant } from "@/types/communication"
 import { useCommunications } from "@/hooks/use-communications"
+import { useToast } from "@/hooks/use-toast"
+import { forwardMessages } from "@/lib/services/forward-service"
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +36,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { communicationLogger as logger } from "@/lib/logger"
 // import { ResizableSidebar } from "./resizable-sidebar"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded, fullscreenRef, onFullscreenChange }: ChatWindowProps) {
@@ -69,6 +73,8 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     archiveChannel,
     pinChannel,
   } = useCommunications()
+  
+  const { toast } = useToast()
 
   // Memoize maxWidth for ContextPanel to prevent unnecessary re-renders
   const maxContextPanelWidth = useMemo(() => {
@@ -86,6 +92,12 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
   const [searchTotal, setSearchTotal] = useState(0)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageInputRef = useRef<MessageInputRef>(null)
+  
+  // Message multi-select and forward state
+  const [messageSelectMode, setMessageSelectMode] = useState(false)
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
+  const [showForwardModal, setShowForwardModal] = useState(false)
+  const [isForwarding, setIsForwarding] = useState(false)
 
   // Auto-select channel if channelId is provided and no channel is selected
   useEffect(() => {
@@ -164,7 +176,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
       handleStopTyping()
     } catch (error) {
-      console.error('Failed to send voice message:', error)
+      logger.error('Failed to send voice message:', error)
       throw error
     }
   }, [channelId, sendMessage, handleStopTyping])
@@ -195,7 +207,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       setEditingMessage(null) // Clear editing state on success
     } catch (error) {
       // Keep editing state on error so user can retry
-      console.error('Failed to edit message:', error)
+      logger.error('Failed to edit message:', error)
     }
   }, [updateMessage])
 
@@ -221,6 +233,58 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
     if (!channelId) return
     toggleReaction(messageId, channelId, emoji)
   }, [channelId, toggleReaction])
+
+  // Handle forward messages - opens the chat selector modal
+  const handleForwardMessages = useCallback((messageIds: string[]) => {
+    setSelectedMessageIds(new Set(messageIds))
+    setShowForwardModal(true)
+  }, [])
+
+  // Handle forward to selected channels
+  const handleForwardToChannels = useCallback(async (targetChannelIds: string[], optionalMessage?: string) => {
+    if (selectedMessageIds.size === 0 || targetChannelIds.length === 0) return
+    
+    setIsForwarding(true)
+    try {
+      const result = await forwardMessages(
+        Array.from(selectedMessageIds),
+        targetChannelIds,
+        optionalMessage
+      )
+      
+      if (result.success) {
+        toast({
+          title: 'Messages Forwarded',
+          description: `${selectedMessageIds.size} message(s) sent to ${targetChannelIds.length} chat(s)`,
+        })
+        setSelectedMessageIds(new Set())
+        setMessageSelectMode(false)
+      } else {
+        toast({
+          title: 'Forward Failed',
+          description: 'Some messages could not be forwarded',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Forward Failed',
+        description: 'An error occurred while forwarding messages',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsForwarding(false)
+      setShowForwardModal(false)
+    }
+  }, [selectedMessageIds, toast])
+
+  // Toggle message select mode
+  const handleToggleSelectMode = useCallback(() => {
+    setMessageSelectMode(prev => !prev)
+    if (messageSelectMode) {
+      setSelectedMessageIds(new Set())
+    }
+  }, [messageSelectMode])
 
   // Handle loading more (older) messages
   const handleLoadMore = useCallback(async () => {
@@ -482,9 +546,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       return 'Direct Message'
     }
 
-    // Use real-time onlineUserIds for active members count
+    // Use real-time onlineUserIds for active members count (exclude current user)
     const activeMembers = selectedChannel.channel_members.filter(p =>
-      onlineUserIds.includes(p.mongo_member_id)
+      p.mongo_member_id !== mockCurrentUser?._id && onlineUserIds.includes(p.mongo_member_id)
     ).length
     return `${selectedChannel.channel_members.length} members, ${activeMembers} online`
   }
@@ -550,6 +614,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   <OnlineIndicator
                     users={selectedChannel.channel_members as IParticipant[]}
                     onlineUserIds={onlineUserIds}
+                    currentUserId={mockCurrentUser?._id}
                     maxVisible={3}
                     size="sm"
                   />
@@ -741,10 +806,15 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                     onHideForSelf={handleHideForSelf}
                     onReaction={handleReaction}
                     onLoadMore={handleLoadMore}
+                    onForwardMessages={handleForwardMessages}
                     hasMoreMessages={hasMoreMessages}
                     isLoadingMore={isLoadingMore}
                     className="flex-1 min-h-0"
                     channel_members={selectedChannel?.channel_members || []}
+                    selectMode={messageSelectMode}
+                    selectedMessageIds={selectedMessageIds}
+                    onSelectionChange={setSelectedMessageIds}
+                    onToggleSelectMode={handleToggleSelectMode}
                   />
                 )
               })()
@@ -811,6 +881,21 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
           )}
         </div>
       </div>
+
+      {/* Forward Messages Modal */}
+      <ChatSelectorModal
+        isOpen={showForwardModal}
+        onClose={() => {
+          setShowForwardModal(false)
+          if (!messageSelectMode) {
+            setSelectedMessageIds(new Set())
+          }
+        }}
+        onSelect={handleForwardToChannels}
+        title="Forward Messages"
+        description={`Forward ${selectedMessageIds.size} message(s) to selected chats`}
+        multiSelect={true}
+      />
     </TooltipProvider>
   )
 }

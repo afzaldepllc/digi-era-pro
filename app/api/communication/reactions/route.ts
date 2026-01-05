@@ -1,17 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { prisma } from '@/lib/prisma'
 import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { apiLogger as logger } from '@/lib/logger'
+// Phase 2: Use centralized services from Phase 1
+import { reactionOps, channelOps } from '@/lib/communication/operations'
+import { broadcastReaction } from '@/lib/communication/broadcast'
 
-// ============================================
-// Supabase Client for Broadcasting
-// ============================================
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Reaction type (matching Prisma schema)
+type Reaction = {
+  id: string
+  message_id: string
+  channel_id: string
+  mongo_user_id: string
+  user_name: string
+  emoji: string
+  created_at: Date
+}
 
 // ============================================
 // Validation Schemas
@@ -20,12 +25,6 @@ const addReactionSchema = z.object({
   message_id: z.string().uuid(),
   channel_id: z.string().uuid(),
   emoji: z.string().min(1).max(50) // Emoji can be multi-codepoint (flags, ZWJ sequences, skin tones)
-})
-
-const removeReactionSchema = z.object({
-  reaction_id: z.string().uuid().optional(),
-  message_id: z.string().uuid().optional(),
-  emoji: z.string().min(1).max(50).optional()
 })
 
 // ============================================
@@ -40,7 +39,7 @@ function createErrorResponse(message: string, status: number, details?: unknown)
 }
 
 // ============================================
-// POST /api/communication/reactions - Add reaction to a message
+// POST /api/communication/reactions - Add/Toggle reaction to a message
 // ============================================
 export async function POST(request: NextRequest) {
   try {
@@ -52,155 +51,67 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     
-    console.log('🔍 [Reactions API] Received request body:', body)
-    
     // Validate request body
     const validationResult = addReactionSchema.safeParse(body)
     if (!validationResult.success) {
-      console.error('❌ [Reactions API] Validation failed:', validationResult.error)
+      logger.debug('Reaction validation failed:', validationResult.error)
       return createErrorResponse('Invalid request data', 400, validationResult.error)
     }
 
     const { message_id, channel_id, emoji } = validationResult.data
     const userId = session.user.id
-    
-    console.log('📋 [Reactions API] Validated data:', { message_id, channel_id, emoji, userId })
+    const userName = (session.user as any)?.name || (session.user as any)?.email || 'Unknown'
     
     // Additional emoji validation to prevent UUID corruption
     if (!emoji || emoji.length > 10 || emoji.includes('-')) {
-      console.error('❌ [Reactions API] Invalid emoji detected:', {
-        emoji,
-        length: emoji?.length,
-        containsDash: emoji?.includes('-'),
-        isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji || '')
-      })
       logger.error('Invalid emoji received in API:', emoji)
       return createErrorResponse('Invalid emoji provided', 400, { receivedEmoji: emoji })
     }
 
-    // Check if user is member of the channel
-    const membership = await prisma.channel_members.findFirst({
-      where: {
-        channel_id,
-        mongo_member_id: userId
-      }
-    })
-
-    if (!membership) {
+    // Check if user is member of the channel - using channelOps
+    const isMember = await channelOps.isMember(channel_id, userId)
+    if (!isMember) {
       return createErrorResponse('Access denied - not a channel member', 403)
     }
 
     // Check if message exists in the channel
     const message = await prisma.messages.findFirst({
-      where: {
-        id: message_id,
-        channel_id
-      }
+      where: { id: message_id, channel_id }
     })
 
     if (!message) {
       return createErrorResponse('Message not found', 404)
     }
 
-    // Check if user already reacted with this emoji
-    const existingReaction = await prisma.reactions.findFirst({
-      where: {
-        message_id,
-        mongo_user_id: userId,
-        emoji
-      }
+    // Toggle reaction using reactionOps
+    const result = await reactionOps.toggle({
+      messageId: message_id,
+      channelId: channel_id,
+      userId,
+      userName,
+      emoji
     })
 
-    if (existingReaction) {
-      // Remove existing reaction (toggle behavior)
-      await prisma.reactions.delete({
-        where: { id: existingReaction.id }
-      })
-
-      // Broadcast reaction removed (non-blocking)
-      try {
-        const channel = supabaseAdmin.channel(`rt_${channel_id}`)
-        await channel.send({
-          type: 'broadcast',
-          event: 'reaction_removed',
-          payload: {
-            id: existingReaction.id,
-            message_id,
-            channel_id,
-            mongo_user_id: userId,
-            emoji
-          }
-        })
-        logger.debug('Reaction removed broadcasted to channel:', channel_id)
-      } catch (broadcastError) {
-        logger.error('Failed to broadcast reaction removal:', broadcastError)
-        // Don't fail the request if broadcast fails
-      }
-
-      return NextResponse.json({
-        success: true,
-        action: 'removed',
-        data: existingReaction,
-        message: 'Reaction removed successfully'
-      })
-    }
-
-    // Add new reaction
-    // Get user info for storing (denormalized)
-    const userName = (session.user as any)?.name || (session.user as any)?.email || 'Unknown'
-    const userEmail = (session.user as any)?.email || ''
-    
-    const newReaction = await prisma.reactions.create({
-      data: {
-        message_id,
-        channel_id,
-        mongo_user_id: userId,
-        user_name: userName,
-        emoji
-      }
-    })
-
-    // Broadcast reaction added (non-blocking)
-    try {
-      const channel = supabaseAdmin.channel(`rt_${channel_id}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'reaction_added',
-        payload: {
-          id: newReaction.id,
-          message_id,
-          channel_id,
-          mongo_user_id: userId,
-          user_name: userName,
-          emoji,
-          created_at: newReaction.created_at.toISOString()
-        }
-      })
-      logger.debug('Reaction added broadcasted to channel:', channel_id)
-    } catch (broadcastError) {
-      logger.error('Failed to broadcast reaction addition:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
+    // Broadcast reaction change (non-blocking)
+    broadcastReaction(channel_id, result.action, {
+      messageId: message_id,
+      emoji,
+      userId,
+      userName,
+      reactionId: result.reaction.id
+    }).catch(err => logger.error('Failed to broadcast reaction:', err))
 
     return NextResponse.json({
       success: true,
-      action: 'added',
-      data: {
-        ...newReaction,
-        user_info: {
-          id: userId,
-          name: userName,
-          email: userEmail
-        }
-      },
-      message: 'Reaction added successfully'
+      action: result.action,
+      data: result.reaction,
+      message: `Reaction ${result.action} successfully`
     })
 
   } catch (error: unknown) {
-    logger.error('Error adding reaction:', error)
+    logger.error('Error toggling reaction:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const errorDetails = error instanceof Error ? error.stack : String(error)
-    return createErrorResponse('Failed to add reaction', 500, { message: errorMessage, details: errorDetails })
+    return createErrorResponse('Failed to toggle reaction', 500, { message: errorMessage })
   }
 }
 
@@ -219,18 +130,14 @@ export async function DELETE(request: NextRequest) {
     const reactionId = searchParams.get('reaction_id')
     const messageId = searchParams.get('message_id')
     const emoji = searchParams.get('emoji')
-
     const userId = session.user.id
+    const userName = (session.user as any)?.name || (session.user as any)?.email || 'Unknown'
 
+    // Find the reaction first to verify ownership
     let reaction
-
     if (reactionId) {
-      // Delete by reaction ID
-      reaction = await prisma.reactions.findUnique({
-        where: { id: reactionId }
-      })
+      reaction = await prisma.reactions.findUnique({ where: { id: reactionId } })
     } else if (messageId && emoji) {
-      // Delete by message_id + user + emoji
       reaction = await prisma.reactions.findFirst({
         where: {
           message_id: messageId,
@@ -249,30 +156,17 @@ export async function DELETE(request: NextRequest) {
       return createErrorResponse('Cannot delete other users reactions', 403)
     }
 
-    // Delete the reaction
-    await prisma.reactions.delete({
-      where: { id: reaction.id }
-    })
+    // Delete using reactionOps
+    await reactionOps.remove({ reactionId: reaction.id })
 
     // Broadcast reaction removed (non-blocking)
-    try {
-      const channel = supabaseAdmin.channel(`rt_${reaction.channel_id}`)
-      await channel.send({
-        type: 'broadcast',
-        event: 'reaction_removed',
-        payload: {
-          id: reaction.id,
-          message_id: reaction.message_id,
-          channel_id: reaction.channel_id,
-          mongo_user_id: userId,
-          emoji: reaction.emoji
-        }
-      })
-      logger.debug('Reaction removed broadcasted to channel:', reaction.channel_id)
-    } catch (broadcastError) {
-      logger.error('Failed to broadcast reaction removal:', broadcastError)
-      // Don't fail the request if broadcast fails
-    }
+    broadcastReaction(reaction.channel_id, 'removed', {
+      messageId: reaction.message_id,
+      emoji: reaction.emoji,
+      userId,
+      userName,
+      reactionId: reaction.id
+    }).catch(err => logger.error('Failed to broadcast reaction removal:', err))
 
     return NextResponse.json({
       success: true,
@@ -286,7 +180,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 // ============================================
-// GET /api/communication/reactions?message_id=xxx - Get reactions for a message
+// GET /api/communication/reactions - Get reactions for a message or channel
 // ============================================
 export async function GET(request: NextRequest) {
   try {
@@ -304,39 +198,54 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('message_id or channel_id is required', 400)
     }
 
-    // Build query
-    const where: { message_id?: string; channel_id?: string } = {}
-    if (messageId) where.message_id = messageId
-    if (channelId) where.channel_id = channelId
+    // Use reactionOps for single message, or direct query for channel-wide
+    let reactions: Reaction[]
+    if (messageId && !channelId) {
+      reactions = await reactionOps.getByMessage(messageId)
+    } else {
+      const where: { message_id?: string; channel_id?: string } = {}
+      if (messageId) where.message_id = messageId
+      if (channelId) where.channel_id = channelId
 
-    const reactions = await prisma.reactions.findMany({
-      where,
-      orderBy: { created_at: 'asc' }
-    })
+      reactions = await prisma.reactions.findMany({
+        where,
+        orderBy: { created_at: 'asc' }
+      })
+    }
+
+    // Type for grouped reaction accumulator
+    type GroupedReaction = {
+      message_id: string
+      emoji: string
+      count: number
+      users: { id: string; mongo_user_id: string; name: string }[]
+      hasCurrentUserReacted: boolean
+    }
 
     // Group reactions by emoji with user counts
-    const groupedReactions = reactions.reduce((acc, reaction) => {
-      const key = `${reaction.message_id}_${reaction.emoji}`
-      if (!acc[key]) {
-        acc[key] = {
-          message_id: reaction.message_id,
-          emoji: reaction.emoji,
-          count: 0,
-          users: [] as { id: string; mongo_user_id: string; name: string }[],
-          hasCurrentUserReacted: false
+    const groupedReactions = reactions.reduce(
+      (acc: Record<string, GroupedReaction>, reaction: Reaction) => {
+        const key = `${reaction.message_id}_${reaction.emoji}`
+        if (!acc[key]) {
+          acc[key] = {
+            message_id: reaction.message_id,
+            emoji: reaction.emoji,
+            count: 0,
+            users: [],
+            hasCurrentUserReacted: false
+          }
         }
-      }
-      acc[key].count++
-      acc[key].users.push({
-        id: reaction.id,
-        mongo_user_id: reaction.mongo_user_id,
-        name: reaction.user_name
-      })
-      if (reaction.mongo_user_id === session.user.id) {
-        acc[key].hasCurrentUserReacted = true
-      }
+        acc[key].count++
+        acc[key].users.push({
+          id: reaction.id,
+          mongo_user_id: reaction.mongo_user_id,
+          name: reaction.user_name
+        })
+        if (reaction.mongo_user_id === session.user.id) {
+          acc[key].hasCurrentUserReacted = true
+        }
       return acc
-    }, {} as Record<string, { message_id: string; emoji: string; count: number; users: { id: string; mongo_user_id: string; name: string }[]; hasCurrentUserReacted: boolean }>)
+    }, {})
 
     return NextResponse.json({
       success: true,

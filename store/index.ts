@@ -15,6 +15,7 @@ import taskSlice from "./slices/taskSlice"
 import phaseSlice from "./slices/phaseSlice"
 import milestoneSlice from "./slices/milestoneSlice"
 import analyticsSlice from "./slices/analyticsSlice"
+import systemNotificationsSlice from "./slices/system-notifications-slice"
 
 
 
@@ -32,6 +33,7 @@ const rootReducer = combineReducers({
   phases: phaseSlice,
   milestones: milestoneSlice,
   analytics: analyticsSlice,
+  systemNotifications: systemNotificationsSlice,
 })
 
 

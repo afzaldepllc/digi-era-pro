@@ -14,7 +14,7 @@ const secret = "your-very-secure-secret"; // Replace
 // In production, store this securely and do not hardcode it
 
 
-export async function GET(request: NextRequest, response: Response) {
+export async function GET(request: NextRequest) {
     try {
         // const secret = otplib.authenticator.generateSecret();
         const token = otplib.authenticator.generate(secret);

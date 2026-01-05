@@ -68,6 +68,7 @@ import type {
   IParticipant,
   ICommunication,
   IChannel,
+  IChannelMember,
   IAttachment
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
@@ -130,6 +131,7 @@ export function useCommunications() {
   // Refs to get current values without causing re-renders
   const currentMessagesRef = useRef(messages)
   const currentChannelsRef = useRef(channels)
+  const activeChannelIdRef = useRef(activeChannelId)
   
   // Update refs when values change
   useEffect(() => {
@@ -139,6 +141,10 @@ export function useCommunications() {
   useEffect(() => {
     currentChannelsRef.current = channels
   }, [channels])
+
+  useEffect(() => {
+    activeChannelIdRef.current = activeChannelId
+  }, [activeChannelId])
 
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
@@ -293,6 +299,87 @@ export function useCommunications() {
     })
   }, [dispatch])
 
+  // Handle new message notifications (for users not viewing the channel)
+  // This is the key handler for real-time notifications
+  const onNewMessageNotification = useCallback((data: { message: any }) => {
+    logger.debug('📨 New message notification received:', data)
+    
+    const message = data.message
+    if (!message || !message.channel_id) {
+      logger.warn('Invalid message notification received:', data)
+      return
+    }
+    
+    // Skip notifications for messages from self
+    if (message.mongo_sender_id === sessionUserId) {
+      logger.debug('Skipping notification for own message')
+      return
+    }
+    
+    // Skip if this channel is currently active (user is viewing it)
+    // In this case, messages come through onNewMessage handler and are already displayed
+    const currentActiveChannelId = activeChannelIdRef.current
+    if (currentActiveChannelId === message.channel_id) {
+      logger.debug('📨 Skipping notification for active channel - message handled by onNewMessage')
+      return
+    }
+    
+    // Get channel info for context
+    const currentChannels = currentChannelsRef.current
+    const channel = currentChannels.find((c: IChannel) => c.id === message.channel_id)
+    const newUnreadCount = (channel?.unreadCount || 0) + 1
+    
+    // Check if channel is muted for this user
+    const currentMember = channel?.channel_members?.find((m: IChannelMember) => m.mongo_member_id === sessionUserId)
+    const isMuted = currentMember?.notifications_enabled === false
+    
+    // Increment unread count for the channel in Redux (even for muted channels)
+    dispatch(updateChannel({
+      id: message.channel_id,
+      unreadCount: newUnreadCount,
+      last_message: message,
+      last_message_at: message.created_at
+    }))
+    dispatch(incrementUnreadCount(1))
+    
+    // Also update the cache to keep it in sync
+    communicationCache.updateChannelInCache(message.channel_id, { 
+      unreadCount: newUnreadCount,
+      last_message: message,
+      last_message_at: message.created_at
+    })
+    
+    // Skip notification and toast for muted channels
+    if (isMuted) {
+      logger.debug('📨 Skipping notification for muted channel:', message.channel_id)
+      return
+    }
+    
+    // Add notification to store
+    const senderName = message.sender_name || message.sender?.name || 'Someone'
+    const contentPreview = message.content || ''
+    
+    dispatch(addNotification({
+      id: `msg_${message.id}`,
+      type: 'message',
+      title: senderName,
+      channelId: message.channel_id,
+      messageId: message.id,
+      message: message,
+      preview: contentPreview,
+      read: false
+    }))
+    
+    // Show toast notification for the new message
+    const channelName = channel?.name || (channel?.type === 'dm' ? senderName : 'Channel')
+    toastRef.current({
+      title: channel?.type === 'dm' ? senderName : `#${channelName}`,
+      description: contentPreview.slice(0, 80) + (contentPreview.length > 80 ? '...' : ''),
+    })
+    
+    logger.debug('📨 Notification added for message:', message.id)
+  }, [dispatch, sessionUserId])
+
   // Handle user pin updates (real-time)
   const onUserPin = useCallback((data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => {
     logger.debug('User pin update:', data)
@@ -301,58 +388,80 @@ export function useCommunications() {
 
     // For now, we don't have a Redux state for pinned users, so we'll rely on components to refetch
     // In the future, we could add a pinnedUsers state to the slice
-    console.log(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
+    logger.info(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
   }, [sessionUserId])
 
   // Handle reaction added (real-time) - WhatsApp style
   const onReactionAdd = useCallback((data: {
-    id: string;
-    message_id: string;
-    channel_id: string;
-    mongo_user_id: string;
+    id?: string;
+    reactionId?: string;
+    message_id?: string;
+    messageId?: string;
+    channel_id?: string;
+    channelId?: string;
+    mongo_user_id?: string;
+    userId?: string;
     user_name?: string;
+    userName?: string;
     emoji: string;
-    created_at: string;
+    created_at?: string;
   }) => {
     logger.debug('Reaction added via realtime:', data)
     
+    // Normalize field names (handle both camelCase and snake_case)
+    const userId = data.mongo_user_id || data.userId || ''
+    const messageId = data.message_id || data.messageId || ''
+    const channelId = data.channel_id || data.channelId || ''
+    const reactionId = data.id || data.reactionId || ''
+    const userName = data.user_name || data.userName || 'Someone'
+    
     // Skip reactions from self (already handled optimistically)
-    if (data.mongo_user_id === sessionUserId) return
+    if (userId === sessionUserId) return
     
     // Ensure we have proper user info and emoji
     const reactionData = {
-      id: data.id,
-      mongo_user_id: data.mongo_user_id,
-      user_name: data.user_name || 'Someone',
-      emoji: data.emoji, // Ensure emoji is preserved properly
-      created_at: data.created_at
+      id: reactionId,
+      mongo_user_id: userId,
+      user_name: userName,
+      emoji: data.emoji,
+      created_at: data.created_at || new Date().toISOString()
     }
     
     dispatch(addReactionToMessage({
-      channelId: data.channel_id,
-      messageId: data.message_id,
+      channelId: channelId,
+      messageId: messageId,
       reaction: reactionData
     }))
   }, [dispatch, sessionUserId])
 
   // Handle reaction removed (real-time) - WhatsApp style
   const onReactionRemove = useCallback((data: {
-    id: string;
-    message_id: string;
-    channel_id: string;
-    mongo_user_id: string;
+    id?: string;
+    reactionId?: string;
+    message_id?: string;
+    messageId?: string;
+    channel_id?: string;
+    channelId?: string;
+    mongo_user_id?: string;
+    userId?: string;
     emoji: string;
   }) => {
     logger.debug('Reaction removed via realtime:', data)
     
+    // Normalize field names (handle both camelCase and snake_case)
+    const userId = data.mongo_user_id || data.userId || ''
+    const messageId = data.message_id || data.messageId || ''
+    const channelId = data.channel_id || data.channelId || ''
+    const reactionId = data.id || data.reactionId || ''
+    
     // Skip reactions from self (already handled optimistically)
-    if (data.mongo_user_id === sessionUserId) return
+    if (userId === sessionUserId) return
     
     dispatch(removeReactionFromMessage({
-      channelId: data.channel_id,
-      messageId: data.message_id,
-      reactionId: data.id,
-      mongo_user_id: data.mongo_user_id,
+      channelId: channelId,
+      messageId: messageId,
+      reactionId: reactionId,
+      mongo_user_id: userId,
       emoji: data.emoji
     }))
   }, [dispatch, sessionUserId])
@@ -633,7 +742,10 @@ export function useCommunications() {
     }
   }, [activeChannelId, realtimeManager, sessionUserId, dispatch])
 
-  // Update handlers when they change
+  // Track whether handlers have been set - use state to trigger re-render
+  const [handlersReady, setHandlersReady] = useState(false)
+
+  // Update handlers when they change - MUST happen before subscribing
   useEffect(() => {
     const handlers: RealtimeEventHandlers = {
       onNewMessage,
@@ -649,6 +761,7 @@ export function useCommunications() {
       onTypingStop,
       onPresenceSync,
       onMentionNotification,
+      onNewMessageNotification,
       onReactionAdd,
       onReactionRemove,
       onChannelUpdate,
@@ -656,23 +769,49 @@ export function useCommunications() {
       onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
+    setHandlersReady(true)
+    logger.debug('✅ Realtime handlers updated')
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onNewMessageNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
-  // Subscribe to notifications when user is logged in
+  // Subscribe to notifications when user is logged in AND handlers are set
+  // NOTE: We don't unsubscribe on cleanup because notifications should persist
+  // across component lifecycle. The RealtimeProvider manages the global lifecycle.
   useEffect(() => {
-    if (sessionUserId) {
-      realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
-        logger.error('Failed to subscribe to notifications:', err)
-      })
-      realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
-        logger.error('Failed to subscribe to user channels:', err)
-      })
+    // Wait for handlers to be set before subscribing
+    if (!sessionUserId || !handlersReady) {
+      logger.debug('⏳ Waiting for handlers to be ready before subscribing to notifications')
+      return
     }
     
-    return () => {
-      realtimeManager.unsubscribeFromNotifications()
+    const subscribeWithRetry = async () => {
+      try {
+        await realtimeManager.subscribeToNotifications(sessionUserId)
+        logger.debug('✅ Subscribed to notifications for user:', sessionUserId)
+      } catch (err) {
+        logger.error('Failed to subscribe to notifications:', err)
+        // Retry with exponential backoff
+        const retryDelays = [2000, 4000, 8000]
+        for (const delay of retryDelays) {
+          await new Promise(resolve => setTimeout(resolve, delay))
+          try {
+            await realtimeManager.subscribeToNotifications(sessionUserId)
+            logger.debug(`✅ Retry: Subscribed to notifications for user after ${delay}ms:`, sessionUserId)
+            return
+          } catch (retryErr) {
+            logger.error(`Retry failed for notifications after ${delay}ms:`, retryErr)
+          }
+        }
+      }
     }
-  }, [sessionUserId, realtimeManager])
+    
+    subscribeWithRetry()
+    
+    realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
+      logger.error('Failed to subscribe to user channels:', err)
+    })
+    // No cleanup - notification subscriptions are managed by RealtimeProvider
+    // and should persist for the entire session
+  }, [sessionUserId, realtimeManager, handlersReady])
 
   // Channel operations
   const fetchChannels = useCallback(async (
@@ -759,66 +898,62 @@ export function useCommunications() {
   }, [dispatch]) // Removed toast to prevent infinite loop
 
   const selectChannel = useCallback(async (channel_id: string) => {
+    // Get current unread count before any updates
+    const currentChannels = currentChannelsRef.current
+    const channel = currentChannels.find(c => c.id === channel_id)
+    const currentUnread = channel?.unreadCount || 0
+
+    // Set active channel and clear notifications for this channel
     dispatch(setActiveChannel(channel_id))
     dispatch(clearNotificationsForChannel(channel_id))
+    
+    // Optimistically reset unread count immediately
+    if (currentUnread > 0) {
+      dispatch(updateChannel({
+        id: channel_id,
+        unreadCount: 0
+      }))
+      dispatch(decrementUnreadCount(currentUnread))
+      // Also update the cache to keep it in sync
+      communicationCache.updateChannelInCache(channel_id, { unreadCount: 0 })
+    }
+
     // Clear messages to force re-fetch with enriched data
     dispatch(setMessages({ channelId: channel_id, messages: [] }))
 
-    // Mark all messages in this channel as read and reset unread count
-    try {
-      // Use current state values via refs to avoid dependency issues
-      const currentMessages = currentMessagesRef.current
-      const currentChannels = currentChannelsRef.current
-      
-      const channelMessages = currentMessages[channel_id] || []
-      const unreadMessageIds = channelMessages
-        .filter(msg => !msg.read_receipts?.some(receipt => receipt.mongo_user_id === sessionUserId))
-        .map(msg => msg.id)
-
-      if (unreadMessageIds.length > 0) {
-        // Optimistically reset unread count
-        const channel = currentChannels.find(c => c.id === channel_id)
-        const currentUnread = channel?.unreadCount || 0
-        dispatch(updateChannel({
-          id: channel_id,
-          unreadCount: 0
-        }))
-        dispatch(decrementUnreadCount(currentUnread))
-
+    // Mark all messages in this channel as read using the bulk API
+    // This is done in parallel with fetching messages for better UX
+    const markAllReadPromise = (async () => {
+      if (currentUnread > 0) {
         try {
-          // Mark messages as read via API
-          await Promise.all(unreadMessageIds.map(messageId =>
-            apiRequest('/api/communication/read-receipts', {
-              method: 'POST',
-              body: JSON.stringify({ message_id: messageId, channel_id })
+          await apiRequest('/api/communication/read-receipts', {
+            method: 'POST',
+            body: JSON.stringify({ 
+              channel_id,
+              mark_all: true
             })
-          ))
-
-          // Broadcast read receipts
-          if (sessionUserId) {
-            await Promise.all(unreadMessageIds.map(messageId =>
-              realtimeManager.broadcastMessageRead(channel_id, messageId, sessionUserId)
-            ))
-          }
+          })
+          logger.debug(`Marked all messages as read in channel ${channel_id}`)
         } catch (apiError) {
-          // Revert optimistic update
+          // Revert optimistic update on failure
           dispatch(updateChannel({
             id: channel_id,
             unreadCount: currentUnread
           }))
           dispatch(incrementUnreadCount(currentUnread))
+          // Revert cache update
+          communicationCache.updateChannelInCache(channel_id, { unreadCount: currentUnread })
           logger.error('Failed to mark messages as read when selecting channel:', apiError)
-          // Optionally refetch channels to get correct unread count
-          fetchChannels({ forceRefresh: true })
         }
       }
-    } catch (error) {
-      logger.error('Failed to mark messages as read when selecting channel:', error)
-    }
+    })()
 
     // Always fetch messages to ensure fresh data, even for the same channel
-    await fetchMessages({ channel_id })
-  }, [dispatch, sessionUserId, realtimeManager, fetchChannels, fetchMessages])
+    const fetchMessagesPromise = fetchMessages({ channel_id })
+
+    // Wait for both operations to complete
+    await Promise.all([markAllReadPromise, fetchMessagesPromise])
+  }, [dispatch, fetchMessages])
 
   const clearChannel = useCallback(() => {
     dispatch(clearActiveChannel())
@@ -847,10 +982,10 @@ export function useCommunications() {
     }
   }, [])
 
-  // Search messages in a channel
+  // Search messages in a channel (consolidated endpoint)
   const searchMessages = useCallback(async (channelId: string, query: string, limit = 20, offset = 0) => {
     try {
-      const response = await fetch(`/api/communication/messages/search?channel_id=${channelId}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
+      const response = await fetch(`/api/communication/messages?channel_id=${channelId}&search=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`)
       const data = await response.json()
       if (data.success) {
         return {
@@ -870,7 +1005,8 @@ export function useCommunications() {
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
     const tempId = crypto.randomUUID()
     try {
-      dispatch(setActionLoading(true))
+      // Note: Don't set actionLoading for text messages - use optimistic updates without blocking UI
+      // This prevents the input from being disabled during send
 
       // Get sender info from session for optimistic update
       const senderName = sessionUser?.name || sessionUser?.email || 'Unknown User'
@@ -965,9 +1101,8 @@ export function useCommunications() {
         variant: "destructive"
       })
       throw error
-    } finally {
-      dispatch(setActionLoading(false))
     }
+    // Note: No finally block needed - we don't set actionLoading for text messages
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
 
@@ -1080,7 +1215,8 @@ export function useCommunications() {
           reject(new Error('Network error during upload'))
         })
 
-        xhr.open('POST', '/api/communication/messages/with-files')
+        // Use consolidated messages endpoint (handles both JSON and FormData)
+        xhr.open('POST', '/api/communication/messages')
         xhr.send(formData)
       })
 
@@ -1305,7 +1441,7 @@ export function useCommunications() {
     }))
 
     try {
-      const response = await apiRequest(`/api/communication/channels/${channelId}/pin`, {
+      const response = await apiRequest(`/api/communication/channels/${channelId}?action=pin`, {
         method: 'POST'
       }, false)
 
@@ -1355,6 +1491,48 @@ export function useCommunications() {
     }
   }, [sessionUserId])
 
+  /**
+   * Toggle mute/notification status for a channel
+   * When muted, notifications are disabled for this channel
+   * Note: notifications_enabled is a per-member setting stored in channel_members
+   */
+  const muteChannel = useCallback(async (channelId: string, currentlyMuted: boolean): Promise<{ notifications_enabled: boolean }> => {
+    if (!sessionUserId) {
+      throw new Error('Not authenticated')
+    }
+
+    try {
+      const response = await apiRequest(`/api/communication/channels/${channelId}?action=mute`, {
+        method: 'POST'
+      }, false)
+
+      // Update the channel's member data with the new mute status
+      const channel = channels.find(c => c.id === channelId)
+      if (channel) {
+        const updatedMembers = channel.channel_members.map(member => 
+          member.mongo_member_id === sessionUserId 
+            ? { ...member, notifications_enabled: response.data.notifications_enabled }
+            : member
+        )
+        dispatch(updateChannel({
+          id: channelId,
+          channel_members: updatedMembers
+        }))
+      }
+
+      toastRef.current({
+        title: response.data.notifications_enabled ? "Notifications enabled" : "Notifications muted",
+        description: response.data.notifications_enabled 
+          ? "You will receive notifications for this channel"
+          : "You won't receive notifications for this channel",
+      })
+
+      return { notifications_enabled: response.data.notifications_enabled }
+    } catch (error: any) {
+      throw error
+    }
+  }, [channels, dispatch, sessionUserId])
+
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
       await apiRequest('/api/communication/read-receipts', {
@@ -1383,6 +1561,53 @@ export function useCommunications() {
     }
   }, [channels, dispatch, realtimeManager, sessionUserId])
 
+  /**
+   * Mark all messages in a channel as read.
+   * Uses the bulk API endpoint for efficiency.
+   */
+  const markAllChannelMessagesAsRead = useCallback(async (channelId: string) => {
+    try {
+      const channel = channels.find(c => c.id === channelId)
+      const currentUnread = channel?.unreadCount || 0
+      
+      if (currentUnread === 0) return
+      
+      // Optimistically update Redux state
+      dispatch(updateChannel({
+        id: channelId,
+        unreadCount: 0
+      }))
+      dispatch(decrementUnreadCount(currentUnread))
+      dispatch(clearNotificationsForChannel(channelId))
+      
+      // Also update the cache to keep it in sync
+      communicationCache.updateChannelInCache(channelId, { unreadCount: 0 })
+
+      // Call the bulk API
+      await apiRequest('/api/communication/read-receipts', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          channel_id: channelId,
+          mark_all: true
+        })
+      })
+      
+      logger.debug(`Marked all messages as read in channel ${channelId}`)
+    } catch (error) {
+      // Revert optimistic update
+      const channel = channels.find(c => c.id === channelId)
+      const currentUnread = channel?.unreadCount || 0
+      dispatch(updateChannel({
+        id: channelId,
+        unreadCount: currentUnread
+      }))
+      dispatch(incrementUnreadCount(currentUnread))
+      // Revert cache update
+      communicationCache.updateChannelInCache(channelId, { unreadCount: currentUnread })
+      logger.error('Failed to mark all channel messages as read:', error)
+    }
+  }, [channels, dispatch])
+
   // ============================================
   // Reaction Operations
   // ============================================
@@ -1393,13 +1618,13 @@ export function useCommunications() {
    * Otherwise, it will be added.
    */
   const toggleReaction = useCallback(async (messageId: string, channelId: string, emoji: string) => {
-    console.log(`🚀 [toggleReaction] Called with:`, { messageId, channelId, emoji, sessionUserId })
+    logger.debug('toggleReaction called:', { messageId, channelId, emoji, sessionUserId })
     
     if (!sessionUserId) return
     
     // Validate emoji parameter before proceeding
     if (!emoji || emoji.length > 10 || emoji.includes('-') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji)) {
-      console.error('❌ [toggleReaction] Invalid emoji received:', emoji)
+      logger.error('Invalid emoji received:', emoji)
       toastRef.current({
         title: "Error",
         description: "Invalid emoji detected. Please try again.",
@@ -1417,7 +1642,7 @@ export function useCommunications() {
       )
 
       if (existingReaction) {
-        console.log(`➖ [toggleReaction] Removing existing reaction:`, existingReaction)
+        logger.debug('Removing existing reaction:', existingReaction.id)
         // Optimistically remove the reaction
         dispatch(removeReactionFromMessage({
           channelId,
@@ -1427,7 +1652,7 @@ export function useCommunications() {
           emoji
         }))
       } else {
-        console.log(`➕ [toggleReaction] Adding new reaction with emoji:`, emoji)
+        logger.debug('Adding new reaction with emoji:', emoji)
         // Optimistically add the reaction with proper user info
         const tempReactionId = crypto.randomUUID()
         const optimisticReaction = {
@@ -1452,7 +1677,7 @@ export function useCommunications() {
         emoji: emoji
       }
       
-      console.log(`📡 [toggleReaction] Sending API request with data:`, apiData)
+      logger.debug('Sending reaction API request:', apiData)
 
       // Send to API (toggle behavior handled on server)
       const result = await apiRequest('/api/communication/reactions', {
@@ -1460,7 +1685,7 @@ export function useCommunications() {
         body: JSON.stringify(apiData)
       }, false) // Don't show error toast, we handle it ourselves
 
-      console.log(`✅ [toggleReaction] API response:`, result)
+      logger.debug('Reaction API response:', { action: result?.action })
       logger.debug('Reaction toggled successfully:', { 
         action: result?.action,
         emoji,
@@ -1468,7 +1693,6 @@ export function useCommunications() {
         userId: sessionUserId 
       })
     } catch (error: any) {
-      console.error('❌ [toggleReaction] Error:', error)
       logger.error('Failed to toggle reaction:', error)
       
       // Check if user already reacted with this emoji (for reverting optimistic update)
@@ -1620,9 +1844,8 @@ export function useCommunications() {
 
       // Send to API first to get the restored message
       // Note: apiRequest unwraps successful responses, so we get the data directly
-      const restoredMessage = await apiRequest('/api/communication/messages/restore', {
-        method: 'POST',
-        body: JSON.stringify({ messageId })
+      const restoredMessage = await apiRequest(`/api/communication/messages/${messageId}?action=restore`, {
+        method: 'POST'
       })
 
       if (restoredMessage && restoredMessage.id && restoredMessage.channel_id) {
@@ -1712,8 +1935,9 @@ export function useCommunications() {
       if (params?.limit) queryParams.append('limit', params.limit.toString())
       if (params?.offset) queryParams.append('offset', params.offset.toString())
       
+      queryParams.append('trash', 'true')
       const queryString = queryParams.toString()
-      const url = `/api/communication/messages/trash${queryString ? `?${queryString}` : ''}`
+      const url = `/api/communication/messages?${queryString}`
 
       // Note: apiRequest unwraps successful responses, so we may get data directly or full response
       const response = await apiRequest(url)
@@ -1897,7 +2121,7 @@ export function useCommunications() {
     try {
       dispatch(setActionLoading(true))
       
-      const result = await apiRequest(`/api/communication/channels/${channelId}/leave`, {
+      const result = await apiRequest(`/api/communication/channels/${channelId}?action=leave`, {
         method: 'POST'
       })
 
@@ -1959,9 +2183,8 @@ export function useCommunications() {
     try {
       dispatch(setActionLoading(true))
       
-      const result = await apiRequest(`/api/communication/channels/${channelId}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({ action })
+      const result = await apiRequest(`/api/communication/channels/${channelId}?action=${action}`, {
+        method: 'PUT'
       })
 
       // Optimistically update the channel in Redux state
@@ -2088,6 +2311,7 @@ export function useCommunications() {
     clearActiveChannel: clearChannel,
     pinChannel,
     pinUser,
+    muteChannel,
 
     // Message operations
     fetchMessages,
@@ -2101,6 +2325,7 @@ export function useCommunications() {
     updateMessage: editMessage,
     createChannel,
     markAsRead,
+    markAllChannelMessagesAsRead,
 
     // Channel leave/archive operations (Phase 2)
     leaveChannel,

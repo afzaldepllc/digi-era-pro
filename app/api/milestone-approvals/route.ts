@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
 
         const approvals = stageUsers.map(stageUser => ({
           userId: stageUser._id,
-          userRole: typeof stageUser.role === 'string' ? stageUser.role : stageUser.role?.name || 'unknown',
+          userRole: typeof stageUser.role === 'string' ? stageUser.role : (stageUser.role as { name?: string } | null)?.name || 'unknown',
           status: 'pending'
         }))
 

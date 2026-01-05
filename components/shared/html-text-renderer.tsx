@@ -34,13 +34,13 @@ export function HtmlTextRenderer({
     // Create a temporary DOM element to parse HTML
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
-    
+
     // Get text content which automatically strips HTML tags
     let text = tempDiv.textContent || tempDiv.innerText || '';
-    
+
     // Clean up extra whitespace and newlines
     text = text.replace(/\s+/g, ' ').trim();
-    
+
     return text;
   };
 
@@ -54,7 +54,7 @@ export function HtmlTextRenderer({
   const truncateHtmlContent = (html: string, maxChars: number): string => {
     const plainText = stripHtmlTags(html);
     if (plainText.length <= maxChars) return html;
-    
+
     // If we need to truncate, we'll do it on the plain text and return plain text
     return truncateText(plainText, maxChars);
   };
@@ -62,29 +62,45 @@ export function HtmlTextRenderer({
   // Helper function to highlight @mentions in content
   const highlightMentions = (html: string): string => {
     let processedHtml = html;
-    
+
     // Remove zero-width spaces used as delimiters
     processedHtml = processedHtml.replace(/\u200B/g, '');
-    
+
+    // Pattern 0: TipTap Mention extension format - already has proper span structure
+    // These spans have data-type="mention" and data-mention-label attributes
+    // Just ensure they have the mention class
+    processedHtml = processedHtml.replace(
+      /<span[^>]*data-type="mention"[^>]*>(.*?)<\/span>/gi,
+      (match, content) => {
+        // If it already has the mention class, keep it as is
+        if (match.includes('class="mention"') || match.includes("class='mention'")) {
+          return match;
+        }
+        // Add the mention class if missing
+        return match.replace(/<span/, '<span class="mention"');
+      }
+    );
+
     // Pattern 1: Handle bracketed mentions [@Name] (legacy format)
     processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
       return `<span class="mention">@${name}</span>`;
     });
-    
+
     // Pattern 2: Clean up escaped HTML mention spans from old messages
     processedHtml = processedHtml
       .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
       .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
-    
+
     // Pattern 3: Handle @mentions with names (supports spaces via multi-word matching)
     // Match @word or @Word Word (capitalized names)
+    // Only if no mention spans exist yet (to avoid double-processing)
     if (!processedHtml.includes('class="mention"')) {
       // Match @Name or @Name Name pattern (for two-word names)
       processedHtml = processedHtml.replace(/@([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|\w+)/g, (match, name) => {
         return `<span class="mention">@${name}</span>`;
       });
     }
-    
+
     return processedHtml;
   };
 
@@ -93,14 +109,14 @@ export function HtmlTextRenderer({
     // Use DOMPurify for robust XSS protection
     const sanitized = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'span', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-user-id', 'data-user-name', 'style'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-user-id', 'data-user-name', 'data-type', 'data-mention-id', 'data-mention-label', 'contenteditable', 'style'],
       ALLOW_DATA_ATTR: true,
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button'],
       FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
       ADD_ATTR: ['target'], // Allow target for links
       USE_PROFILES: { html: true }
     });
-    
+
     // Highlight @mentions after sanitization
     return highlightMentions(sanitized);
   };
@@ -112,7 +128,7 @@ export function HtmlTextRenderer({
     }
 
     const plainText = stripHtmlTags(content);
-    
+
     if (!renderAsHtml) {
       // Return plain text version
       const truncatedText = maxLength ? truncateText(plainText, maxLength) : plainText;
@@ -121,7 +137,7 @@ export function HtmlTextRenderer({
 
     // Return HTML version
     let processedHtml = sanitizeHtml(content);
-    
+
     if (truncateHtml && maxLength) {
       // If we need to truncate HTML content
       if (plainText.length > maxLength) {
@@ -129,7 +145,7 @@ export function HtmlTextRenderer({
         return { html: '', text: truncatedText, isEmpty: false };
       }
     }
-    
+
     return { html: processedHtml, text: plainText, isEmpty: false };
   };
 
@@ -154,7 +170,6 @@ export function HtmlTextRenderer({
     return (
       <div
         className={cn(
-          "text-sm text-muted-foreground",
           "prose prose-sm max-w-full", // Tailwind typography classes - use max-w-full to respect parent
           "break-words [overflow-wrap:anywhere] [word-break:break-word]", // Ensure text wraps properly
           "[&>p]:my-1 [&>ol]:my-1 [&>ul]:my-1", // Reduce spacing in lists and paragraphs
@@ -167,6 +182,7 @@ export function HtmlTextRenderer({
           "[&_p]:inline", // Make paragraphs inside list items inline
           "[&_*]:max-w-full [&_*]:break-words", // Ensure all children respect width and wrap
           preserveFormatting && "whitespace-pre-wrap",
+          "text-sm text-muted-foreground", // Default text styling
           className
         )}
         title={maxLength && processedText.length > maxLength ? processedText : undefined}
@@ -177,10 +193,10 @@ export function HtmlTextRenderer({
 
   // Render as plain text
   return (
-    <span 
+    <span
       className={cn(
-        "text-sm text-muted-foreground",
         preserveFormatting && "whitespace-pre-wrap",
+        "text-sm text-muted-foreground", // Default text styling
         className
       )}
       title={maxLength && processedText.length > maxLength ? processedText : undefined}
@@ -220,7 +236,7 @@ const cleanEscapedHtml = (html: string): string => {
 export const extractTextFromHtml = (html: string, maxLength?: number): string => {
   // First clean up any escaped HTML entities
   const cleanedHtml = cleanEscapedHtml(html);
-  
+
   if (typeof window === 'undefined') {
     // Server-side fallback - basic HTML tag removal
     const text = cleanedHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
@@ -232,11 +248,11 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
   tempDiv.innerHTML = cleanedHtml;
   let text = tempDiv.textContent || tempDiv.innerText || '';
   text = text.replace(/\s+/g, ' ').trim();
-  
+
   if (maxLength && text.length > maxLength) {
     return text.substring(0, maxLength).trim() + '...';
   }
-  
+
   return text;
 };
 
@@ -246,17 +262,17 @@ export const extractTextFromHtml = (html: string, maxLength?: number): string =>
 export const highlightMentionsInHtml = (html: string): string => {
   // First remove zero-width spaces
   let processedHtml = html.replace(/\u200B/g, '');
-  
+
   // Pattern 1: Handle bracketed mentions [@Name] (legacy format)
   processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
     return `<span class="mention">@${name}</span>`;
   });
-  
+
   // Pattern 2: Clean up escaped HTML mention spans from old messages
   processedHtml = processedHtml
     .replace(/&lt;span[^&]*class="mention"[^&]*data-user-name="([^"]*)"[^&]*&gt;[^&]*&lt;\/span&gt;/gi, '<span class="mention">@$1</span>')
     .replace(/&lt;span[^&]*class="mention"[^&]*&gt;(@[^&]+)&lt;\/span&gt;/gi, '<span class="mention">$1</span>');
-  
+
   // Pattern 3: Handle @mentions - capture @word or @Multiple Words (capitalized words after @)
   if (!processedHtml.includes('class="mention"')) {
     // Match @followed by capitalized words (supports multi-word names like "Super Administrator")
@@ -271,7 +287,7 @@ export const highlightMentionsInHtml = (html: string): string => {
       return match;
     });
   }
-  
+
   return processedHtml;
 };
 
@@ -286,14 +302,14 @@ export const sanitizeAndRenderHtml = (html: string): string => {
 
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
-  
+
   // Remove potentially dangerous elements
   const dangerousTags = ['script', 'iframe', 'object', 'embed', 'link', 'meta'];
   dangerousTags.forEach(tag => {
     const elements = tempDiv.querySelectorAll(tag);
     elements.forEach(el => el.remove());
   });
-  
+
   // Highlight @mentions
   return highlightMentionsInHtml(tempDiv.innerHTML);
 };

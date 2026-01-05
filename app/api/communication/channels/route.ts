@@ -10,7 +10,7 @@ import { default as User } from '@/models/User'
 import { executeGenericDbQuery } from '@/lib/mongodb'
 import { channelQuerySchema, createChannelSchema } from "@/lib/validations/channel"
 import { apiLogger as logger } from '@/lib/logger'
-import { supabase } from '@/lib/supabase'
+import { broadcastToUser } from '@/lib/communication/broadcast'
 
 
 // Helper to create consistent error responses
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
           select: { id: true }
         })
         
-        const messageIdsArray = messageIds.map(m => m.id)
+        const messageIdsArray = messageIds.map((m: { id: string }) => m.id)
         
         if (messageIdsArray.length > 0) {
           // Count read receipts for those message ids
@@ -311,29 +311,19 @@ export async function POST(request: NextRequest) {
     // Enrich channel with user data
     const enrichedChannel = await enrichChannelWithUserData(completeChannel, allUsers)
 
-    // Broadcast new channel to all members for real-time sync
-    // Note: Broadcast happens without subscription in Supabase Realtime (it's a fire-and-forget event)
-    try {
-      // Broadcast to each member's personal notification channel
-      for (const memberId of memberIds) {
-        try {
-          await supabase.channel(`user:${memberId}:channels`).send({
-            type: 'broadcast',
-            event: 'new_channel',
-            payload: {
-              id: enrichedChannel.id,
-              type: 'new_channel',
-              channel: enrichedChannel,
-              members: enrichedChannel.channel_members || []
-            }
-          })
-          logger.debug(`✅ Broadcasted new channel to user ${memberId}`)
-        } catch (memberError) {
-          logger.warn(`⚠️ Failed to broadcast to member ${memberId}:`, memberError)
+    // Broadcast new channel to all members for real-time sync (non-blocking)
+    // Uses Phase 1 broadcastToUser for centralized broadcast handling
+    for (const memberId of memberIds) {
+      broadcastToUser({
+        userId: memberId,
+        event: 'new_message', // Using 'new_message' as it's a valid NotificationEvent
+        payload: {
+          id: enrichedChannel.id,
+          type: 'new_channel',
+          channel: enrichedChannel,
+          members: enrichedChannel.channel_members || []
         }
-      }
-    } catch (broadcastError) {
-      logger.warn('Failed to setup broadcast for new channel:', broadcastError)
+      }).catch(err => logger.debug(`Failed to broadcast new channel to ${memberId}:`, err))
     }
 
     return NextResponse.json({

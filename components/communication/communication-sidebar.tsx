@@ -72,18 +72,18 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
 
   const content = useMemo(() => (
     loading ? (
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-5">
         <div className="flex items-center justify-between mb-4">
-          <Skeleton className="h-6 w-28" />
-          <Skeleton className="h-8 w-8 rounded-full" />
+          <Skeleton className="h-7 w-32 rounded-lg" />
+          <Skeleton className="h-9 w-9 rounded-lg" />
         </div>
-        <Skeleton className="h-10 w-full rounded-lg" />
+        <Skeleton className="h-11 w-full rounded-xl" />
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="flex gap-3 p-3 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms` }}>
-            <Skeleton className="h-11 w-11 rounded-full shrink-0" />
-            <div className="space-y-2 flex-1">
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
+          <div key={i} className="flex gap-3 p-3 rounded-xl bg-muted/30 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms` }}>
+            <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+            <div className="space-y-2.5 flex-1">
+              <Skeleton className="h-4 w-3/4 rounded-md" />
+              <Skeleton className="h-3 w-1/2 rounded-md" />
             </div>
           </div>
         ))}
@@ -96,8 +96,8 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
             <Button
               variant="ghost"
               className={cn(
-                "w-full justify-start p-2.5 h-auto font-semibold text-sm hover:bg-primary hover:text-primary-foreground transition-all duration-200 rounded-lg",
-                isActiveChannelRegular && "bg-primary text-white"
+                "w-full justify-start p-3 h-auto font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all duration-200 rounded-xl shadow-sm",
+                isActiveChannelRegular && "bg-primary text-white shadow-md"
               )}
               onClick={() => setShowChannels(!showChannels)}
             >
@@ -108,7 +108,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               )}
               <Hash className="h-4 w-4 mr-2" />
               Channels
-              <span className="ml-1 text-xs opacity-70">({channels.filter(c => c.type !== 'dm').length})</span>
+              <span className="ml-auto text-xs opacity-70 font-semibold bg-white/10 px-2 py-0.5 rounded-full">({channels.filter(c => c.type !== 'dm').length})</span>
             </Button>
           </div>
 
@@ -133,15 +133,15 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
           )}
         </div>
 
-        <Separator className="my-2" />
+        <Separator className="my-3" />
         {/* Direct Messages Section */}
         <div>
           <div className="px-3">
             <Button
               variant="ghost"
               className={cn(
-                "w-full justify-start p-2.5 h-auto font-semibold text-sm hover:bg-primary hover:text-primary-foreground transition-all duration-200 rounded-lg",
-                isActiveChannelDM && "bg-primary text-white"
+                "w-full justify-start p-3 h-auto font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all duration-200 rounded-xl shadow-sm",
+                isActiveChannelDM && "bg-primary text-white shadow-md"
               )}
               onClick={() => setShowUsers(!showUsers)}
             >
@@ -182,19 +182,19 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
   ])
 
   return (
-    <div className={cn("flex flex-col h-full bg-gradient-to-b from-card to-card/95 border-r shadow-sm", className)}>
+    <div className={cn("flex flex-col h-full bg-gradient-to-b from-card via-card/98 to-card/95 border-r shadow-md", className)}>
       {/* Header */}
-      <div className="pl-5 pr-4 pt-5 pb-4 border-b bg-gradient-to-r from-card/50 to-transparent">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Messages</h2>
-          <div className="flex items-center gap-1">
+      <div className="pl-5 pr-4 pt-6 pb-5 border-b bg-gradient-to-br from-card/80 via-primary/5 to-transparent backdrop-blur-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-extrabold text-2xl tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/80 bg-clip-text">Messages</h2>
+          <div className="flex items-center gap-1.5">
             {/* Filter dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 hover:bg-accent hover:scale-110 transition-all duration-200"
+                  className="h-9 w-9 p-0 hover:bg-primary/10 hover:text-primary hover:scale-110 transition-all duration-200 rounded-lg"
                   title="Filter conversations"
                 >
                   <Filter className="h-4 w-4" />
@@ -227,7 +227,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               size="sm"
               onClick={() => setShowAuditLog(true)}
               title="View Audit Logs"
-              className="h-8 w-8 p-0 hover:bg-accent hover:scale-110 transition-all duration-200"
+              className="h-9 w-9 p-0 hover:bg-primary/10 hover:text-primary hover:scale-110 transition-all duration-200 rounded-lg"
             >
               <FileText className="h-4 w-4" />
             </Button>
@@ -237,7 +237,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
               size="sm"
               onClick={() => setShowTrash(true)}
               title="View Trash"
-              className="h-8 w-8 p-0 hover:bg-accent hover:scale-110 transition-all duration-200"
+              className="h-9 w-9 p-0 hover:bg-primary/10 hover:text-primary hover:scale-110 transition-all duration-200 rounded-lg"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -246,7 +246,8 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
                 variant="default"
                 size="sm"
                 onClick={onCreateChannel}
-                className="h-8 w-8 p-0 hover:scale-110 transition-all duration-200 shadow-sm"
+                className="h-9 w-9 p-0 hover:scale-110 transition-all duration-200 shadow-md hover:shadow-lg rounded-lg"
+                title="Create new channel"
               >
                 <MessageSquare className="h-4 w-4" />
               </Button>
@@ -256,7 +257,7 @@ export const CommunicationSidebar = memo(function CommunicationSidebar({
 
         {/* Active filter indicator */}
         {filterType !== 'all' && (
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="text-xs font-semibold px-3 py-1 rounded-full shadow-sm animate-in fade-in duration-300">
             {filterType === 'dm' ? 'Direct Messages' : filterType === 'client-support' ? 'Client Support' : filterType.replace('-', ' ')}
           </Badge>
         )}

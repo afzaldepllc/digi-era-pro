@@ -19,12 +19,17 @@ import {
   Maximize2,
   Eye,
   Mic,
-  FileAudio
+  FileAudio,
+  Forward,
+  Share2
 } from "lucide-react"
 import { IAttachment } from "@/types/communication"
 import { useChatAttachments } from "@/hooks/use-chat-attachments"
 import { formatDistanceToNow } from "date-fns"
 import Image from "next/image"
+import { AttachmentShareMenu } from "./attachment-share-menu"
+import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 interface AttachmentPreviewProps {
   attachment: IAttachment
@@ -32,6 +37,8 @@ interface AttachmentPreviewProps {
   size?: "sm" | "md" | "lg"
   showDownload?: boolean
   showPreview?: boolean
+  showShare?: boolean
+  onForward?: (attachment: IAttachment) => void
 }
 
 interface AttachmentGridProps {
@@ -54,7 +61,7 @@ interface AttachmentListItemProps {
 export function getFileCategory(fileType: string | undefined, fileName: string): 'image' | 'video' | 'audio' | 'pdf' | 'document' | 'spreadsheet' | 'archive' | 'other' {
   const type = fileType?.toLowerCase() || ''
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  
+
   if (type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
     return 'image'
   }
@@ -168,7 +175,7 @@ export const ImagePreview = memo(function ImagePreview({
   }
 
   return (
-    <div 
+    <div
       className={cn(
         "relative rounded-lg overflow-hidden cursor-pointer group",
         className
@@ -218,8 +225,9 @@ export const AudioPlayer = memo(function AudioPlayer({
   const [duration, setDuration] = useState(initialDuration || 0)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Format time as mm:ss
+  // Format time as mm:ss - handle edge cases
   const formatTime = (seconds: number) => {
+    if (!isFinite(seconds) || isNaN(seconds) || seconds < 0) return '0:00'
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -231,9 +239,33 @@ export const AudioPlayer = memo(function AudioPlayer({
     if (!audio) return
 
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration)
+      // Handle cases where audio.duration is Infinity or NaN (streaming/live audio)
+      const audioDuration = audio.duration
+      if (isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      } else if (initialDuration && initialDuration > 0) {
+        setDuration(initialDuration)
+      }
       setIsLoading(false)
     }
+
+    const handleDurationChange = () => {
+      // Fallback for when duration becomes available later
+      const audioDuration = audio.duration
+      if (isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      }
+    }
+
+    const handleCanPlayThrough = () => {
+      // Another fallback when audio is fully buffered
+      const audioDuration = audio.duration
+      if (duration === 0 && isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      }
+      setIsLoading(false)
+    }
+
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
     const handleEnded = () => {
       setIsPlaying(false)
@@ -242,17 +274,27 @@ export const AudioPlayer = memo(function AudioPlayer({
     const handleError = () => setIsLoading(false)
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('durationchange', handleDurationChange)
+    audio.addEventListener('canplaythrough', handleCanPlayThrough)
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('ended', handleEnded)
     audio.addEventListener('error', handleError)
 
+    // If we have initial duration, use it immediately
+    if (initialDuration && initialDuration > 0) {
+      setDuration(initialDuration)
+      setIsLoading(false)
+    }
+
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('durationchange', handleDurationChange)
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
     }
-  }, [])
+  }, [initialDuration, duration])
 
   const togglePlayback = () => {
     if (!audioRef.current) return
@@ -268,12 +310,12 @@ export const AudioPlayer = memo(function AudioPlayer({
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return
-    
+
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const percent = x / rect.width
     const newTime = percent * duration
-    
+
     audioRef.current.currentTime = newTime
     setCurrentTime(newTime)
   }
@@ -282,10 +324,11 @@ export const AudioPlayer = memo(function AudioPlayer({
 
   return (
     <div className={cn(
-      "flex items-center gap-3 p-3 rounded-2xl min-w-[200px] max-w-[280px]",
-      isVoiceMessage 
-        ? "bg-emerald-500/10 border border-emerald-500/20" 
-        : "bg-muted/50 border",
+      "flex items-center gap-2 p-2 rounded-xl min-w-[180px] max-w-[240px]",
+      isVoiceMessage
+        // ? "bg-emerald-500/10 border border-emerald-500/20"
+        ? "bg-white border border-emerald-500/20"
+        : "bg-muted/40 border",
       className
     )}>
       {/* Hidden audio element */}
@@ -296,41 +339,41 @@ export const AudioPlayer = memo(function AudioPlayer({
         variant="ghost"
         size="icon"
         className={cn(
-          "h-10 w-10 rounded-full shrink-0",
-          isVoiceMessage 
-            ? "bg-emerald-500 hover:bg-emerald-600 text-white" 
+          "h-8 w-8 rounded-full shrink-0",
+          isVoiceMessage
+            ? "bg-emerald-500 hover:bg-emerald-600 text-white"
             : "bg-primary hover:bg-primary/90 text-primary-foreground"
         )}
         onClick={togglePlayback}
         disabled={isLoading}
       >
         {isLoading ? (
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
         ) : isPlaying ? (
-          <Pause className="h-5 w-5" />
+          <Pause className="h-4 w-4" />
         ) : (
-          <Play className="h-5 w-5 ml-0.5" />
+          <Play className="h-4 w-4 ml-0.5" />
         )}
       </Button>
 
       {/* Waveform / Progress */}
-      <div className="flex-1 space-y-1">
+      <div className="flex-1 space-y-0.5">
         {/* Progress bar with waveform-like appearance */}
-        <div 
-          className="h-6 relative cursor-pointer flex items-center"
+        <div
+          className="h-5 relative cursor-pointer flex items-center"
           onClick={handleSeek}
         >
           {/* Waveform visualization (simulated) */}
           <div className="absolute inset-0 flex items-center gap-[2px]">
-            {Array.from({ length: 30 }).map((_, i) => {
+            {Array.from({ length: 25 }).map((_, i) => {
               const height = 20 + Math.sin(i * 0.5) * 15 + Math.random() * 10
-              const isPast = (i / 30) * 100 <= progressPercent
+              const isPast = (i / 25) * 100 <= progressPercent
               return (
                 <div
                   key={i}
                   className={cn(
                     "flex-1 rounded-full transition-colors",
-                    isPast 
+                    isPast
                       ? isVoiceMessage ? "bg-emerald-500" : "bg-primary"
                       : "bg-muted-foreground/30"
                   )}
@@ -342,7 +385,7 @@ export const AudioPlayer = memo(function AudioPlayer({
         </div>
 
         {/* Time display */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="tabular-nums">{formatTime(currentTime)}</span>
           <span className="tabular-nums">{formatTime(duration)}</span>
         </div>
@@ -351,16 +394,16 @@ export const AudioPlayer = memo(function AudioPlayer({
       {/* Voice message icon or download */}
       {isVoiceMessage ? (
         <div className="shrink-0">
-          <Mic className="h-4 w-4 text-emerald-500" />
+          <Mic className="h-3.5 w-3.5 text-emerald-500" />
         </div>
       ) : onDownload && (
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-6 w-6 shrink-0"
           onClick={onDownload}
         >
-          <Download className="h-4 w-4" />
+          <Download className="h-3.5 w-3.5" />
         </Button>
       )}
     </div>
@@ -373,10 +416,13 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   className,
   size = "md",
   showDownload = true,
-  showPreview = true
+  showPreview = true,
+  showShare = false,
+  onForward
 }: AttachmentPreviewProps) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const { toast } = useToast()
 
   const { downloadAttachment } = useChatAttachments()
 
@@ -385,15 +431,15 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   const colorClass = getExtensionColor(category)
 
   const sizeClasses = {
-    sm: "max-w-[150px]",
-    md: "max-w-[250px]",
-    lg: "max-w-[350px]"
+    sm: "max-w-[120px]",
+    md: "max-w-[200px]",
+    lg: "max-w-[280px]"
   }
 
   const imageSizes = {
-    sm: "h-[100px]",
-    md: "h-[180px]",
-    lg: "h-[250px]"
+    sm: "h-[80px]",
+    md: "h-[140px]",
+    lg: "h-[200px]"
   }
 
   const handleDownload = useCallback(async () => {
@@ -401,11 +447,16 @@ export const AttachmentPreview = memo(function AttachmentPreview({
     try {
       await downloadAttachment(attachment)
     } catch (error) {
-      console.error('Download failed:', error)
+      logger.error('Download failed:', error)
+      toast({
+        title: "Download Failed",
+        description: "Could not download the file. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setIsDownloading(false)
     }
-  }, [downloadAttachment, attachment])
+  }, [downloadAttachment, attachment, toast])
 
   // Image attachment
   if (category === 'image' && attachment.file_url) {
@@ -424,20 +475,31 @@ export const AttachmentPreview = memo(function AttachmentPreview({
               <span className="text-white text-xs truncate flex-1 mr-2">
                 {attachment.file_name}
               </span>
-              {showDownload && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-white hover:bg-white/20"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDownload()
-                  }}
-                  disabled={isDownloading}
-                >
-                  <Download className="h-3 w-3" />
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                {showShare && (
+                  <AttachmentShareMenu
+                    attachment={attachment}
+                    onForward={onForward}
+                    variant="icon"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-white hover:bg-white/20"
+                  />
+                )}
+                {showDownload && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-white hover:bg-white/20"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownload()
+                    }}
+                    disabled={isDownloading}
+                  >
+                    <Download className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -468,15 +530,25 @@ export const AttachmentPreview = memo(function AttachmentPreview({
                     <p className="font-medium">{attachment.file_name}</p>
                     <p className="text-sm opacity-80">{formatFileSize(attachment.file_size)}</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleDownload}
-                    disabled={isDownloading}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {showShare && (
+                      <AttachmentShareMenu
+                        attachment={attachment}
+                        onForward={onForward}
+                        variant="button"
+                        size="sm"
+                      />
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleDownload}
+                      disabled={isDownloading}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -489,9 +561,9 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   // Audio / Voice message attachment
   if (category === 'audio' && attachment.file_url) {
     // Check if it's a voice message based on filename or type
-    const isVoice = attachment.file_name.toLowerCase().includes('voice') || 
-                    attachment.file_type?.includes('webm') ||
-                    (attachment as any).isVoiceMessage
+    const isVoice = attachment.file_name.toLowerCase().includes('voice') ||
+      attachment.file_type?.includes('webm') ||
+      (attachment as any).isVoiceMessage
 
     return (
       attachment.file_url ? (
@@ -520,24 +592,30 @@ export const AttachmentPreview = memo(function AttachmentPreview({
         className
       )}>
         {/* PDF preview placeholder */}
-        <div className={cn(
-          "bg-red-50 dark:bg-red-900/20 flex items-center justify-center",
-          imageSizes[size]
-        )}>
+        <div className="bg-red-50 dark:bg-red-900/20 flex items-center justify-center h-[80px]">
           <div className="text-center">
-            <FileText className="h-12 w-12 text-red-500 mx-auto mb-2" />
-            <span className="text-xs text-red-600 dark:text-red-400 font-medium">PDF</span>
+            <FileText className="h-8 w-8 text-red-500 mx-auto" />
+            <span className="text-[10px] text-red-600 dark:text-red-400 font-medium">PDF</span>
           </div>
         </div>
-        <div className="p-2">
-          <p className="text-sm font-medium truncate">{attachment.file_name}</p>
-          <p className="text-xs text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
-          <div className="flex gap-1 mt-2">
+        <div className="px-2 py-1.5">
+          <p className="text-xs font-medium truncate">{attachment.file_name}</p>
+          <p className="text-[10px] text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
+          <div className="flex gap-1 mt-1.5">
+            {showShare && (
+              <AttachmentShareMenu
+                attachment={attachment}
+                onForward={onForward}
+                variant="button"
+                size="sm"
+                className="flex-1 h-6 text-[10px]"
+              />
+            )}
             {showPreview && (
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1 h-7 text-xs"
+                className="flex-1 h-6 text-[10px] px-2"
                 onClick={() => window.open(attachment.file_url, '_blank')}
               >
                 <Eye className="h-3 w-3 mr-1" />
@@ -548,7 +626,7 @@ export const AttachmentPreview = memo(function AttachmentPreview({
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1 h-7 text-xs"
+                className="flex-1 h-6 text-[10px] px-2"
                 onClick={handleDownload}
                 disabled={isDownloading}
               >
@@ -565,37 +643,46 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   // Generic file attachment
   return (
     <div className={cn(
-      "rounded-lg border bg-card p-3 flex items-center gap-3",
+      "rounded-lg border bg-card p-2 flex items-center gap-2",
       sizeClasses[size],
       className
     )}>
-      <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", colorClass)}>
-        <Icon className="h-5 w-5" />
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", colorClass)}>
+        <Icon className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{attachment.file_name}</p>
-        <p className="text-xs text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
+        <p className="text-xs font-medium truncate">{attachment.file_name}</p>
+        <p className="text-[10px] text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
       </div>
-      <div className="flex gap-1 shrink-0">
+      <div className="flex gap-0.5 shrink-0">
+        {showShare && (
+          <AttachmentShareMenu
+            attachment={attachment}
+            onForward={onForward}
+            variant="icon"
+            size="sm"
+            className="h-7 w-7 p-0"
+          />
+        )}
         {showPreview && attachment.file_url && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0"
+            className="h-7 w-7 p-0"
             onClick={() => window.open(attachment.file_url, '_blank')}
           >
-            <ExternalLink className="h-4 w-4" />
+            <ExternalLink className="h-3.5 w-3.5" />
           </Button>
         )}
         {showDownload && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0"
+            className="h-7 w-7 p-0"
             onClick={handleDownload}
             disabled={isDownloading}
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
@@ -611,7 +698,7 @@ export const AttachmentGrid = memo(function AttachmentGrid({
   onViewAll
 }: AttachmentGridProps) {
   const [selectedAttachment, setSelectedAttachment] = useState<IAttachment | null>(null)
-  
+
   if (!attachments.length) return null
 
   const visibleAttachments = attachments.slice(0, maxVisible)
@@ -620,24 +707,24 @@ export const AttachmentGrid = memo(function AttachmentGrid({
   // Single image - full width
   if (attachments.length === 1 && getFileCategory(attachments[0].file_type, attachments[0].file_name) === 'image') {
     return (
-      <div className={cn("mt-2", className)}>
-        <AttachmentPreview attachment={attachments[0]} size="lg" />
+      <div className={cn("mt-1.5", className)}>
+        <AttachmentPreview attachment={attachments[0]} size="md" />
       </div>
     )
   }
 
   // Multiple images - grid layout
   const allImages = attachments.every(a => getFileCategory(a.file_type, a.file_name) === 'image')
-  
+
   if (allImages) {
-    const gridClass = attachments.length === 2 
-      ? "grid-cols-2" 
-      : attachments.length === 3 
-        ? "grid-cols-2" 
+    const gridClass = attachments.length === 2
+      ? "grid-cols-2"
+      : attachments.length === 3
+        ? "grid-cols-2"
         : "grid-cols-2"
 
     return (
-      <div className={cn("mt-2 grid gap-1", gridClass, className)}>
+      <div className={cn("mt-1.5 grid gap-0.5", gridClass, className)}>
         {visibleAttachments.map((attachment, index) => (
           <div
             key={attachment.id}
@@ -646,18 +733,18 @@ export const AttachmentGrid = memo(function AttachmentGrid({
               attachments.length === 3 && index === 0 && "col-span-2"
             )}
           >
-            <AttachmentPreview 
-              attachment={attachment} 
-              size={attachments.length === 3 && index === 0 ? "lg" : "md"}
+            <AttachmentPreview
+              attachment={attachment}
+              size={attachments.length === 3 && index === 0 ? "md" : "sm"}
               className="w-full"
             />
             {/* Show +N overlay on last visible if more hidden */}
             {index === maxVisible - 1 && hiddenCount > 0 && (
-              <div 
+              <div
                 className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-lg cursor-pointer"
                 onClick={onViewAll}
               >
-                <span className="text-white text-2xl font-semibold">+{hiddenCount}</span>
+                <span className="text-white text-xl font-semibold">+{hiddenCount}</span>
               </div>
             )}
           </div>
@@ -668,19 +755,19 @@ export const AttachmentGrid = memo(function AttachmentGrid({
 
   // Mixed file types - list layout
   return (
-    <div className={cn("mt-2 space-y-2", className)}>
+    <div className={cn("mt-1.5 space-y-1", className)}>
       {visibleAttachments.map((attachment) => (
-        <AttachmentPreview 
-          key={attachment.id} 
-          attachment={attachment} 
-          size="md"
+        <AttachmentPreview
+          key={attachment.id}
+          attachment={attachment}
+          size="sm"
         />
       ))}
       {hiddenCount > 0 && (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="w-full"
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full h-7 text-xs"
           onClick={onViewAll}
         >
           View {hiddenCount} more file{hiddenCount > 1 ? 's' : ''}
@@ -705,15 +792,15 @@ export const AttachmentListItem = memo(function AttachmentListItem({
 
   return (
     <div className={cn(
-      "flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors",
+      "flex items-center gap-2 p-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors",
       className
     )}>
-      <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", colorClass)}>
-        <Icon className="h-5 w-5" />
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", colorClass)}>
+        <Icon className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{attachment.file_name}</p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <p className="text-xs font-medium truncate">{attachment.file_name}</p>
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span>{formatFileSize(attachment.file_size)}</span>
           {showUploader && uploaderName && (
             <>
@@ -729,25 +816,25 @@ export const AttachmentListItem = memo(function AttachmentListItem({
           )}
         </div>
       </div>
-      <div className="flex gap-1 shrink-0">
+      <div className="flex gap-0.5 shrink-0">
         {onPreview && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-6 w-6 p-0"
             onClick={() => onPreview(attachment)}
           >
-            <Eye className="h-4 w-4" />
+            <Eye className="h-3.5 w-3.5" />
           </Button>
         )}
         {onDownload && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-6 w-6 p-0"
             onClick={() => onDownload(attachment)}
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>

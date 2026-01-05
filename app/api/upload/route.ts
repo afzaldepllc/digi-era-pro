@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // Validate file type for images (channel avatars, profile pics)
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-    const allowedAudioTypes = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav']
+    const allowedAudioTypes = ['audio/webm', 'audio/webm;codecs=opus', 'audio/ogg', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/mp3']
     const allowedTypes = [...allowedImageTypes, ...allowedAudioTypes]
 
     // Determine file category

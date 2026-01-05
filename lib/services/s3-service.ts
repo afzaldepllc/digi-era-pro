@@ -77,7 +77,9 @@ export const S3_CONFIG = {
             'audio/mpeg',
             'audio/mp3',
             'audio/wav',
-            'audio/ogg'
+            'audio/ogg',
+            'audio/webm',
+            'audio/webm;codecs=opus'
         ] as const,
         expiresIn: 3600 * 24 * 7 // 7 days for chat attachments
     }
@@ -142,8 +144,13 @@ export class S3Service {
             }
         }
 
-        // Check content type
-        if (!(config.allowedTypes as readonly string[]).includes(contentType)) {
+        // Check content type - handle MIME types with parameters (e.g., audio/webm;codecs=opus)
+        const baseContentType = contentType.split(';')[0].trim()
+        const isAllowed = (config.allowedTypes as readonly string[]).some(
+            allowed => allowed === contentType || allowed === baseContentType || allowed.startsWith(baseContentType)
+        )
+        
+        if (!isAllowed) {
             return {
                 valid: false,
                 error: `File type ${contentType} is not allowed for ${fileType}`

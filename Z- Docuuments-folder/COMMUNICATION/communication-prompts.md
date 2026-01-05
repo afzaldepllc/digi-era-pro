@@ -49,7 +49,7 @@ so create the new planning file for implementation of this one while make sure e
 # phase 03
 
 and now use the 
-Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md and 
+Z- Docuuments-folder\COMMUNICATION\communication-module-documentation-last-version-7.md and 
 Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md to understand the current flow of this project and communication module  and use these to understand these and their related files  project task flow 
 
 import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
@@ -72,8 +72,8 @@ so create the new planning file for implementation of this one while make sure e
 
 
 and now use the 
-Z- Docuuments-folder\COMMUNICATION\COMMUNICATION_MODULE_IMPLEMENTATION_COMPLETE-VERSION_5.md and 
-Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md to understand the current flow of this project and communication module  and use these to understand these and their related files  project task flow 
+Z- Docuuments-folder\COMMUNICATION\communication-module-documentation-last-version-7.md
+Z- Docuuments-folder\COMPLETE-CRUD-IMPLEMENTATION-FINAL-VERSIONE.md and all currentally given files to you  to understand the current flow of this project and communication module  and use these to understand these and their related files  project task flow 
 
 import { ProjectAnalytics } from "@/components/projects/ProjectAnalytics";
 import { ProjectCategorization } from "@/components/projects/ProjectCategorization";
@@ -84,7 +84,7 @@ import HtmlTextRenderer from "@/components/shared/html-text-renderer";
 import { PRIORITY_COLORS, STATUS_COLORS } from "@/lib/colorConstants";
 1) i want the another realtime and generic flow for realtime actions perform in which when the project created than go the notification for the department head (IT manager )(or user with given user id ) and this can be used to send the notification on project approval, on project task assigment to assignee with the supabase using the complete flow of current project implementation and supabse implementation using the supabase 
 
-2) this generic realtime can used to create the task with realtime experience and in the backend the api call for task creation/updation/assignement using the same api calls with mongodb with same current implementation but experience should be realtime and this can be used in the task drag and drop on the tasks board view 
+2) this generic realtime (use the current message-notification and structure should be generic)can used to create the task with realtime experience and in the backend the api call for task creation/updation/assignement using the same api calls with mongodb with same current implementation but experience should be realtime and this can be used in the task drag and drop on the tasks board view 
 
 
 so create the new planning file for implementation of this one while make sure every things should be optimized and according to best practices of the next js and supabase and according to current flow and easily imeplemented and plan should be according to divide and conqure method

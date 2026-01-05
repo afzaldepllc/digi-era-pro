@@ -17,14 +17,7 @@ import { executeGenericDbQuery } from '@/lib/mongodb'
 import User from '@/models/User'
 import { supabase } from '@/lib/supabase'
 import { enrichChannelWithUserData } from '@/lib/communication/utils'
-
-// Simple console logger fallback if logger not available
-const logger = {
-  debug: (...args: any[]) => console.debug('[ChannelSyncManager]', ...args),
-  info: (...args: any[]) => console.info('[ChannelSyncManager]', ...args),
-  warn: (...args: any[]) => console.warn('[ChannelSyncManager]', ...args),
-  error: (...args: any[]) => console.error('[ChannelSyncManager]', ...args)
-}
+import { communicationLogger as logger } from '@/lib/logger'
 
 export interface SyncResult {
   success: boolean

@@ -59,6 +59,7 @@ import { useCommunications } from "@/hooks/use-communications"
 import { useSession } from "next-auth/react"
 import { toast } from "@/hooks/use-toast"
 import { useUsers } from "@/hooks/use-users"
+import { communicationLogger as logger } from "@/lib/logger"
 
 interface ChannelSettingsModalProps {
   isOpen: boolean
@@ -238,7 +239,7 @@ export function ChannelSettingsModal({
         description: "Channel avatar has been updated"
       })
     } catch (error) {
-      console.error('Avatar upload error:', error)
+      logger.error('Avatar upload error:', error)
       toast({
         title: "Upload failed",
         description: "Failed to upload avatar. Please try again.",
@@ -258,7 +259,7 @@ export function ChannelSettingsModal({
 
     setIsSavingSettings(true)
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/settings`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -283,7 +284,7 @@ export function ChannelSettingsModal({
 
       setHasChanges(false)
     } catch (error: any) {
-      console.error('Save settings error:', error)
+      logger.error('Save settings error:', error)
       toast({
         title: "Save failed",
         description: error.message || "Failed to save settings. Please try again.",
@@ -297,12 +298,12 @@ export function ChannelSettingsModal({
   // Handle member role change
   const handleRoleChange = useCallback(async (memberId: string, newRole: 'admin' | 'member') => {
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=member-role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mongo_member_id: memberId,
-          channelRole: newRole
+          memberId: memberId,
+          role: newRole
         })
       })
 
@@ -321,7 +322,7 @@ export function ChannelSettingsModal({
         onSettingsUpdate({})
       }
     } catch (error: any) {
-      console.error('Role change error:', error)
+      logger.error('Role change error:', error)
       toast({
         title: "Update failed",
         description: error.message || "Failed to update member role",
@@ -333,7 +334,7 @@ export function ChannelSettingsModal({
   // Handle remove member
   const handleRemoveMember = useCallback(async (memberId: string) => {
     try {
-      const response = await fetch(`/api/communication/channels/${channel.id}/members?mongo_member_id=${memberId}`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=remove-member&mongo_member_id=${memberId}`, {
         method: 'DELETE'
       })
 
@@ -358,7 +359,7 @@ export function ChannelSettingsModal({
 
       setShowRemoveMemberConfirm(null)
     } catch (error: any) {
-      console.error('Remove member error:', error)
+      logger.error('Remove member error:', error)
       toast({
         title: "Remove failed",
         description: error.message || "Failed to remove member",
@@ -398,7 +399,7 @@ export function ChannelSettingsModal({
     setIsAddingMembers(true)
     try {
       // Call API to add members
-      const response = await fetch(`/api/communication/channels/${channel.id}/members`, {
+      const response = await fetch(`/api/communication/channels/${channel.id}?action=members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: selectedUsersToAdd })

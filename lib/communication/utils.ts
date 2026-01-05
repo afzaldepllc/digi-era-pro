@@ -1,3 +1,5 @@
+import { communicationLogger as logger } from '@/lib/logger'
+
 // Helper function to enrich channels with MongoDB user data
 export function enrichChannelWithUserData(channel: any, users: any[]) {
   try {
@@ -24,7 +26,7 @@ export function enrichChannelWithUserData(channel: any, users: any[]) {
       channel_members: enrichedChannelMembers
     }
   } catch (error) {
-    console.error('Error enriching channel with user data:', error)
+    logger.error('Error enriching channel with user data:', error)
     return {
       ...channel,
       channel_members: []
@@ -39,7 +41,7 @@ export function enrichChannelWithUserData(channel: any, users: any[]) {
  */
 export function transformMessageWithSender(message: any) {
   if (!message || typeof message !== 'object') {
-    console.error('Invalid message for transformation:', message)
+    logger.error('Invalid message for transformation:', message)
     return null
   }
 
@@ -66,7 +68,7 @@ export function transformMessageWithSender(message: any) {
  */
 export function enrichMessageWithUserData(message: any, users: any[]) {
   if (!message || typeof message !== 'object' || !message.mongo_sender_id) {
-    console.error('Invalid message for enrichment:', message)
+    logger.error('Invalid message for enrichment:', message)
     return null
   }
   
@@ -106,7 +108,7 @@ export function enrichMessageWithUserData(message: any, users: any[]) {
 
     return enrichedMessage
   } catch (error) {
-    console.error('Error enriching message with user data:', error)
+    logger.error('Error enriching message with user data:', error)
     return null
   }
 }

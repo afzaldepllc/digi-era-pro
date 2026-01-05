@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb'
 import MessageAuditLog, { IMessageAuditLog } from '@/models/MessageAuditLog'
 import User from '@/models/User'
 import Role from '@/models/Role'
+import { communicationLogger as logger } from '@/lib/logger'
 
 /**
  * GET /api/communication/messages/audit-logs
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('[Audit Log GET] Error:', error)
+    logger.error('[Audit Log GET] Error:', error)
     return NextResponse.json(
       { 
         success: false, 

@@ -70,6 +70,8 @@ export default function CommunicationsPage() {
   // Handle URL params and localStorage for channel persistence
   useEffect(() => {
     if (typeof window === 'undefined' || hasInitializedChannel.current) return
+    // Wait until channels are loaded before selecting from URL/localStorage
+    if (loading || channels.length === 0) return
 
     const url = new URL(window.location.href)
     const channelParam = url.searchParams.get('channel')
@@ -79,10 +81,31 @@ export default function CommunicationsPage() {
     const channelToSelect = channelParam || storedChannel
 
     if (channelToSelect && channelToSelect !== activeChannelId) {
+      // Verify the channel exists in the user's channel list
+      const channelExists = channels.some(c => c.id === channelToSelect)
+      
+      if (channelExists) {
+        hasInitializedChannel.current = true
+        selectChannel(channelToSelect)
+      } else {
+        // Channel doesn't exist - clear the invalid reference
+        console.log('Channel not found, clearing stored reference:', channelToSelect)
+        localStorage.removeItem('lastActiveChannel')
+        url.searchParams.delete('channel')
+        window.history.replaceState({}, '', url.toString())
+        hasInitializedChannel.current = true
+        
+        // Optionally select first available channel
+        if (channels.length > 0) {
+          selectChannel(channels[0].id)
+        }
+      }
+    } else if (!channelToSelect && channels.length > 0 && !activeChannelId) {
+      // No stored channel, select the first one automatically
       hasInitializedChannel.current = true
-      selectChannel(channelToSelect)
+      selectChannel(channels[0].id)
     }
-  }, []) // Only run once on mount
+  }, [loading, channels, activeChannelId, selectChannel]) // Include channels to check existence
   const fullscreenRef = useRef<FullscreenToggleRef>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
