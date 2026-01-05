@@ -144,8 +144,13 @@ export class S3Service {
             }
         }
 
-        // Check content type
-        if (!(config.allowedTypes as readonly string[]).includes(contentType)) {
+        // Check content type - handle MIME types with parameters (e.g., audio/webm;codecs=opus)
+        const baseContentType = contentType.split(';')[0].trim()
+        const isAllowed = (config.allowedTypes as readonly string[]).some(
+            allowed => allowed === contentType || allowed === baseContentType || allowed.startsWith(baseContentType)
+        )
+        
+        if (!isAllowed) {
             return {
                 valid: false,
                 error: `File type ${contentType} is not allowed for ${fileType}`

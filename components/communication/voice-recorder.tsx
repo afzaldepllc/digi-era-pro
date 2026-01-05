@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { 
   Mic, 
@@ -13,8 +12,7 @@ import {
   Send, 
   Loader2,
   MicOff,
-  Trash2,
-  AlertCircle
+  Trash2
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import useVoiceRecorder from '@/hooks/use-voice-recorder'
@@ -29,13 +27,7 @@ interface VoiceRecorderProps {
 
 /**
  * Professional Voice Recorder Component - WhatsApp Web Style
- * 
- * Features:
- * - Click to start, click to stop (simpler than hold-to-record)
- * - Visual audio level indicator
- * - Playback preview before sending
- * - Pause/Resume support
- * - Professional error handling with user guidance
+ * Inline recording UI that replaces the message input area
  */
 export const VoiceRecorder = memo(function VoiceRecorder({
   onSendVoice,
@@ -69,6 +61,12 @@ export const VoiceRecorder = memo(function VoiceRecorder({
   const [playbackProgress, setPlaybackProgress] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const waveformBarsRef = useRef<number[]>([])
+
+  // Generate random waveform bars on mount
+  useEffect(() => {
+    waveformBarsRef.current = Array.from({ length: 50 }, () => Math.random() * 0.7 + 0.3)
+  }, [])
 
   // Handle permission request with toast feedback
   const handleRequestPermission = useCallback(async (): Promise<boolean> => {
@@ -78,10 +76,10 @@ export const VoiceRecorder = memo(function VoiceRecorder({
       toast({
         title: "Microphone Access Required",
         description: permissionStatus === 'denied' 
-          ? "Click the lock icon (🔒) in your browser's address bar, allow microphone access, then refresh the page."
-          : "Please allow microphone access when prompted by your browser.",
+          ? "Click the lock icon (🔒) in your browser's address bar, allow microphone access, then refresh."
+          : "Please allow microphone access when prompted.",
         variant: "destructive",
-        duration: 10000
+        duration: 8000
       })
     }
     return granted
@@ -133,16 +131,23 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         clearInterval(playbackIntervalRef.current)
       }
     } else {
-      audioRef.current.play()
-      setIsPlaying(true)
-      
-      // Update progress during playback
-      playbackIntervalRef.current = setInterval(() => {
-        if (audioRef.current) {
-          const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100
-          setPlaybackProgress(progress)
-        }
-      }, 100)
+      audioRef.current.play().then(() => {
+        setIsPlaying(true)
+        
+        playbackIntervalRef.current = setInterval(() => {
+          if (audioRef.current) {
+            const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100
+            setPlaybackProgress(progress)
+          }
+        }, 50)
+      }).catch((err) => {
+        console.error('Playback failed:', err)
+        toast({
+          title: "Playback Error",
+          description: "Unable to play the audio. Try recording again.",
+          variant: "destructive"
+        })
+      })
     }
   }, [audioUrl, isPlaying])
 
@@ -202,226 +207,158 @@ export const VoiceRecorder = memo(function VoiceRecorder({
     resetRecording()
   }, [resetRecording])
 
-  // Show error toast when error changes
-  useEffect(() => {
-    if (error && !isRecording) {
-      toast({
-        title: "Recording Error",
-        description: error,
-        variant: "destructive"
-      })
-    }
-  }, [error, isRecording])
-
   // Not supported state
   if (!isSupported) {
     return (
-      <div className={cn("flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-muted-foreground", className)}>
-        <MicOff className="h-5 w-5" />
-        <span className="text-sm">Voice recording is not supported in this browser</span>
+      <div className={cn("flex items-center gap-2 p-3 text-muted-foreground text-sm", className)}>
+        <MicOff className="h-4 w-4" />
+        <span>Voice recording not supported</span>
       </div>
     )
   }
 
-  // Recording state - WhatsApp style overlay
+  // Recording state - WhatsApp style inline bar
   if (isRecording) {
-    const progressPercent = (duration / maxDuration) * 100
-
     return (
       <div className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+        "flex items-center gap-3 p-3 bg-background rounded-lg",
         className
       )}>
-        <div className="flex flex-col items-center gap-6 p-8 max-w-sm w-full">
-          {/* Main recording indicator */}
-          <div className="relative">
-            {/* Outer pulsing ring */}
-            {!isPaused && (
-              <div 
-                className="absolute inset-0 rounded-full bg-red-500/20 animate-ping"
-                style={{ 
-                  transform: `scale(${1 + audioLevel * 0.5})`,
-                  transition: 'transform 0.1s ease-out'
+        {/* Cancel button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full hover:bg-destructive/10 hover:text-destructive shrink-0"
+          onClick={handleCancel}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+
+        {/* Live waveform visualization */}
+        <div className="flex-1 flex items-center gap-[2px] h-8 overflow-hidden">
+          {Array.from({ length: 50 }).map((_, i) => {
+            const baseHeight = waveformBarsRef.current[i] || 0.5
+            const animatedHeight = isPaused ? baseHeight : baseHeight * (0.5 + audioLevel * 1.5)
+            
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex-1 min-w-[3px] max-w-[6px] rounded-full transition-all duration-75",
+                  isPaused ? "bg-muted-foreground/40" : "bg-primary"
+                )}
+                style={{
+                  height: `${Math.max(15, animatedHeight * 100)}%`
                 }}
               />
-            )}
-            
-            {/* Audio level ring */}
-            <div 
-              className={cn(
-                "absolute inset-0 rounded-full transition-all duration-100",
-                isPaused ? "bg-yellow-500/30" : "bg-red-500/30"
-              )}
-              style={{ 
-                transform: `scale(${1.2 + audioLevel * 0.6})`,
-              }}
-            />
-            
-            {/* Main button */}
-            <div className={cn(
-              "relative h-24 w-24 rounded-full flex items-center justify-center transition-colors",
-              isPaused ? "bg-yellow-500" : "bg-red-500"
-            )}>
-              <Mic className={cn(
-                "h-10 w-10 text-white",
-                !isPaused && "animate-pulse"
-              )} />
-            </div>
-          </div>
-
-          {/* Duration */}
-          <div className="text-center">
-            <div className="text-4xl font-mono font-bold text-white mb-1">
-              {formatDuration(duration)}
-            </div>
-            <div className="text-white/70 text-sm">
-              {isPaused ? 'Paused' : 'Recording...'}
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-full max-w-xs">
-            <Progress 
-              value={progressPercent} 
-              className="h-1.5 bg-white/20 [&>div]:bg-white" 
-            />
-            <div className="flex justify-between text-xs text-white/50 mt-1">
-              <span>{formatDuration(duration)}</span>
-              <span>{formatDuration(maxDuration)}</span>
-            </div>
-          </div>
-
-          {/* Control buttons */}
-          <div className="flex items-center gap-4">
-            {/* Cancel button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-14 w-14 rounded-full bg-white/10 hover:bg-white/20 text-white"
-              onClick={handleCancel}
-            >
-              <X className="h-6 w-6" />
-            </Button>
-
-            {/* Pause/Resume button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-14 w-14 rounded-full bg-white/10 hover:bg-white/20 text-white"
-              onClick={isPaused ? resumeRecording : pauseRecording}
-            >
-              {isPaused ? <Play className="h-6 w-6" /> : <Pause className="h-6 w-6" />}
-            </Button>
-
-            {/* Stop button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-14 w-14 rounded-full bg-white text-red-500 hover:bg-white/90"
-              onClick={handleStopRecording}
-            >
-              <Square className="h-6 w-6 fill-current" />
-            </Button>
-          </div>
-
-          {/* Instructions */}
-          <div className="text-center text-xs text-white/50">
-            Press Stop when done
-          </div>
+            )
+          })}
         </div>
+
+        {/* Duration */}
+        <div className="text-sm font-mono font-medium text-foreground min-w-[45px] text-right shrink-0">
+          {formatDuration(duration)}
+        </div>
+
+        {/* Pause/Resume button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full shrink-0"
+          onClick={isPaused ? resumeRecording : pauseRecording}
+        >
+          {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+        </Button>
+
+        {/* Stop/Send button */}
+        <Button
+          size="sm"
+          className="rounded-full px-4 gap-2 bg-primary hover:bg-primary/90 shrink-0"
+          onClick={handleStopRecording}
+        >
+          <Square className="h-3 w-3 fill-current" />
+          Stop
+        </Button>
       </div>
     )
   }
 
-  // Preview state - show recorded audio
+  // Preview state - show recorded audio with playback
   if (audioBlob && audioUrl) {
     return (
       <div className={cn(
-        "flex items-center gap-3 p-4 rounded-2xl bg-primary/5 border border-primary/20",
+        "flex items-center gap-3 p-3 bg-background rounded-lg",
         className
       )}>
         {/* Hidden audio element */}
         <audio ref={audioRef} src={audioUrl} preload="metadata" />
 
+        {/* Delete button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full hover:bg-destructive/10 hover:text-destructive shrink-0"
+          onClick={handleDelete}
+          disabled={isSending}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+
         {/* Play/Pause button */}
         <Button
           variant="outline"
           size="icon"
-          className="h-12 w-12 rounded-full border-2 shrink-0"
+          className="h-9 w-9 rounded-full shrink-0"
           onClick={handleTogglePlayback}
         >
-          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
         </Button>
 
-        {/* Waveform visualization */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-0.5 h-8 px-1">
-            {Array.from({ length: 40 }).map((_, i) => {
-              const isActive = isPlaying && (i / 40) * 100 <= playbackProgress
-              const height = Math.sin(i * 0.4) * 12 + 16
-              
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "flex-1 rounded-full transition-all duration-150",
-                    isActive ? "bg-primary" : "bg-primary/30"
-                  )}
-                  style={{
-                    height: `${height}px`,
-                    minHeight: '4px'
-                  }}
-                />
-              )
-            })}
-          </div>
-          
-          {/* Progress bar underneath */}
-          <div className="h-1 bg-muted rounded-full mt-1 overflow-hidden">
-            <div 
-              className="h-full bg-primary transition-all duration-100"
-              style={{ width: `${playbackProgress}%` }}
-            />
-          </div>
+        {/* Waveform with progress */}
+        <div className="flex-1 flex items-center gap-[2px] h-8 overflow-hidden relative">
+          {waveformBarsRef.current.map((height, i) => {
+            const progressPercent = (i / waveformBarsRef.current.length) * 100
+            const isActive = progressPercent <= playbackProgress
+            
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex-1 min-w-[3px] max-w-[6px] rounded-full transition-colors duration-100",
+                  isActive ? "bg-primary" : "bg-muted-foreground/30"
+                )}
+                style={{
+                  height: `${Math.max(15, height * 100)}%`
+                }}
+              />
+            )
+          })}
         </div>
 
         {/* Duration */}
-        <div className="text-sm font-medium text-muted-foreground min-w-[40px] text-center shrink-0">
+        <div className="text-sm font-mono text-muted-foreground min-w-[45px] text-right shrink-0">
           {formatDuration(duration)}
         </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={handleDelete}
-            disabled={isSending}
-            title="Delete recording"
-          >
-            <Trash2 className="h-5 w-5" />
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={handleSend}
-            disabled={isSending || disabled}
-            className="rounded-full px-5 gap-2"
-          >
-            {isSending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Send
-          </Button>
-        </div>
+        {/* Send button */}
+        <Button
+          size="sm"
+          onClick={handleSend}
+          disabled={isSending || disabled}
+          className="rounded-full px-4 gap-2 shrink-0"
+        >
+          {isSending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          Send
+        </Button>
       </div>
     )
   }
 
-  // Default state - mic button with permission status
+  // Default state - mic button
   const isBlocked = permissionStatus === 'denied' || permissionStatus === 'unavailable'
   
   return (
@@ -430,9 +367,9 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         variant="ghost"
         size="icon"
         className={cn(
-          "h-10 w-10 rounded-full transition-all",
-          permissionStatus === 'granted' && "hover:bg-red-500/10 hover:text-red-500",
-          isBlocked && "text-muted-foreground",
+          "h-9 w-9 rounded-full transition-all",
+          permissionStatus === 'granted' && "hover:bg-primary/10 hover:text-primary",
+          isBlocked && "text-muted-foreground opacity-70",
           permissionStatus === 'checking' && "opacity-50",
           disabled && "opacity-50 cursor-not-allowed"
         )}
@@ -440,7 +377,7 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         disabled={disabled || permissionStatus === 'checking' || permissionStatus === 'unavailable'}
         title={
           permissionStatus === 'unavailable'
-            ? "Microphone not available - Refresh page"
+            ? "Microphone not available"
             : permissionStatus === 'denied' 
               ? "Microphone blocked - Click to retry" 
               : permissionStatus === 'granted' 
@@ -455,61 +392,14 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         ) : isBlocked ? (
           <MicOff className="h-5 w-5" />
         ) : (
-          <Mic className={cn(
-            "h-5 w-5",
-            permissionStatus === 'granted' && "text-red-500"
-          )} />
+          <Mic className="h-5 w-5" />
         )}
       </Button>
-      
-      {/* Permission denied/unavailable tooltip */}
-      {isBlocked && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-destructive text-destructive-foreground text-xs rounded-lg shadow-lg max-w-[250px] text-center whitespace-normal z-50">
-          <AlertCircle className="h-4 w-4 mx-auto mb-1" />
-          <div className="font-medium mb-1">
-            {permissionStatus === 'unavailable' ? 'Microphone Unavailable' : 'Microphone Blocked'}
-          </div>
-          <div className="opacity-90 text-[10px] leading-tight">
-            {permissionStatus === 'unavailable' 
-              ? 'Microphone is blocked by browser policy. Please refresh the page and try again.'
-              : 'Click the 🔒 lock icon in your browser\'s address bar → Allow microphone → Refresh page'
-            }
-          </div>
-          {permissionStatus === 'denied' && (
-            <div className="mt-2 pt-2 border-t border-white/20">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleRequestPermission()
-                }}
-                className="text-[10px] underline hover:no-underline"
-              >
-                Try Again
-              </button>
-            </div>
-          )}
-          {permissionStatus === 'unavailable' && (
-            <div className="mt-2 pt-2 border-t border-white/20">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation()
-                  window.location.reload()
-                }}
-                className="text-[10px] underline hover:no-underline"
-              >
-                Refresh Page
-              </button>
-            </div>
-          )}
-          {/* Arrow */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-destructive" />
-        </div>
-      )}
     </div>
   )
 })
 
-// Compact voice recorder - just the button that opens the full recorder
+// Compact voice recorder - just the button that triggers recording in the main VoiceRecorder
 interface CompactVoiceRecorderProps {
   onSendVoice: (audioBlob: Blob, duration: number) => Promise<void>
   disabled?: boolean
@@ -548,7 +438,7 @@ export const CompactVoiceRecorder = memo(function CompactVoiceRecorder({
       variant="ghost"
       size="icon"
       className={cn(
-        "h-9 w-9 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors",
+        "h-9 w-9 rounded-full hover:bg-primary/10 hover:text-primary transition-colors",
         disabled && "opacity-50 cursor-not-allowed",
         className
       )}

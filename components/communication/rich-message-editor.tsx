@@ -592,157 +592,161 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     </div>
                 )}
 
-                {/* Attachment previews - Professional UI */}
-                <MessageInputAttachmentStrip
-                    files={attachments}
-                    existingAttachments={activeEditMessage ? existingAttachments : []}
-                    attachmentsToRemove={attachmentsToRemove}
-                    onRemoveFile={removeAttachment}
-                    onRemoveExisting={removeExistingAttachment}
-                    onAddMore={() => fileInputRef.current?.click()}
-                    maxFiles={5}
-                />
-
-                {/* Editor */}
-                <div className="relative">
-                    <EditorContent
-                        editor={editor}
-                        data-placeholder={activeEditMessage ? "Edit your message..." : placeholder}
-                        onKeyDown={handleKeyDown}
-                        className={cn(
-                            "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
-                            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-all [&_.ProseMirror]:max-w-full",
-                            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
-                            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
-                            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
-                            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
-                            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
-                            // List styling
-                            "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:ml-6 [&_.ProseMirror_ul]:my-2",
-                            "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:ml-6 [&_.ProseMirror_ol]:my-2",
-                            "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-all [&_.ProseMirror_li]:max-w-full",
-                            "[&_.ProseMirror_ul_ul]:list-[circle] [&_.ProseMirror_ul_ul_ul]:list-[square]",
-                            "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic [&_.ProseMirror_blockquote]:break-all",
-                            "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-all",
-                            "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-all",
-                            "[&_.ProseMirror_p]:break-all [&_.ProseMirror_p]:max-w-full",
-                            "[&_.ProseMirror_*]:max-w-full",
-                            // Mention styling
-                            "[&_.ProseMirror_.mention]:bg-primary/10 [&_.ProseMirror_.mention]:text-primary [&_.ProseMirror_.mention]:px-1 [&_.ProseMirror_.mention]:rounded [&_.ProseMirror_.mention]:font-medium",
-                            disabled && 'opacity-50 cursor-not-allowed'
-                        )}
-                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                    />
-
-                    {/* Mention picker dropdown */}
-                    {showMentionPicker && mentionsEnabled && channelMembers.length > 0 && (
-                        <MentionPicker
-                            users={channelMembers}
-                            searchQuery={mentionQuery}
-                            onSelect={(user) => insertMentionAtCaret(user)}
-                            onClose={() => setShowMentionPicker(false)}
-                            showEveryone={true}
-                            channelType={channelType}
-                            className="left-2 bottom-full mb-1"
+                {/* Voice Recorder - replaces editor when active */}
+                {showVoiceRecorder && onSendVoice ? (
+                    <div className="p-2">
+                        <VoiceRecorder
+                            onSendVoice={async (blob, duration) => {
+                                await onSendVoice(blob, duration)
+                                setShowVoiceRecorder(false)
+                            }}
+                            onCancel={() => setShowVoiceRecorder(false)}
+                            disabled={disabled}
                         />
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <>
+                        {/* Attachment previews - Professional UI */}
+                        <MessageInputAttachmentStrip
+                            files={attachments}
+                            existingAttachments={activeEditMessage ? existingAttachments : []}
+                            attachmentsToRemove={attachmentsToRemove}
+                            onRemoveFile={removeAttachment}
+                            onRemoveExisting={removeExistingAttachment}
+                            onAddMore={() => fileInputRef.current?.click()}
+                            maxFiles={5}
+                        />
 
-                <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/5">
-                    <div className="flex items-center">
-                        {/* Attach file */}
-                        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
-                        <button
-                            className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150"
-                            onClick={() => fileInputRef.current?.click()}
-                            title="Attach file"
-                        >
-                            <Paperclip className="h-4 w-4" />
-                        </button>
-                        <button
-                            className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowToolbar(p => !p)} title="Toggle formatting">
-                            <TypeIcon className="h-4 w-4" />
-                        </button>
+                        {/* Editor */}
+                        <div className="relative">
+                            <EditorContent
+                                editor={editor}
+                                data-placeholder={activeEditMessage ? "Edit your message..." : placeholder}
+                                onKeyDown={handleKeyDown}
+                                className={cn(
+                                    "min-h-[44px] max-h-40 overflow-y-auto p-3 outline-none prose prose-sm bg-background rounded-b-md",
+                                    "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[44px] [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-all [&_.ProseMirror]:max-w-full",
+                                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
+                                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
+                                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
+                                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
+                                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+                                    // List styling
+                                    "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:ml-6 [&_.ProseMirror_ul]:my-2",
+                                    "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:ml-6 [&_.ProseMirror_ol]:my-2",
+                                    "[&_.ProseMirror_li]:my-1 [&_.ProseMirror_li]:break-all [&_.ProseMirror_li]:max-w-full",
+                                    "[&_.ProseMirror_ul_ul]:list-[circle] [&_.ProseMirror_ul_ul_ul]:list-[square]",
+                                    "[&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-border [&_.ProseMirror_blockquote]:pl-4 [&_.ProseMirror_blockquote]:ml-0 [&_.ProseMirror_blockquote]:italic [&_.ProseMirror_blockquote]:break-all",
+                                    "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:break-all",
+                                    "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm [&_.ProseMirror_code]:break-all",
+                                    "[&_.ProseMirror_p]:break-all [&_.ProseMirror_p]:max-w-full",
+                                    "[&_.ProseMirror_*]:max-w-full",
+                                    // Mention styling
+                                    "[&_.ProseMirror_.mention]:bg-primary/10 [&_.ProseMirror_.mention]:text-primary [&_.ProseMirror_.mention]:px-1 [&_.ProseMirror_.mention]:rounded [&_.ProseMirror_.mention]:font-medium",
+                                    disabled && 'opacity-50 cursor-not-allowed'
+                                )}
+                                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                            />
 
-                        {/* Mention button */}
-                        {mentionsEnabled && (
-                            <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
-                                <AtSign className="h-4 w-4" />
-                            </button>
-                        )}
-                        
-                        {/* Emoji picker */}
-                        <div className="relative" ref={emojiPickerRef}>
-                            <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
-                                <Smile className="h-4 w-4" />
-                            </button>
-
-                            {showEmojiPicker && (
-                                <InlineEmojiPicker
-                                    onSelect={insertEmoji}
-                                    onClose={() => setShowEmojiPicker(false)}
+                            {/* Mention picker dropdown */}
+                            {showMentionPicker && mentionsEnabled && channelMembers.length > 0 && (
+                                <MentionPicker
+                                    users={channelMembers}
+                                    searchQuery={mentionQuery}
+                                    onSelect={(user) => insertMentionAtCaret(user)}
+                                    onClose={() => setShowMentionPicker(false)}
+                                    showEveryone={true}
+                                    channelType={channelType}
+                                    className="left-2 bottom-full mb-1"
                                 />
                             )}
                         </div>
 
-                        {/* Voice message button */}
-                        {onSendVoice && !showVoiceRecorder && (
-                            <button 
-                                className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" 
-                                onClick={() => setShowVoiceRecorder(true)} 
-                                title="Record voice message"
-                            >
-                                <Mic className="h-4 w-4" />
-                            </button>
-                        )}
+                        <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/5">
+                            <div className="flex items-center">
+                                {/* Attach file */}
+                                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
+                                <button
+                                    className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    title="Attach file"
+                                >
+                                    <Paperclip className="h-4 w-4" />
+                                </button>
+                                <button
+                                    className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowToolbar(p => !p)} title="Toggle formatting">
+                                    <TypeIcon className="h-4 w-4" />
+                                </button>
 
-                    </div>
+                                {/* Mention button */}
+                                {mentionsEnabled && (
+                                    <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={openMentionPicker} title="Mention someone">
+                                        <AtSign className="h-4 w-4" />
+                                    </button>
+                                )}
+                                
+                                {/* Emoji picker */}
+                                <div className="relative" ref={emojiPickerRef}>
+                                    <button className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" onClick={() => setShowEmojiPicker(s => !s)} title="Add emoji">
+                                        <Smile className="h-4 w-4" />
+                                    </button>
 
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <div>
-                            {(editor?.getText() || '').length}/{maxLength}
+                                    {showEmojiPicker && (
+                                        <InlineEmojiPicker
+                                            onSelect={insertEmoji}
+                                            onClose={() => setShowEmojiPicker(false)}
+                                        />
+                                    )}
+                                </div>
+
+                                {/* Voice message button */}
+                                {onSendVoice && (
+                                    <button 
+                                        className="border-0 p-2 transition-colors duration-150 hover:text-primary hover:[&>svg]:text-primary hover:[&>svg]:scale-110 [&>svg]:transition-all [&>svg]:duration-150" 
+                                        onClick={() => setShowVoiceRecorder(true)} 
+                                        title="Record voice message"
+                                    >
+                                        <Mic className="h-4 w-4" />
+                                    </button>
+                                )}
+
+                            </div>
+
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <div>
+                                    {(editor?.getText() || '').length}/{maxLength}
+                                </div>
+                                {/* Send/Update button */}
+                                <button
+                                    className="border-0 p-2 transition-colors duration-150 hover:text-primary [&>svg]:transition-all [&>svg]:duration-150 hover:[&>svg]:rotate-45 hover:[&>svg]:text-primary hover:[&>svg]:scale-110"
+                                    onClick={async () => {
+                                        const html = editor?.getHTML() || ''
+                                        const text = editor?.getText() || ''
+                                        const success = await onSend?.(
+                                            html, 
+                                            text, 
+                                            attachments,
+                                            mentionedUserIds,
+                                            activeReplyTo?.id,
+                                            activeEditMessage?.id,
+                                            activeEditMessage ? Array.from(attachmentsToRemove) : undefined
+                                        )
+                                        if (success) {
+                                            editor?.commands.setContent('')
+                                            setAttachments([])
+                                            setShowMentionPicker(false)
+                                            setMentionedUserIds([])
+                                            setInternalReplyTo(null)
+                                            setInternalEditMessage(null)
+                                        }
+                                    }} 
+                                    title={activeEditMessage ? "Update message" : "Send message"}
+                                >
+                                    <Send className="h-4 w-4 text-primary" />
+                                </button>
+                            </div>
                         </div>
-                        {/* Send/Update button */}
-                        <button
-                            className="border-0 p-2 transition-colors duration-150 hover:text-primary [&>svg]:transition-all [&>svg]:duration-150 hover:[&>svg]:rotate-45 hover:[&>svg]:text-primary hover:[&>svg]:scale-110"
-                            onClick={async () => {
-                                const html = editor?.getHTML() || ''
-                                const text = editor?.getText() || ''
-                                const success = await onSend?.(
-                                    html, 
-                                    text, 
-                                    attachments,
-                                    mentionedUserIds,
-                                    activeReplyTo?.id,
-                                    activeEditMessage?.id,
-                                    activeEditMessage ? Array.from(attachmentsToRemove) : undefined
-                                )
-                                if (success) {
-                                    editor?.commands.setContent('')
-                                    setAttachments([])
-                                    setShowMentionPicker(false)
-                                    setMentionedUserIds([])
-                                    setInternalReplyTo(null)
-                                    setInternalEditMessage(null)
-                                }
-                            }} 
-                            title={activeEditMessage ? "Update message" : "Send message"}
-                        >
-                            <Send className="h-4 w-4 text-primary" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Voice Recorder - now handles its own overlay */}
-                {showVoiceRecorder && onSendVoice && (
-                    <VoiceRecorder
-                        onSendVoice={async (blob, duration) => {
-                            await onSendVoice(blob, duration)
-                            setShowVoiceRecorder(false)
-                        }}
-                        onCancel={() => setShowVoiceRecorder(false)}
-                        disabled={disabled}
-                    />
+                    </>
                 )}
             </div>
         )

@@ -68,6 +68,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
+              "media-src 'self' blob: https://depllc-crm.s3.us-east-1.amazonaws.com https://*.s3.*.amazonaws.com",
               "connect-src 'self' https://mifxampcsrojspuhtlpy.supabase.co wss://mifxampcsrojspuhtlpy.supabase.co https://kkdcderwckpktfxersdk.supabase.co wss://kkdcderwckpktfxersdk.supabase.co",
               "frame-src 'self'",
               "worker-src 'self' blob:"

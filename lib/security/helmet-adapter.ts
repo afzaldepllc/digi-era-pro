@@ -20,8 +20,9 @@ export function applySecurityHeaders(response: NextResponse): NextResponse {
     "default-src 'self'",
     "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Needed for Next.js in dev
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // Allow Google Fonts
-    "img-src 'self' data: https:",
+    "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com", // Allow Google Fonts
+    "media-src 'self' blob: https://depllc-crm.s3.us-east-1.amazonaws.com https://*.s3.*.amazonaws.com", // Allow blob: URLs and S3 for audio/video playback (voice messages)
     "connect-src 'self' https://mifxampcsrojspuhtlpy.supabase.co wss://mifxampcsrojspuhtlpy.supabase.co https://kkdcderwckpktfxersdk.supabase.co wss://kkdcderwckpktfxersdk.supabase.co", // Allow Supabase connections
     "frame-src 'none'",
     "object-src 'none'",
