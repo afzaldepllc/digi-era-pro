@@ -130,6 +130,7 @@ export function useCommunications() {
   // Refs to get current values without causing re-renders
   const currentMessagesRef = useRef(messages)
   const currentChannelsRef = useRef(channels)
+  const activeChannelIdRef = useRef(activeChannelId)
   
   // Update refs when values change
   useEffect(() => {
@@ -139,6 +140,10 @@ export function useCommunications() {
   useEffect(() => {
     currentChannelsRef.current = channels
   }, [channels])
+
+  useEffect(() => {
+    activeChannelIdRef.current = activeChannelId
+  }, [activeChannelId])
 
   // Type guard for session user with extended properties
   interface ExtendedSessionUser {
@@ -292,6 +297,77 @@ export function useCommunications() {
       description: data.content_preview.slice(0, 60) + (data.content_preview.length > 60 ? '...' : ''),
     })
   }, [dispatch])
+
+  // Handle new message notifications (for users not viewing the channel)
+  // This is the key handler for real-time notifications
+  const onNewMessageNotification = useCallback((data: { message: any }) => {
+    logger.debug('📨 New message notification received:', data)
+    
+    const message = data.message
+    if (!message || !message.channel_id) {
+      logger.warn('Invalid message notification received:', data)
+      return
+    }
+    
+    // Skip notifications for messages from self
+    if (message.mongo_sender_id === sessionUserId) {
+      logger.debug('Skipping notification for own message')
+      return
+    }
+    
+    // Skip if this channel is currently active (user is viewing it)
+    // In this case, messages come through onNewMessage handler and are already displayed
+    const currentActiveChannelId = activeChannelIdRef.current
+    if (currentActiveChannelId === message.channel_id) {
+      logger.debug('📨 Skipping notification for active channel - message handled by onNewMessage')
+      return
+    }
+    
+    // Get channel info for context
+    const currentChannels = currentChannelsRef.current
+    const channel = currentChannels.find((c: IChannel) => c.id === message.channel_id)
+    const newUnreadCount = (channel?.unreadCount || 0) + 1
+    
+    // Increment unread count for the channel in Redux
+    dispatch(updateChannel({
+      id: message.channel_id,
+      unreadCount: newUnreadCount,
+      last_message: message,
+      last_message_at: message.created_at
+    }))
+    dispatch(incrementUnreadCount(1))
+    
+    // Also update the cache to keep it in sync
+    communicationCache.updateChannelInCache(message.channel_id, { 
+      unreadCount: newUnreadCount,
+      last_message: message,
+      last_message_at: message.created_at
+    })
+    
+    // Add notification to store
+    const senderName = message.sender_name || message.sender?.name || 'Someone'
+    const contentPreview = message.content || ''
+    
+    dispatch(addNotification({
+      id: `msg_${message.id}`,
+      type: 'message',
+      title: senderName,
+      channelId: message.channel_id,
+      messageId: message.id,
+      message: message,
+      preview: contentPreview,
+      read: false
+    }))
+    
+    // Show toast notification for the new message
+    const channelName = channel?.name || (channel?.type === 'dm' ? senderName : 'Channel')
+    toastRef.current({
+      title: channel?.type === 'dm' ? senderName : `#${channelName}`,
+      description: contentPreview.slice(0, 80) + (contentPreview.length > 80 ? '...' : ''),
+    })
+    
+    logger.debug('📨 Notification added for message:', message.id)
+  }, [dispatch, sessionUserId])
 
   // Handle user pin updates (real-time)
   const onUserPin = useCallback((data: { pinner_id: string; pinned_user_id: string; is_pinned: boolean }) => {
@@ -649,6 +725,7 @@ export function useCommunications() {
       onTypingStop,
       onPresenceSync,
       onMentionNotification,
+      onNewMessageNotification,
       onReactionAdd,
       onReactionRemove,
       onChannelUpdate,
@@ -656,7 +733,7 @@ export function useCommunications() {
       onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
-  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
+  }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onNewMessageNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
   // Subscribe to notifications when user is logged in
   // NOTE: We don't unsubscribe on cleanup because notifications should persist
@@ -775,6 +852,8 @@ export function useCommunications() {
         unreadCount: 0
       }))
       dispatch(decrementUnreadCount(currentUnread))
+      // Also update the cache to keep it in sync
+      communicationCache.updateChannelInCache(channel_id, { unreadCount: 0 })
     }
 
     // Clear messages to force re-fetch with enriched data
@@ -800,6 +879,8 @@ export function useCommunications() {
             unreadCount: currentUnread
           }))
           dispatch(incrementUnreadCount(currentUnread))
+          // Revert cache update
+          communicationCache.updateChannelInCache(channel_id, { unreadCount: currentUnread })
           logger.error('Failed to mark messages as read when selecting channel:', apiError)
         }
       }
@@ -1394,6 +1475,9 @@ export function useCommunications() {
       }))
       dispatch(decrementUnreadCount(currentUnread))
       dispatch(clearNotificationsForChannel(channelId))
+      
+      // Also update the cache to keep it in sync
+      communicationCache.updateChannelInCache(channelId, { unreadCount: 0 })
 
       // Call the bulk API
       await apiRequest('/api/communication/read-receipts', {
@@ -1414,6 +1498,8 @@ export function useCommunications() {
         unreadCount: currentUnread
       }))
       dispatch(incrementUnreadCount(currentUnread))
+      // Revert cache update
+      communicationCache.updateChannelInCache(channelId, { unreadCount: currentUnread })
       logger.error('Failed to mark all channel messages as read:', error)
     }
   }, [channels, dispatch])

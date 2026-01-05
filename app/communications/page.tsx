@@ -70,6 +70,8 @@ export default function CommunicationsPage() {
   // Handle URL params and localStorage for channel persistence
   useEffect(() => {
     if (typeof window === 'undefined' || hasInitializedChannel.current) return
+    // Wait until channels are loaded before selecting from URL/localStorage
+    if (loading || channels.length === 0) return
 
     const url = new URL(window.location.href)
     const channelParam = url.searchParams.get('channel')
@@ -82,7 +84,7 @@ export default function CommunicationsPage() {
       hasInitializedChannel.current = true
       selectChannel(channelToSelect)
     }
-  }, []) // Only run once on mount
+  }, [loading, channels.length]) // Run when channels are loaded
   const fullscreenRef = useRef<FullscreenToggleRef>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect, memo } from "react"
+import { useState, memo, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -16,9 +18,6 @@ import { formatDistanceToNow } from "date-fns"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -33,6 +32,9 @@ export const MessageNotification = memo(function MessageNotification({
   showBadge = true
 }: MessageNotificationProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const router = useRouter()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id
 
   const {
     channels,
@@ -45,52 +47,68 @@ export const MessageNotification = memo(function MessageNotification({
     markAllChannelMessagesAsRead
   } = useCommunications()
 
-  // Get channels with unread messages
-  const unreadChannels = channels.filter(channel => (channel.unreadCount || 0) > 0)
+  // Get channels with unread messages (exclude channels where the last message is from self)
+  const unreadChannels = channels.filter(channel => {
+    const hasUnread = (channel.unreadCount || 0) > 0
+    // Also filter out channels where the last message is from current user
+    const lastMessageFromSelf = channel.last_message?.mongo_sender_id === currentUserId
+    return hasUnread && !lastMessageFromSelf
+  })
 
-  const handleNotificationClick = (channelId: string, messageId?: string) => {
+  // Navigate to the channel and mark messages as read
+  const handleNotificationClick = useCallback((channelId: string, messageId?: string) => {
+    // Select the channel first
     selectChannel(channelId)
-    if (messageId) {
-      markAsRead(messageId, channelId)
-      // Remove the notification for this message
-      const notificationId = `mention_${messageId}`
-      removeNotification(notificationId)
-    }
+    
+    // Navigate to communications page with the channel
+    router.push(`/communications?channel=${channelId}`)
+    
+    // Mark message as read if provided (this happens via selectChannel which calls markAllChannelMessagesAsRead)
+    // Notifications are cleared by selectChannel -> clearNotificationsForChannel
+    
     setIsOpen(false)
-  }
+  }, [selectChannel, router])
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllRead = useCallback(async () => {
     // Mark all messages in all unread channels as read
     await Promise.all(
       unreadChannels.map(channel => 
         markAllChannelMessagesAsRead(channel.id)
       )
     )
-    clearNotifications()
-  }
+    // clearNotifications is now handled by markAllChannelMessagesAsRead via clearNotificationsForChannel
+  }, [unreadChannels, markAllChannelMessagesAsRead])
 
-  const handleClearNotifications = () => {
-    clearNotifications()
-  }
-
-  // Mock user lookup function (in real app, this would come from a users context)
-  const getUserInfo = (senderId: string) => {
-    const mockUsers: Record<string, any> = {
-      'user1': { name: 'John Doe', avatar: undefined },
-      'user2': { name: 'Jane Smith', avatar: undefined },
-      'user3': { name: 'Bob Johnson', avatar: undefined },
-      'user4': { name: 'Alice Brown', avatar: undefined }
+  // Get user info from notification message data
+  const getUserInfo = useCallback((notification: any) => {
+    // For new message notifications, use the message's sender data
+    if (notification.message) {
+      return {
+        name: notification.message.sender_name || notification.message.sender?.name || notification.title || 'Unknown User',
+        avatar: notification.message.sender_avatar || notification.message.sender?.avatar || undefined
+      }
     }
-    return mockUsers[senderId] || { name: 'Unknown User', avatar: '' }
-  }
+    // For mention notifications, use the title
+    return { 
+      name: notification.title?.replace('Mention from ', '')?.replace(' mentioned you', '') || 'System', 
+      avatar: undefined 
+    }
+  }, [])
 
-  const getChannelDisplayName = (channel: any, currentUserId: string) => {
+  // Get display name for a channel
+  const getChannelDisplayName = useCallback((channel: any) => {
     if (channel.type === 'dm') {
-      const otherParticipant = channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)
+      const otherParticipant = channel.channel_members?.find((p: any) => p.mongo_member_id !== currentUserId)
       return otherParticipant?.name || 'Unknown User'
     }
-    return channel.name
-  }
+    return channel.name || 'Channel'
+  }, [currentUserId])
+
+  // Filter out notifications from self (should already be filtered on server, but double-check)
+  const filteredNotifications = notifications.filter(n => {
+    const senderId = n.message?.mongo_sender_id
+    return senderId !== currentUserId
+  })
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -142,7 +160,7 @@ export const MessageNotification = memo(function MessageNotification({
         </div>
 
         <div className="max-h-96 overflow-auto">
-          {unreadChannels.length === 0 && notifications.length === 0 ? (
+          {unreadChannels.length === 0 && filteredNotifications.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No new messages</p>
@@ -150,12 +168,10 @@ export const MessageNotification = memo(function MessageNotification({
           ) : (
             <div className="space-y-1 p-2">
               {/* Recent notifications */}
-              {notifications.slice(0, 3).map((notification) => {
-                const sender = notification.message 
-                  ? getUserInfo(notification.message.mongo_sender_id)
-                  : { name: notification.title?.replace('Mention from ', '') || 'System', avatar: undefined };
+              {filteredNotifications.slice(0, 5).map((notification) => {
+                const sender = getUserInfo(notification);
                 const content = notification.message?.content || notification.preview || '';
-                const messageId = notification.message?.id;
+                const messageId = notification.messageId || notification.message?.id;
 
                 return (
                   <div
@@ -201,9 +217,10 @@ export const MessageNotification = memo(function MessageNotification({
 
               {/* Channels with unread messages */}
               {unreadChannels.map((channel) => {
-                const displayName = getChannelDisplayName(channel, 'user1') // Mock current user ID
+                const displayName = getChannelDisplayName(channel)
                 const last_message = channel.last_message
-                const sender = last_message ? getUserInfo(last_message.mongo_sender_id) : null
+                // Get sender info from last message
+                const senderName = last_message?.sender_name || last_message?.sender?.name || ''
 
                 return (
                   <div
@@ -211,10 +228,10 @@ export const MessageNotification = memo(function MessageNotification({
                     onClick={() => handleNotificationClick(channel.id)}
                     className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
                   >
-                    {channel.type === 'dm' && channel.channel_members.length > 0 ? (
+                    {channel.type === 'dm' && channel.channel_members?.length > 0 ? (
                       <Avatar className="h-8 w-8 mt-0.5">
                         <AvatarImage
-                          src={channel.channel_members.find((p) => p.mongo_member_id !== 'user1')?.avatar}
+                          src={channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)?.avatar}
                           alt={displayName}
                         />
                         <AvatarFallback className="text-xs">
@@ -246,7 +263,7 @@ export const MessageNotification = memo(function MessageNotification({
                       {last_message && (
                         <div>
                           <p className="text-sm text-muted-foreground line-clamp-1">
-                            {sender && `${sender.name}: `}
+                            {senderName && channel.type !== 'dm' && `${senderName}: `}
                             {last_message.content}
                           </p>
 
@@ -255,47 +272,36 @@ export const MessageNotification = memo(function MessageNotification({
                               {formatDistanceToNow(new Date(last_message.created_at), { addSuffix: true })}
                             </span>
 
-                            <Badge variant="outline" className="text-xs">
-                              {channel.type.replace('-', ' ')}
-                            </Badge>
+                            {channel.type !== 'dm' && (
+                              <Badge variant="outline" className="text-xs">
+                                {channel.type.replace('-', ' ')}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
-                )
+              )
               })}
             </div>
           )}
         </div>
 
-        {(unreadChannels.length > 0 || notifications.length > 0) && (
+        {(unreadChannels.length > 0 || filteredNotifications.length > 0) && (
           <div className="border-t p-3">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  selectChannel('')
-                  setIsOpen(false)
-                }}
-                className="flex-1"
-              >
-                <MessageSquare className="h-3 w-3 mr-1" />
-                View All Messages
-              </Button>
-
-              {notifications.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearNotifications}
-                  className="px-3"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                router.push('/communications')
+                setIsOpen(false)
+              }}
+              className="w-full"
+            >
+              <MessageSquare className="h-3 w-3 mr-1" />
+              View All Messages
+            </Button>
           </div>
         )}
       </DropdownMenuContent>

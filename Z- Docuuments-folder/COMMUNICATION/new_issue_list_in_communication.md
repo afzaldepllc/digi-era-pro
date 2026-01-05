@@ -281,22 +281,17 @@ and every things should be optimized and according to the current flow of this i
 
 
 
-12) the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one(with type "dm" or "client-support") channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error and every things should be according to the flow of this app 
+12) 
+ the mention and reaction   feature should be handled in the professional way (now there are some issues with the both , in the reaction feature there should be proper mentioned user name and emoji used in the reaction) just like the whatsapp handle the mention user and make sure the mention feature can applied to all the channels other than one to one(with type "dm" or "client-support") channels  (with type dm and client-support) and reaction should also be working well and implemented well without any error and every things should be according to the flow of this app 
 
 13) there should be proper role base permission for every action of the communication which should be dynamic 
-
-14) now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
 
 
 16) channel setting and permission should be implemented well and handled in the professional way and there is not any issue and all the things shuld be working well according to the permissions and there is not any loading issues
 
 
-17)  now the voice message is not implemented well, and make sure this should be implemented in the professional way like the whatsapp web or olx web, now there is the mike permission issue , make sure it should be working well and implemented well 
 
-
-19) there is the proper implementation of the synch member with the realtime experience 
-
-20) new message notification issue when message seen and  reload page than again those messages shown as a notification in the header and channel_lists  
+19) there is the proper implementation of the synch member with the realtime experience  
 
 
 21) for  the message auditlog, there should be proper separate ui proffessionaly 
@@ -419,13 +414,3 @@ Show 13 ignore-listed frame(s)
 lib/realtime-manager.ts (570:19)
 1
 2
-
-
-
-
-26) attachements previews need better ui which should be looking professional
-27) ther should be proper multiple attchement share options
-28) attchement can be share to others chats(can be multiples chats)
-29) there should be proper attachements preview on the message input also 
-30) in the user_directory the pin should be synched to each other like in chat_lists
-31) attachement gallery for shared attachments like in the whatsapp 
