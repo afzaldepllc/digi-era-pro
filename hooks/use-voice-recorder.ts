@@ -10,7 +10,7 @@ export interface VoiceRecorderState {
   audioUrl: string | null
   error: string | null
   isSupported: boolean
-  permissionStatus: 'prompt' | 'granted' | 'denied' | 'checking'
+  permissionStatus: 'prompt' | 'granted' | 'denied' | 'checking' | 'unavailable'
   audioLevel: number // 0-1 for visualization
 }
 
@@ -188,7 +188,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       setState(prev => ({ 
         ...prev, 
         error: 'Voice recording is not supported in this browser',
-        permissionStatus: 'denied'
+        permissionStatus: 'unavailable'
       }))
       return false
     }
@@ -215,17 +215,27 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       }))
       
       return true
-    } catch (error: any) {
-      console.error('Microphone permission error:', error)
+    } catch (error: unknown) {
+      const err = error as Error & { name?: string }
+      console.error('Microphone permission error:', err)
       
       let errorMessage = 'Unable to access microphone'
-      let permissionStatus: 'denied' | 'prompt' = 'denied'
+      let permissionStatus: 'denied' | 'prompt' | 'unavailable' = 'denied'
 
-      switch (error.name) {
+      const errorName = err?.name || ''
+      const errorMsg = err?.message?.toLowerCase() || ''
+
+      switch (errorName) {
         case 'NotAllowedError':
         case 'PermissionDeniedError':
-          errorMessage = 'Microphone access was denied. Click the lock icon in your browser\'s address bar to allow microphone access.'
-          permissionStatus = 'denied'
+          // Check if it's a policy violation vs user denial
+          if (errorMsg.includes('policy') || errorMsg.includes('not allowed in this document')) {
+            errorMessage = 'Microphone blocked by browser policy. Please refresh the page and try again.'
+            permissionStatus = 'unavailable'
+          } else {
+            errorMessage = 'Microphone access was denied. Click the lock icon in your browser\'s address bar to allow microphone access.'
+            permissionStatus = 'denied'
+          }
           break
         case 'NotFoundError':
         case 'DevicesNotFoundError':
@@ -249,14 +259,14 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
           break
         case 'SecurityError':
           errorMessage = 'Voice recording requires a secure connection (HTTPS).'
-          permissionStatus = 'denied'
+          permissionStatus = 'unavailable'
           break
         case 'AbortError':
           errorMessage = 'Microphone access was interrupted. Please try again.'
           permissionStatus = 'prompt'
           break
         default:
-          errorMessage = `Microphone error: ${error.message || 'Unknown error'}`
+          errorMessage = `Microphone error: ${err?.message || 'Unknown error'}`
       }
 
       setState(prev => ({ 

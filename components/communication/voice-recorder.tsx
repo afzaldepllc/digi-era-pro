@@ -422,6 +422,8 @@ export const VoiceRecorder = memo(function VoiceRecorder({
   }
 
   // Default state - mic button with permission status
+  const isBlocked = permissionStatus === 'denied' || permissionStatus === 'unavailable'
+  
   return (
     <div className={cn("relative inline-flex items-center", className)}>
       <Button
@@ -430,25 +432,27 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         className={cn(
           "h-10 w-10 rounded-full transition-all",
           permissionStatus === 'granted' && "hover:bg-red-500/10 hover:text-red-500",
-          permissionStatus === 'denied' && "text-muted-foreground",
+          isBlocked && "text-muted-foreground",
           permissionStatus === 'checking' && "opacity-50",
           disabled && "opacity-50 cursor-not-allowed"
         )}
         onClick={permissionStatus === 'granted' ? handleStartRecording : handleRequestPermission}
-        disabled={disabled || permissionStatus === 'checking'}
+        disabled={disabled || permissionStatus === 'checking' || permissionStatus === 'unavailable'}
         title={
-          permissionStatus === 'denied' 
-            ? "Microphone blocked - Click to retry" 
-            : permissionStatus === 'granted' 
-              ? "Record voice message" 
-              : permissionStatus === 'checking'
-                ? "Checking microphone..."
-                : "Enable microphone"
+          permissionStatus === 'unavailable'
+            ? "Microphone not available - Refresh page"
+            : permissionStatus === 'denied' 
+              ? "Microphone blocked - Click to retry" 
+              : permissionStatus === 'granted' 
+                ? "Record voice message" 
+                : permissionStatus === 'checking'
+                  ? "Checking microphone..."
+                  : "Enable microphone"
         }
       >
         {permissionStatus === 'checking' ? (
           <Loader2 className="h-5 w-5 animate-spin" />
-        ) : permissionStatus === 'denied' ? (
+        ) : isBlocked ? (
           <MicOff className="h-5 w-5" />
         ) : (
           <Mic className={cn(
@@ -458,25 +462,45 @@ export const VoiceRecorder = memo(function VoiceRecorder({
         )}
       </Button>
       
-      {/* Permission denied tooltip */}
-      {permissionStatus === 'denied' && (
+      {/* Permission denied/unavailable tooltip */}
+      {isBlocked && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-destructive text-destructive-foreground text-xs rounded-lg shadow-lg max-w-[250px] text-center whitespace-normal z-50">
           <AlertCircle className="h-4 w-4 mx-auto mb-1" />
-          <div className="font-medium mb-1">Microphone Blocked</div>
+          <div className="font-medium mb-1">
+            {permissionStatus === 'unavailable' ? 'Microphone Unavailable' : 'Microphone Blocked'}
+          </div>
           <div className="opacity-90 text-[10px] leading-tight">
-            Click the 🔒 lock icon in your browser's address bar → Allow microphone → Refresh page
+            {permissionStatus === 'unavailable' 
+              ? 'Microphone is blocked by browser policy. Please refresh the page and try again.'
+              : 'Click the 🔒 lock icon in your browser\'s address bar → Allow microphone → Refresh page'
+            }
           </div>
-          <div className="mt-2 pt-2 border-t border-white/20">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation()
-                handleRequestPermission()
-              }}
-              className="text-[10px] underline hover:no-underline"
-            >
-              Try Again
-            </button>
-          </div>
+          {permissionStatus === 'denied' && (
+            <div className="mt-2 pt-2 border-t border-white/20">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleRequestPermission()
+                }}
+                className="text-[10px] underline hover:no-underline"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+          {permissionStatus === 'unavailable' && (
+            <div className="mt-2 pt-2 border-t border-white/20">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  window.location.reload()
+                }}
+                className="text-[10px] underline hover:no-underline"
+              >
+                Refresh Page
+              </button>
+            </div>
+          )}
           {/* Arrow */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-destructive" />
         </div>

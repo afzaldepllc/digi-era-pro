@@ -77,7 +77,9 @@ export const S3_CONFIG = {
             'audio/mpeg',
             'audio/mp3',
             'audio/wav',
-            'audio/ogg'
+            'audio/ogg',
+            'audio/webm',
+            'audio/webm;codecs=opus'
         ] as const,
         expiresIn: 3600 * 24 * 7 // 7 days for chat attachments
     }

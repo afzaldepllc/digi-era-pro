@@ -7,7 +7,8 @@ export function applySecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set('X-XSS-Protection', '1; mode=block')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+  // Allow microphone for voice messages feature, camera for future video features
+  response.headers.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=()')
 
   // HTTPS enforcement (only in production)
   if (process.env.NODE_ENV === 'production') {
