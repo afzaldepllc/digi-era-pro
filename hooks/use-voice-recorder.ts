@@ -498,68 +498,43 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     })
   }, [])
 
-  // Pause recording
+  // Pause recording - immediate UI response
   const pauseRecording = useCallback(() => {
+    // Update state FIRST for immediate UI feedback
+    setState(prev => ({ ...prev, isPaused: true, audioLevel: 0 }))
+    
+    // Then pause the recorder
     const mediaRecorder = mediaRecorderRef.current
-    if (mediaRecorder?.state === 'recording') {
-      mediaRecorder.pause()
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      try { mediaRecorder.pause() } catch {}
       pausedDurationRef.current = Date.now() - startTimeRef.current - (state.duration * 1000)
-      
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-        animationFrameRef.current = null
-      }
-      
-      setState(prev => ({ ...prev, isPaused: true, audioLevel: 0 }))
+    }
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
     }
   }, [state.duration])
 
-  // Resume recording
+  // Resume recording - immediate UI response
   const resumeRecording = useCallback(() => {
+    // Update state FIRST for immediate UI feedback
+    setState(prev => ({ ...prev, isPaused: false }))
+    
     const mediaRecorder = mediaRecorderRef.current
-    if (mediaRecorder?.state === 'paused') {
-      mediaRecorder.resume()
+    if (mediaRecorder && mediaRecorder.state === 'paused') {
+      try { mediaRecorder.resume() } catch {}
       startTimeRef.current = Date.now() - (state.duration * 1000)
       
       if (analyserRef.current) {
         animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
       }
-      
-      setState(prev => ({ ...prev, isPaused: false }))
     }
   }, [state.duration, updateAudioLevel])
 
-  // Cancel recording without saving
+  // Cancel recording without saving - immediate UI response
   const cancelRecording = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
-    }
-
-    const mediaRecorder = mediaRecorderRef.current
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.onstop = null
-      mediaRecorder.stop()
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
-
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {})
-      audioContextRef.current = null
-    }
-
-    audioChunksRef.current = []
-    audioBlobRef.current = null
-
+    // Update state FIRST for immediate UI response
     setState(prev => {
       if (prev.audioUrl) {
         URL.revokeObjectURL(prev.audioUrl)
@@ -575,6 +550,39 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         audioLevel: 0
       }
     })
+
+    // Then cleanup resources
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+
+    const mediaRecorder = mediaRecorderRef.current
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = null
+      try { mediaRecorder.stop() } catch {}
+    }
+    mediaRecorderRef.current = null
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try { track.stop() } catch {}
+      })
+      streamRef.current = null
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {})
+      audioContextRef.current = null
+    }
+
+    audioChunksRef.current = []
+    audioBlobRef.current = null
   }, [])
 
   // Reset to initial state (after sending)

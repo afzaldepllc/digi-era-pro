@@ -223,8 +223,9 @@ export const AudioPlayer = memo(function AudioPlayer({
   const [duration, setDuration] = useState(initialDuration || 0)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Format time as mm:ss
+  // Format time as mm:ss - handle edge cases
   const formatTime = (seconds: number) => {
+    if (!isFinite(seconds) || isNaN(seconds) || seconds < 0) return '0:00'
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -236,9 +237,33 @@ export const AudioPlayer = memo(function AudioPlayer({
     if (!audio) return
 
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration)
+      // Handle cases where audio.duration is Infinity or NaN (streaming/live audio)
+      const audioDuration = audio.duration
+      if (isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      } else if (initialDuration && initialDuration > 0) {
+        setDuration(initialDuration)
+      }
       setIsLoading(false)
     }
+    
+    const handleDurationChange = () => {
+      // Fallback for when duration becomes available later
+      const audioDuration = audio.duration
+      if (isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      }
+    }
+    
+    const handleCanPlayThrough = () => {
+      // Another fallback when audio is fully buffered
+      const audioDuration = audio.duration
+      if (duration === 0 && isFinite(audioDuration) && !isNaN(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration)
+      }
+      setIsLoading(false)
+    }
+    
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
     const handleEnded = () => {
       setIsPlaying(false)
@@ -247,17 +272,27 @@ export const AudioPlayer = memo(function AudioPlayer({
     const handleError = () => setIsLoading(false)
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('durationchange', handleDurationChange)
+    audio.addEventListener('canplaythrough', handleCanPlayThrough)
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('ended', handleEnded)
     audio.addEventListener('error', handleError)
 
+    // If we have initial duration, use it immediately
+    if (initialDuration && initialDuration > 0) {
+      setDuration(initialDuration)
+      setIsLoading(false)
+    }
+
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('durationchange', handleDurationChange)
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
     }
-  }, [])
+  }, [initialDuration, duration])
 
   const togglePlayback = () => {
     if (!audioRef.current) return

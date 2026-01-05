@@ -102,23 +102,28 @@ export const VoiceRecorder = memo(function VoiceRecorder({
     }
   }, [permissionStatus, handleRequestPermission, startRecording, error])
 
-  // Handle stop recording
-  const handleStopRecording = useCallback(async () => {
-    await stopRecording()
+  // Handle stop recording - don't await for faster response
+  const handleStopRecording = useCallback(() => {
+    stopRecording()
   }, [stopRecording])
 
-  // Handle cancel
+  // Handle cancel - immediate response
   const handleCancel = useCallback(() => {
-    if (isPlaying && audioRef.current) {
+    // Stop playback immediately
+    if (audioRef.current) {
       audioRef.current.pause()
-      setIsPlaying(false)
+      audioRef.current.src = ''
     }
     if (playbackIntervalRef.current) {
       clearInterval(playbackIntervalRef.current)
+      playbackIntervalRef.current = null
     }
+    setIsPlaying(false)
+    setPlaybackProgress(0)
+    // Cancel recording immediately
     cancelRecording()
     onCancel?.()
-  }, [isPlaying, cancelRecording, onCancel])
+  }, [cancelRecording, onCancel])
 
   // Handle playback toggle
   const handleTogglePlayback = useCallback(() => {
@@ -194,18 +199,23 @@ export const VoiceRecorder = memo(function VoiceRecorder({
     }
   }, [audioBlob, duration, onSendVoice, resetRecording])
 
-  // Handle delete recording
+  // Handle delete recording - immediate response
   const handleDelete = useCallback(() => {
+    // Stop playback immediately
     if (audioRef.current) {
       audioRef.current.pause()
+      audioRef.current.src = ''
+    }
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current)
+      playbackIntervalRef.current = null
     }
     setIsPlaying(false)
     setPlaybackProgress(0)
-    if (playbackIntervalRef.current) {
-      clearInterval(playbackIntervalRef.current)
-    }
+    // Reset recording state
     resetRecording()
-  }, [resetRecording])
+    onCancel?.()
+  }, [resetRecording, onCancel])
 
   // Not supported state
   if (!isSupported) {
@@ -234,21 +244,27 @@ export const VoiceRecorder = memo(function VoiceRecorder({
           <Trash2 className="h-4 w-4" />
         </Button>
 
-        {/* Live waveform visualization */}
-        <div className="flex-1 flex items-center gap-[2px] h-8 overflow-hidden">
-          {Array.from({ length: 50 }).map((_, i) => {
-            const baseHeight = waveformBarsRef.current[i] || 0.5
-            const animatedHeight = isPaused ? baseHeight : baseHeight * (0.5 + audioLevel * 1.5)
+        {/* Live waveform visualization - audio level responsive */}
+        <div className="flex-1 flex items-center justify-center gap-[2px] h-8 overflow-hidden">
+          {Array.from({ length: 40 }).map((_, i) => {
+            // Create wave pattern based on position and audio level
+            const position = i / 40
+            const wave = Math.sin(position * Math.PI * 4 + Date.now() / 200) * 0.3
+            // Height is primarily driven by audio level, with minimal base
+            const height = isPaused 
+              ? 0.15 // Flat when paused
+              : Math.max(0.08, audioLevel * (0.6 + wave) + 0.08)
             
             return (
               <div
                 key={i}
                 className={cn(
-                  "flex-1 min-w-[3px] max-w-[6px] rounded-full transition-all duration-75",
+                  "w-[4px] rounded-full",
                   isPaused ? "bg-muted-foreground/40" : "bg-primary"
                 )}
                 style={{
-                  height: `${Math.max(15, animatedHeight * 100)}%`
+                  height: `${Math.max(4, height * 32)}px`,
+                  transition: 'height 50ms ease-out'
                 }}
               />
             )
