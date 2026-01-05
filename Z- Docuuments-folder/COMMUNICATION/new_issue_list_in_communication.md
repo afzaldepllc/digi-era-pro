@@ -426,6 +426,6 @@ lib/realtime-manager.ts (570:19)
 26) attachements previews need better ui which should be looking professional
 27) ther should be proper multiple attchement share options
 28) attchement can be share to others chats(can be multiples chats)
-29) there should be proper attachements preview on the message input
+29) there should be proper attachements preview on the message input also 
 30) in the user_directory the pin should be synched to each other like in chat_lists
 31) attachement gallery for shared attachments like in the whatsapp 
