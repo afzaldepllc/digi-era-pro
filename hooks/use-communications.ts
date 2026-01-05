@@ -382,53 +382,75 @@ export function useCommunications() {
 
   // Handle reaction added (real-time) - WhatsApp style
   const onReactionAdd = useCallback((data: {
-    id: string;
-    message_id: string;
-    channel_id: string;
-    mongo_user_id: string;
+    id?: string;
+    reactionId?: string;
+    message_id?: string;
+    messageId?: string;
+    channel_id?: string;
+    channelId?: string;
+    mongo_user_id?: string;
+    userId?: string;
     user_name?: string;
+    userName?: string;
     emoji: string;
-    created_at: string;
+    created_at?: string;
   }) => {
     logger.debug('Reaction added via realtime:', data)
     
+    // Normalize field names (handle both camelCase and snake_case)
+    const userId = data.mongo_user_id || data.userId || ''
+    const messageId = data.message_id || data.messageId || ''
+    const channelId = data.channel_id || data.channelId || ''
+    const reactionId = data.id || data.reactionId || ''
+    const userName = data.user_name || data.userName || 'Someone'
+    
     // Skip reactions from self (already handled optimistically)
-    if (data.mongo_user_id === sessionUserId) return
+    if (userId === sessionUserId) return
     
     // Ensure we have proper user info and emoji
     const reactionData = {
-      id: data.id,
-      mongo_user_id: data.mongo_user_id,
-      user_name: data.user_name || 'Someone',
-      emoji: data.emoji, // Ensure emoji is preserved properly
-      created_at: data.created_at
+      id: reactionId,
+      mongo_user_id: userId,
+      user_name: userName,
+      emoji: data.emoji,
+      created_at: data.created_at || new Date().toISOString()
     }
     
     dispatch(addReactionToMessage({
-      channelId: data.channel_id,
-      messageId: data.message_id,
+      channelId: channelId,
+      messageId: messageId,
       reaction: reactionData
     }))
   }, [dispatch, sessionUserId])
 
   // Handle reaction removed (real-time) - WhatsApp style
   const onReactionRemove = useCallback((data: {
-    id: string;
-    message_id: string;
-    channel_id: string;
-    mongo_user_id: string;
+    id?: string;
+    reactionId?: string;
+    message_id?: string;
+    messageId?: string;
+    channel_id?: string;
+    channelId?: string;
+    mongo_user_id?: string;
+    userId?: string;
     emoji: string;
   }) => {
     logger.debug('Reaction removed via realtime:', data)
     
+    // Normalize field names (handle both camelCase and snake_case)
+    const userId = data.mongo_user_id || data.userId || ''
+    const messageId = data.message_id || data.messageId || ''
+    const channelId = data.channel_id || data.channelId || ''
+    const reactionId = data.id || data.reactionId || ''
+    
     // Skip reactions from self (already handled optimistically)
-    if (data.mongo_user_id === sessionUserId) return
+    if (userId === sessionUserId) return
     
     dispatch(removeReactionFromMessage({
-      channelId: data.channel_id,
-      messageId: data.message_id,
-      reactionId: data.id,
-      mongo_user_id: data.mongo_user_id,
+      channelId: channelId,
+      messageId: messageId,
+      reactionId: reactionId,
+      mongo_user_id: userId,
       emoji: data.emoji
     }))
   }, [dispatch, sessionUserId])
@@ -709,7 +731,10 @@ export function useCommunications() {
     }
   }, [activeChannelId, realtimeManager, sessionUserId, dispatch])
 
-  // Update handlers when they change
+  // Track whether handlers have been set
+  const handlersSetRef = useRef(false)
+
+  // Update handlers when they change - MUST happen before subscribing
   useEffect(() => {
     const handlers: RealtimeEventHandlers = {
       onNewMessage,
@@ -733,20 +758,40 @@ export function useCommunications() {
       onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
+    handlersSetRef.current = true
+    logger.debug('✅ Realtime handlers updated')
   }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onNewMessageNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
-  // Subscribe to notifications when user is logged in
+  // Subscribe to notifications when user is logged in AND handlers are set
   // NOTE: We don't unsubscribe on cleanup because notifications should persist
   // across component lifecycle. The RealtimeProvider manages the global lifecycle.
   useEffect(() => {
-    if (sessionUserId) {
-      realtimeManager.subscribeToNotifications(sessionUserId).catch(err => {
+    // Wait for handlers to be set before subscribing
+    if (!sessionUserId || !handlersSetRef.current) return
+    
+    const subscribeWithRetry = async () => {
+      try {
+        await realtimeManager.subscribeToNotifications(sessionUserId)
+        logger.debug('✅ Subscribed to notifications for user:', sessionUserId)
+      } catch (err) {
         logger.error('Failed to subscribe to notifications:', err)
-      })
-      realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
-        logger.error('Failed to subscribe to user channels:', err)
-      })
+        // Retry once after a short delay
+        setTimeout(async () => {
+          try {
+            await realtimeManager.subscribeToNotifications(sessionUserId)
+            logger.debug('✅ Retry: Subscribed to notifications for user:', sessionUserId)
+          } catch (retryErr) {
+            logger.error('Retry failed for notifications:', retryErr)
+          }
+        }, 2000)
+      }
     }
+    
+    subscribeWithRetry()
+    
+    realtimeManager.subscribeToUserChannels(sessionUserId).catch(err => {
+      logger.error('Failed to subscribe to user channels:', err)
+    })
     // No cleanup - notification subscriptions are managed by RealtimeProvider
     // and should persist for the entire session
   }, [sessionUserId, realtimeManager])

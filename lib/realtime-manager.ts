@@ -225,6 +225,21 @@ export class RealtimeManager {
     this.rtChannels.clear()
     this.subscriptionPromises.clear()
 
+    // Re-subscribe to notifications if we had a user ID
+    if (this.notificationUserId) {
+      try {
+        // Clean up old notification channel
+        if (this.notificationChannel) {
+          supabase.removeChannel(this.notificationChannel)
+          this.notificationChannel = null
+        }
+        await this.subscribeToNotifications(this.notificationUserId)
+        console.log('✅ Resubscribed to notifications')
+      } catch (error) {
+        console.error('❌ Failed to resubscribe to notifications:', error)
+      }
+    }
+
     // Re-subscribe to all channels
     console.log(`🔄 Resubscribing to ${channelIds.length} channels...`)
     

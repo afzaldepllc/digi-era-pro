@@ -603,22 +603,13 @@ export const MessageReactions = memo(function MessageReactions({
           // Comprehensive emoji validation and fallback
           let displayEmoji = reaction.emoji
           
-          console.log(`🔍 [MessageReactions] Processing reaction ${index}:`, {
-            originalEmoji: reaction.emoji,
-            reactionObject: reaction,
-            users: reaction.users
-          })
-          
           // Check if emoji field contains UUID or invalid data
           if (!displayEmoji || 
               displayEmoji.length > 10 || 
               displayEmoji.includes('-') ||
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(displayEmoji)) {
-            console.warn('⚠️ [MessageReactions] Invalid emoji detected:', displayEmoji, 'using fallback')
-            displayEmoji = '👍'
+            displayEmoji = '👍' // Fallback to default emoji
           }
-          
-          console.log(`✅ [MessageReactions] Will display emoji:`, displayEmoji)
           
           const userNames = reaction.users
             .slice(0, 10)
@@ -641,10 +632,7 @@ export const MessageReactions = memo(function MessageReactions({
                       ? "bg-primary/10 border-primary/30 hover:bg-primary/20 text-primary"
                       : "bg-muted/50 hover:bg-muted border-muted"
                   )}
-                  onClick={() => {
-                    console.log(`🖱️ [MessageReactions] Clicked reaction, sending emoji:`, displayEmoji)
-                    onReactionClick(displayEmoji)
-                  }}
+                  onClick={() => onReactionClick(displayEmoji)}
                 >
                   <span className="text-sm leading-none select-none">{displayEmoji}</span>
                   <span className={cn(

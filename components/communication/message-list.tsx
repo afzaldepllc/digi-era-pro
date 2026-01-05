@@ -290,34 +290,16 @@ export function MessageList({
   const groupReactions = (reactions: ICommunication['reactions']): IGroupedReaction[] => {
     if (!reactions || reactions.length === 0) return []
 
-    console.log('🔍 [groupReactions] Raw reactions from database:', reactions)
-
     const grouped: Record<string, IGroupedReaction> = {}
 
-    reactions.forEach((reaction, index) => {
-      console.log(`🔍 [groupReactions] Processing reaction ${index}:`, {
-        id: reaction.id,
-        emoji: reaction.emoji,
-        user_name: reaction.user_name,
-        mongo_user_id: reaction.mongo_user_id,
-        fullReaction: reaction
-      })
-      
+    reactions.forEach((reaction) => {
       // Robust emoji validation - handle potential data corruption
       let emojiKey = reaction.emoji
       
       // Check if emoji field is corrupted (contains UUID or is too long)
       if (!emojiKey || emojiKey.length > 10 || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey)) {
-        console.warn('⚠️ [groupReactions] Invalid emoji detected in reaction:', {
-          originalEmoji: emojiKey,
-          reactionId: reaction.id,
-          isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emojiKey || ''),
-          length: emojiKey?.length
-        })
-        emojiKey = '👍'
+        emojiKey = '👍' // Fallback to default emoji
       }
-      
-      console.log(`✅ [groupReactions] Using emoji key:`, emojiKey)
       
       if (!grouped[emojiKey]) {
         grouped[emojiKey] = {
@@ -329,7 +311,7 @@ export function MessageList({
       }
       grouped[emojiKey].count++
       
-      // Ensure we have proper user name fallback
+      // Ensure we have proper user name - use the stored user_name from reaction
       const userName = reaction.user_name || 'Someone'
       
       grouped[emojiKey].users.push({
@@ -343,13 +325,10 @@ export function MessageList({
       }
     })
 
-    const result = Object.values(grouped).sort((a, b) => {
+    return Object.values(grouped).sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count
       return a.emoji.localeCompare(b.emoji)
     })
-    
-    console.log('✅ [groupReactions] Final grouped result:', result)
-    return result
   }
 
   const MessageItem = ({ message, isOwn }: { message: ICommunication; isOwn: boolean }) => {
