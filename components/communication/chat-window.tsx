@@ -545,9 +545,9 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       return 'Direct Message'
     }
 
-    // Use real-time onlineUserIds for active members count
+    // Use real-time onlineUserIds for active members count (exclude current user)
     const activeMembers = selectedChannel.channel_members.filter(p =>
-      onlineUserIds.includes(p.mongo_member_id)
+      p.mongo_member_id !== mockCurrentUser?._id && onlineUserIds.includes(p.mongo_member_id)
     ).length
     return `${selectedChannel.channel_members.length} members, ${activeMembers} online`
   }
@@ -613,6 +613,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
                   <OnlineIndicator
                     users={selectedChannel.channel_members as IParticipant[]}
                     onlineUserIds={onlineUserIds}
+                    currentUserId={mockCurrentUser?._id}
                     maxVisible={3}
                     size="sm"
                   />

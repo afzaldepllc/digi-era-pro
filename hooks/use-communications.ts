@@ -731,8 +731,8 @@ export function useCommunications() {
     }
   }, [activeChannelId, realtimeManager, sessionUserId, dispatch])
 
-  // Track whether handlers have been set
-  const handlersSetRef = useRef(false)
+  // Track whether handlers have been set - use state to trigger re-render
+  const [handlersReady, setHandlersReady] = useState(false)
 
   // Update handlers when they change - MUST happen before subscribing
   useEffect(() => {
@@ -758,7 +758,7 @@ export function useCommunications() {
       onAttachmentsAdded
     }
     realtimeManager.updateHandlers(handlers)
-    handlersSetRef.current = true
+    setHandlersReady(true)
     logger.debug('✅ Realtime handlers updated')
   }, [realtimeManager, onNewMessage, onMessageUpdate, onMessageDelete, onMessageRead, onMessageDelivered, onUserJoined, onUserLeft, onUserOnline, onUserOffline, onTypingStart, onTypingStop, onPresenceSync, onMentionNotification, onNewMessageNotification, onReactionAdd, onReactionRemove, onChannelUpdate, onUserPin, onAttachmentsAdded])
 
@@ -767,7 +767,10 @@ export function useCommunications() {
   // across component lifecycle. The RealtimeProvider manages the global lifecycle.
   useEffect(() => {
     // Wait for handlers to be set before subscribing
-    if (!sessionUserId || !handlersSetRef.current) return
+    if (!sessionUserId || !handlersReady) {
+      logger.debug('⏳ Waiting for handlers to be ready before subscribing to notifications')
+      return
+    }
     
     const subscribeWithRetry = async () => {
       try {
@@ -775,15 +778,18 @@ export function useCommunications() {
         logger.debug('✅ Subscribed to notifications for user:', sessionUserId)
       } catch (err) {
         logger.error('Failed to subscribe to notifications:', err)
-        // Retry once after a short delay
-        setTimeout(async () => {
+        // Retry with exponential backoff
+        const retryDelays = [2000, 4000, 8000]
+        for (const delay of retryDelays) {
+          await new Promise(resolve => setTimeout(resolve, delay))
           try {
             await realtimeManager.subscribeToNotifications(sessionUserId)
-            logger.debug('✅ Retry: Subscribed to notifications for user:', sessionUserId)
+            logger.debug(`✅ Retry: Subscribed to notifications for user after ${delay}ms:`, sessionUserId)
+            return
           } catch (retryErr) {
-            logger.error('Retry failed for notifications:', retryErr)
+            logger.error(`Retry failed for notifications after ${delay}ms:`, retryErr)
           }
-        }, 2000)
+        }
       }
     }
     
@@ -794,7 +800,7 @@ export function useCommunications() {
     })
     // No cleanup - notification subscriptions are managed by RealtimeProvider
     // and should persist for the entire session
-  }, [sessionUserId, realtimeManager])
+  }, [sessionUserId, realtimeManager, handlersReady])
 
   // Channel operations
   const fetchChannels = useCallback(async (
@@ -988,7 +994,8 @@ export function useCommunications() {
   const sendMessage = useCallback(async (messageData: CreateMessageData) => {
     const tempId = crypto.randomUUID()
     try {
-      dispatch(setActionLoading(true))
+      // Note: Don't set actionLoading for text messages - use optimistic updates without blocking UI
+      // This prevents the input from being disabled during send
 
       // Get sender info from session for optimistic update
       const senderName = sessionUser?.name || sessionUser?.email || 'Unknown User'
@@ -1083,9 +1090,8 @@ export function useCommunications() {
         variant: "destructive"
       })
       throw error
-    } finally {
-      dispatch(setActionLoading(false))
     }
+    // Note: No finally block needed - we don't set actionLoading for text messages
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sessionUserId, allUsers, realtimeManager]) // Removed toast to prevent infinite loop
 

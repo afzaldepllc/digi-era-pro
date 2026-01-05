@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 interface OnlineIndicatorProps {
   users: IParticipant[]
   onlineUserIds?: string[] // Real-time online user IDs from Supabase presence
+  currentUserId?: string // Current user to exclude from online count
   maxVisible?: number
   showNames?: boolean
   size?: "sm" | "md" | "lg"
@@ -18,6 +19,7 @@ interface OnlineIndicatorProps {
 export function OnlineIndicator({
   users,
   onlineUserIds = [],
+  currentUserId,
   maxVisible = 5,
   showNames = false,
   size = "md",
@@ -30,7 +32,12 @@ export function OnlineIndicator({
       : user.isOnline
   }
 
-  const onlineUsers = users.filter(isUserOnline)
+  // Filter out current user from the list before checking online status
+  const filteredUsers = currentUserId 
+    ? users.filter(u => u.mongo_member_id !== currentUserId)
+    : users
+  
+  const onlineUsers = filteredUsers.filter(isUserOnline)
   const visibleUsers = onlineUsers.slice(0, maxVisible)
   const remainingCount = onlineUsers.length - visibleUsers.length
 

@@ -22,6 +22,7 @@ import OrderedList from '@tiptap/extension-ordered-list'
 import ListItem from '@tiptap/extension-list-item'
 
 import HardBreak from '@tiptap/extension-hard-break'
+import { Mention } from './mention-extension'
 import { InlineEmojiPicker } from './emoji-picker'
 import { MentionPicker } from './mention-picker'
 import { VoiceRecorder } from './voice-recorder'
@@ -116,6 +117,12 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 LinkExt.configure({ openOnClick: false }),
                 History,
                 HardBreak.configure({ keepMarks: true }),
+                // Mention extension for WhatsApp-style mentions that delete as a unit
+                Mention.configure({
+                    HTMLAttributes: {
+                        class: 'mention',
+                    },
+                }),
             ],
             content: value || '',
             editable: !disabled,
@@ -126,9 +133,13 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 onChange?.(html, text)
                 triggerTyping()
 
-                // Mention detection (last token starting with @)
+                // Mention detection (last token starting with @ followed by any characters)
+                // Updated regex to match names with spaces (e.g., "@Super Administrator")
                 if (mentionsEnabled) {
-                    const m = text.match(/@([\w-]*)$/)
+                    // Get raw text from current position back to find @mention pattern
+                    const { $from } = editor.state.selection
+                    const textBefore = $from.nodeBefore?.textContent || ''
+                    const m = textBefore.match(/@([\w\s-]*)$/)
                     if (m) {
                         setMentionQuery(m[1])
                         setShowMentionPicker(true)
@@ -449,25 +460,12 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
         const insertMentionAtCaret = useCallback((user: { id: string; name: string }) => {
             if (!editor) return
             
-            // Remove the partial @query text first
-            const text = editor.getText()
-            const match = text.match(/@[\w-]*$/)
-            
-            // Use Unicode zero-width space after mention to mark its boundary
-            // Format: @Name\u200B (zero-width space acts as invisible delimiter)
-            const mentionText = `@${user.name}\u200B `
-            
-            if (match) {
-                // Delete the @query text and insert the mention
-                const from = editor.state.selection.from - match[0].length
-                editor.chain()
-                    .focus()
-                    .deleteRange({ from, to: editor.state.selection.from })
-                    .insertContent(mentionText)
-                    .run()
-            } else {
-                editor.commands.insertContent(mentionText)
-            }
+            // Use the Mention extension's insertMention command
+            // This creates an atomic node that deletes as a single unit (like WhatsApp)
+            editor.commands.insertMention({
+                id: user.id,
+                label: user.name,
+            })
             
             // Track mentioned user
             if (user.id !== 'everyone') {

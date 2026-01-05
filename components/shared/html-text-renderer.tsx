@@ -66,6 +66,21 @@ export function HtmlTextRenderer({
     // Remove zero-width spaces used as delimiters
     processedHtml = processedHtml.replace(/\u200B/g, '');
     
+    // Pattern 0: TipTap Mention extension format - already has proper span structure
+    // These spans have data-type="mention" and data-mention-label attributes
+    // Just ensure they have the mention class
+    processedHtml = processedHtml.replace(
+      /<span[^>]*data-type="mention"[^>]*>(.*?)<\/span>/gi,
+      (match, content) => {
+        // If it already has the mention class, keep it as is
+        if (match.includes('class="mention"') || match.includes("class='mention'")) {
+          return match;
+        }
+        // Add the mention class if missing
+        return match.replace(/<span/, '<span class="mention"');
+      }
+    );
+    
     // Pattern 1: Handle bracketed mentions [@Name] (legacy format)
     processedHtml = processedHtml.replace(/\[@([^\]]+)\]/g, (match, name) => {
       return `<span class="mention">@${name}</span>`;
@@ -78,6 +93,7 @@ export function HtmlTextRenderer({
     
     // Pattern 3: Handle @mentions with names (supports spaces via multi-word matching)
     // Match @word or @Word Word (capitalized names)
+    // Only if no mention spans exist yet (to avoid double-processing)
     if (!processedHtml.includes('class="mention"')) {
       // Match @Name or @Name Name pattern (for two-word names)
       processedHtml = processedHtml.replace(/@([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|\w+)/g, (match, name) => {
@@ -93,7 +109,7 @@ export function HtmlTextRenderer({
     // Use DOMPurify for robust XSS protection
     const sanitized = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'span', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-user-id', 'data-user-name', 'style'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-user-id', 'data-user-name', 'data-type', 'data-mention-id', 'data-mention-label', 'contenteditable', 'style'],
       ALLOW_DATA_ATTR: true,
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button'],
       FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],

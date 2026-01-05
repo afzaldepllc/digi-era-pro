@@ -161,11 +161,11 @@ instead of showing the fresh data or same data but i want to when click again an
 
 
 
-23) resolved when message send with the file than some time its not showing the uploading files and than need refresh the page than show the uploading files preview (files are handled using the  s3 ) but i want the completely realtime like the text messages
+23) --resolved when message send with the file than some time its not showing the uploading files and than need refresh the page than show the uploading files preview (files are handled using the  s3 ) but i want the completely realtime like the text messages
 
 
 
-24) resolved when message edit than make sure we can replace/remore/update  the attachments also along with the message text edit while make sure all the other things should be working wel also as of now while make sure all the other things should be workign well
+24) --resolved when message edit than make sure we can replace/remore/update  the attachments also along with the message text edit while make sure all the other things should be working wel also as of now while make sure all the other things should be workign well
 
 
 
@@ -267,7 +267,7 @@ lib/realtime-manager.ts (607:19)
 1
 2
 
-2) --not-resolved
+2) --resolved
 whats the hell man why the realtime notification not working well again and again the issue explian bellow and resolve it professionally 
 
  In the channels list item and user_directory (dm channels for direct messages ) and in the message notification when read the messages than those notification clean but again seen/visible the same notifications  when refresh the page and than so on 

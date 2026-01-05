@@ -393,8 +393,9 @@
 
   /* Mention styling in messages and editor */
   .mention {
-    @apply bg-primary/10 text-primary px-1 py-0.5 rounded font-medium inline-block;
+    @apply bg-primary/10 text-primary px-1 py-0.5 rounded font-medium inline;
     user-select: all; /* Select entire mention when clicked */
+    white-space: nowrap; /* Prevent mention from breaking across lines */
   }
   
   /* Mention wrapper for TipTap node view */
@@ -407,8 +408,15 @@
     @apply bg-primary-foreground/20 text-primary-foreground;
   }
   
-  /* Mention in editor (ProseMirror) */
+  /* Mention in editor (ProseMirror) - atomic node styling */
   .ProseMirror .mention {
-    @apply bg-primary/10 text-primary px-1 py-0.5 rounded font-medium;
+    @apply bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-medium;
+    white-space: nowrap; /* Keep mention name on single line */
+    cursor: default;
+  }
+  
+  /* Mention selection styling */
+  .ProseMirror .mention.ProseMirror-selectednode {
+    @apply ring-2 ring-primary ring-offset-1;
   }
 }
