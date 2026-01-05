@@ -298,21 +298,6 @@ and every things should be optimized and according to the current flow of this i
 
 
 
-22) most of time when goes to the /communications or refresh the page than this issue occur
-
-{
-    "success": false,
-    "error": "Failed to fetch messages",
-    "details": {
-        "ipAddress": "::1",
-        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    },
-    "timestamp": "2025-12-26T13:33:46.853Z",
-    "statusCode": 500
-}
-
-and after some time the api give the correct response after giving this error from the supabase but in  the mongodb there is no issue and every things working well without any connection issue (as there are two db are using in this app , mongoDB for the main db handling all the things related to users, leads, clients, projects, tasks and supabase handles communication related things like messages, channels) check why this issue with the supabase connection or  due to another reason.
-
 
 
 6) --resolved-but-synch-issue now instead of leaving the channel the group admin can remove the any existing member with proper loges 

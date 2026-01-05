@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, memo, useCallback } from "react"
+import { useState, memo, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Badge } from "@/components/ui/badge"
@@ -9,8 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Bell,
   MessageSquare,
-  X,
-  Check
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommunications } from "@/hooks/use-communications"
@@ -40,11 +39,7 @@ export const MessageNotification = memo(function MessageNotification({
     channels,
     unreadCount,
     notifications,
-    selectChannel,
-    clearNotifications,
-    removeNotification,
-    markAsRead,
-    markAllChannelMessagesAsRead
+    selectChannel
   } = useCommunications()
 
   // Get channels with unread messages (exclude channels where the last message is from self)
@@ -68,16 +63,6 @@ export const MessageNotification = memo(function MessageNotification({
     
     setIsOpen(false)
   }, [selectChannel, router])
-
-  const handleMarkAllRead = useCallback(async () => {
-    // Mark all messages in all unread channels as read
-    await Promise.all(
-      unreadChannels.map(channel => 
-        markAllChannelMessagesAsRead(channel.id)
-      )
-    )
-    // clearNotifications is now handled by markAllChannelMessagesAsRead via clearNotificationsForChannel
-  }, [unreadChannels, markAllChannelMessagesAsRead])
 
   // Get user info from notification message data
   const getUserInfo = useCallback((notification: any) => {
@@ -104,11 +89,96 @@ export const MessageNotification = memo(function MessageNotification({
     return channel.name || 'Channel'
   }, [currentUserId])
 
+  // Strip HTML tags from message content for preview
+  const stripHtml = useCallback((html: string) => {
+    if (!html) return ''
+    return html
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+      .replace(/&amp;/g, '&') // Replace &amp; with &
+      .replace(/&lt;/g, '<') // Replace &lt; with <
+      .replace(/&gt;/g, '>') // Replace &gt; with >
+      .replace(/&quot;/g, '"') // Replace &quot; with "
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
+      .trim()
+  }, [])
+
   // Filter out notifications from self (should already be filtered on server, but double-check)
   const filteredNotifications = notifications.filter(n => {
     const senderId = n.message?.mongo_sender_id
     return senderId !== currentUserId
   })
+
+  // Group notifications by channel for a cleaner view
+  const groupedNotifications = useMemo(() => {
+    const groups: Record<string, {
+      channelId: string;
+      channelName: string;
+      channelType: string;
+      messages: typeof filteredNotifications;
+      latestTimestamp: Date;
+      totalCount: number;
+      avatar?: string;
+    }> = {}
+
+    filteredNotifications.forEach(notification => {
+      const channelId = notification.channelId
+      if (!channelId) return
+
+      const channel = channels.find(c => c.id === channelId)
+      const channelName = channel ? getChannelDisplayName(channel) : 'Unknown Channel'
+      const channelType = channel?.type || 'group'
+
+      if (!groups[channelId]) {
+        // Get avatar for DM channels
+        let avatar: string | undefined
+        if (channel?.type === 'dm') {
+          const otherMember = channel.channel_members?.find((p: any) => p.mongo_member_id !== currentUserId)
+          avatar = otherMember?.avatar
+        }
+
+        groups[channelId] = {
+          channelId,
+          channelName,
+          channelType,
+          messages: [],
+          latestTimestamp: new Date(notification.timestamp),
+          totalCount: 0,
+          avatar
+        }
+      }
+
+      groups[channelId].messages.push(notification)
+      groups[channelId].totalCount++
+      
+      const notifTime = new Date(notification.timestamp)
+      if (notifTime > groups[channelId].latestTimestamp) {
+        groups[channelId].latestTimestamp = notifTime
+      }
+    })
+
+    // Sort by latest timestamp (newest first)
+    return Object.values(groups).sort((a, b) => 
+      b.latestTimestamp.getTime() - a.latestTimestamp.getTime()
+    )
+  }, [filteredNotifications, channels, getChannelDisplayName, currentUserId])
+
+  // Merge grouped notifications with unread channels (avoid duplicates)
+  const consolidatedNotifications = useMemo(() => {
+    const notificationChannelIds = new Set(groupedNotifications.map(g => g.channelId))
+    
+    // Get unread channels that don't already have notifications
+    const additionalUnreadChannels = unreadChannels.filter(
+      channel => !notificationChannelIds.has(channel.id)
+    )
+
+    return {
+      grouped: groupedNotifications,
+      additional: additionalUnreadChannels
+    }
+  }, [groupedNotifications, unreadChannels])
+
+  const hasNotifications = consolidatedNotifications.grouped.length > 0 || consolidatedNotifications.additional.length > 0
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -134,112 +204,46 @@ export const MessageNotification = memo(function MessageNotification({
       <DropdownMenuContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold">Message Notifications</h4>
-
-          <div className="flex items-center gap-2">
-            {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleMarkAllRead}
-                className="h-7 px-2 text-xs"
-              >
-                <Check className="h-3 w-3 mr-1" />
-                Mark all read
-              </Button>
-            )}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsOpen(false)}
-              className="h-7 w-7 p-0"
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsOpen(false)}
+            className="h-7 w-7 p-0"
+          >
+            <X className="h-3 w-3" />
+          </Button>
         </div>
 
         <div className="max-h-96 overflow-auto">
-          {unreadChannels.length === 0 && filteredNotifications.length === 0 ? (
+          {!hasNotifications ? (
             <div className="p-8 text-center text-muted-foreground">
               <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No new messages</p>
             </div>
           ) : (
             <div className="space-y-1 p-2">
-              {/* Recent notifications */}
-              {filteredNotifications.slice(0, 5).map((notification) => {
-                const sender = getUserInfo(notification);
-                const content = notification.message?.content || notification.preview || '';
-                const messageId = notification.messageId || notification.message?.id;
+              {/* Grouped notifications by channel */}
+              {consolidatedNotifications.grouped.map((group) => {
+                const latestMessage = group.messages[0]?.message
+                const latestSender = getUserInfo(group.messages[0])
+                const rawContent = latestMessage?.content || group.messages[0]?.preview || ''
+                const previewContent = stripHtml(rawContent)
 
                 return (
                   <div
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification.channelId, messageId)}
-                    className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
+                    key={group.channelId}
+                    onClick={() => handleNotificationClick(group.channelId)}
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
                   >
-                    <Avatar className="h-8 w-8 mt-0.5">
-                      <AvatarImage src={sender.avatar} alt={sender.name} />
-                      <AvatarFallback className="text-xs">
-                        {sender.name
-                          ? (() => {
-                            const parts = sender.name.trim().split(' ');
-                            if (parts.length === 1) {
-                              return parts[0][0].toUpperCase();
-                            }
-                            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                          })()
-                          : ''}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{sender.name}</span>
-                        <Badge variant="secondary" className="text-xs">New</Badge>
-                      </div>
-
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {content}
-                      </p>
-
-                      <div className="flex items-center gap-2 mt-1">
-                        <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(notification.timestamp, { addSuffix: true })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {/* Channels with unread messages */}
-              {unreadChannels.map((channel) => {
-                const displayName = getChannelDisplayName(channel)
-                const last_message = channel.last_message
-                // Get sender info from last message
-                const senderName = last_message?.sender_name || last_message?.sender?.name || ''
-
-                return (
-                  <div
-                    key={channel.id}
-                    onClick={() => handleNotificationClick(channel.id)}
-                    className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
-                  >
-                    {channel.type === 'dm' && channel.channel_members?.length > 0 ? (
-                      <Avatar className="h-8 w-8 mt-0.5">
-                        <AvatarImage
-                          src={channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)?.avatar}
-                          alt={displayName}
-                        />
-                        <AvatarFallback className="text-xs">
-                          {displayName
+                    {group.channelType === 'dm' ? (
+                      <Avatar className="h-10 w-10 mt-0.5">
+                        <AvatarImage src={group.avatar} alt={group.channelName} />
+                        <AvatarFallback className="text-xs bg-primary/10">
+                          {group.channelName
                             ? (() => {
-                              const parts = displayName.trim().split(' ');
+                              const parts = group.channelName.trim().split(' ');
                               if (parts.length === 1) {
-                                return parts[0][0].toUpperCase();
+                                return parts[0][0]?.toUpperCase() || '';
                               }
                               return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
                             })()
@@ -247,48 +251,111 @@ export const MessageNotification = memo(function MessageNotification({
                         </AvatarFallback>
                       </Avatar>
                     ) : (
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center mt-0.5">
-                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                        <MessageSquare className="h-5 w-5 text-primary" />
                       </div>
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm truncate">{group.channelName}</span>
+                        <Badge variant="destructive" className="text-xs ml-2 shrink-0">
+                          {group.totalCount}
+                        </Badge>
+                      </div>
+
+                      <p className="text-sm text-muted-foreground line-clamp-1">
+                        {group.channelType !== 'dm' && latestSender.name && `${latestSender.name}: `}
+                        {previewContent}
+                      </p>
+
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(group.latestTimestamp, { addSuffix: true })}
+                        </span>
+                        {group.channelType !== 'dm' && (
+                          <Badge variant="outline" className="text-xs">
+                            {group.channelType.replace('-', ' ')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Additional channels with unread messages (not in notifications) */}
+              {consolidatedNotifications.additional.map((channel) => {
+                const displayName = getChannelDisplayName(channel)
+                const last_message = channel.last_message
+                const senderName = last_message?.sender_name || last_message?.sender?.name || ''
+
+                return (
+                  <div
+                    key={channel.id}
+                    onClick={() => handleNotificationClick(channel.id)}
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
+                  >
+                    {channel.type === 'dm' && channel.channel_members?.length > 0 ? (
+                      <Avatar className="h-10 w-10 mt-0.5">
+                        <AvatarImage
+                          src={channel.channel_members.find((p: any) => p.mongo_member_id !== currentUserId)?.avatar}
+                          alt={displayName}
+                        />
+                        <AvatarFallback className="text-xs bg-primary/10">
+                          {displayName
+                            ? (() => {
+                              const parts = displayName.trim().split(' ');
+                              if (parts.length === 1) {
+                                return parts[0][0]?.toUpperCase() || '';
+                              }
+                              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            })()
+                            : ''}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                        <MessageSquare className="h-5 w-5 text-primary" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-sm truncate">{displayName}</span>
-                        <Badge variant="default" className="text-xs">
+                        <Badge variant="destructive" className="text-xs ml-2 shrink-0">
                           {channel.unreadCount || 0}
                         </Badge>
                       </div>
 
                       {last_message && (
-                        <div>
-                          <p className="text-sm text-muted-foreground line-clamp-1">
-                            {senderName && channel.type !== 'dm' && `${senderName}: `}
-                            {last_message.content}
-                          </p>
-
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(last_message.created_at), { addSuffix: true })}
-                            </span>
-
-                            {channel.type !== 'dm' && (
-                              <Badge variant="outline" className="text-xs">
-                                {channel.type.replace('-', ' ')}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-1">
+                          {senderName && channel.type !== 'dm' && `${senderName}: `}
+                          {stripHtml(last_message.content)}
+                        </p>
                       )}
+
+                      <div className="flex items-center gap-2 mt-1">
+                        {last_message && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(last_message.created_at), { addSuffix: true })}
+                          </span>
+                        )}
+                        {channel.type !== 'dm' && (
+                          <Badge variant="outline" className="text-xs">
+                            {channel.type.replace('-', ' ')}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
-              )
+                )
               })}
             </div>
           )}
         </div>
 
-        {(unreadChannels.length > 0 || filteredNotifications.length > 0) && (
+        {hasNotifications && (
           <div className="border-t p-3">
             <Button
               variant="outline"
