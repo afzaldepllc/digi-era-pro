@@ -623,11 +623,16 @@ const communicationSlice = createSlice({
     
     // Data setters for TanStack Query integration
     setChannels: (state, action: PayloadAction<IChannel[]>) => {
-      // Create fresh copies to avoid mutating frozen payload
-      state.channels = action.payload.map(channel => ({
-        ...channel,
-        unreadCount: channel.unreadCount ?? 0
-      }))
+      // Create fresh copies and transform messages array to last_message
+      state.channels = action.payload.map(channel => {
+        // Transform messages array to last_message for convenience
+        const lastMessage = (channel as any).messages?.[0] || (channel as any).last_message || null
+        return {
+          ...channel,
+          last_message: lastMessage,
+          unreadCount: channel.unreadCount ?? 0
+        }
+      })
       state.channelsInitialized = true // Mark as initialized to prevent duplicate fetches
       // Calculate total unread count from all channels
       state.unreadCount = state.channels.reduce((total, channel) => total + (channel.unreadCount || 0), 0)

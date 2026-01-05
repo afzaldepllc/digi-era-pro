@@ -17,7 +17,8 @@ import {
   Archive,
   Pin,
   PinOff,
-  CheckCheck
+  CheckCheck,
+  BellOff
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant } from "@/types/communication"
@@ -174,6 +175,10 @@ export const ChannelList = memo(function ChannelList({
     const isPinned = (channel as any).is_pinned || false
     const isPinLoading = pinLoading === channel.id
 
+    // Check if notifications are muted for this channel (per-user setting)
+    const currentMember = channel.channel_members.find(m => m.mongo_member_id === currentUserId)
+    const isMuted = currentMember?.notifications_enabled === false
+
     // Check if user is online using real-time onlineUserIds from Supabase
     const isAvatarUserOnline = avatar ? (
       onlineUserIds.length > 0
@@ -195,9 +200,17 @@ export const ChannelList = memo(function ChannelList({
         )}
       >
         {/* Pin indicator */}
-        {isPinned && (
+        {isPinned && !isMuted && (
           <div className="absolute top-1 right-1">
             <Pin className="h-3 w-3 text-primary fill-primary rotate-45" />
+          </div>
+        )}
+
+        {/* Mute indicator - shows when channel is muted */}
+        {isMuted && (
+          <div className="absolute top-1 right-1 flex items-center gap-1">
+            {isPinned && <Pin className="h-3 w-3 text-primary fill-primary rotate-45" />}
+            <BellOff className="h-3 w-3 text-muted-foreground" />
           </div>
         )}
 

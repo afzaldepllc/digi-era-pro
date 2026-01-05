@@ -68,6 +68,7 @@ import type {
   IParticipant,
   ICommunication,
   IChannel,
+  IChannelMember,
   IAttachment
 } from '@/types/communication'
 import { useToast } from '@/hooks/use-toast'
@@ -328,7 +329,11 @@ export function useCommunications() {
     const channel = currentChannels.find((c: IChannel) => c.id === message.channel_id)
     const newUnreadCount = (channel?.unreadCount || 0) + 1
     
-    // Increment unread count for the channel in Redux
+    // Check if channel is muted for this user
+    const currentMember = channel?.channel_members?.find((m: IChannelMember) => m.mongo_member_id === sessionUserId)
+    const isMuted = currentMember?.notifications_enabled === false
+    
+    // Increment unread count for the channel in Redux (even for muted channels)
     dispatch(updateChannel({
       id: message.channel_id,
       unreadCount: newUnreadCount,
@@ -343,6 +348,12 @@ export function useCommunications() {
       last_message: message,
       last_message_at: message.created_at
     })
+    
+    // Skip notification and toast for muted channels
+    if (isMuted) {
+      logger.debug('📨 Skipping notification for muted channel:', message.channel_id)
+      return
+    }
     
     // Add notification to store
     const senderName = message.sender_name || message.sender?.name || 'Someone'
@@ -1480,6 +1491,48 @@ export function useCommunications() {
     }
   }, [sessionUserId])
 
+  /**
+   * Toggle mute/notification status for a channel
+   * When muted, notifications are disabled for this channel
+   * Note: notifications_enabled is a per-member setting stored in channel_members
+   */
+  const muteChannel = useCallback(async (channelId: string, currentlyMuted: boolean): Promise<{ notifications_enabled: boolean }> => {
+    if (!sessionUserId) {
+      throw new Error('Not authenticated')
+    }
+
+    try {
+      const response = await apiRequest(`/api/communication/channels/${channelId}?action=mute`, {
+        method: 'POST'
+      }, false)
+
+      // Update the channel's member data with the new mute status
+      const channel = channels.find(c => c.id === channelId)
+      if (channel) {
+        const updatedMembers = channel.channel_members.map(member => 
+          member.mongo_member_id === sessionUserId 
+            ? { ...member, notifications_enabled: response.data.notifications_enabled }
+            : member
+        )
+        dispatch(updateChannel({
+          id: channelId,
+          channel_members: updatedMembers
+        }))
+      }
+
+      toastRef.current({
+        title: response.data.notifications_enabled ? "Notifications enabled" : "Notifications muted",
+        description: response.data.notifications_enabled 
+          ? "You will receive notifications for this channel"
+          : "You won't receive notifications for this channel",
+      })
+
+      return { notifications_enabled: response.data.notifications_enabled }
+    } catch (error: any) {
+      throw error
+    }
+  }, [channels, dispatch, sessionUserId])
+
   const markAsRead = useCallback(async (messageId: string, channel_id: string) => {
     try {
       await apiRequest('/api/communication/read-receipts', {
@@ -2259,6 +2312,7 @@ export function useCommunications() {
     clearActiveChannel: clearChannel,
     pinChannel,
     pinUser,
+    muteChannel,
 
     // Message operations
     fetchMessages,

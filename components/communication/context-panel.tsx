@@ -87,6 +87,7 @@ export function ContextPanel({
   className
 }: ContextPanelProps) {
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(true)
+  const [isMuteLoading, setIsMuteLoading] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
   const [pinLoading, setPinLoading] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentWithUploader[]>([])
@@ -110,7 +111,7 @@ export function ContextPanel({
   const { fetchChannelAttachments, downloadAttachment, previewAttachment, forwardAttachment } = useChatAttachments()
   const { data: session } = useSession()
   const currentUserId = (session?.user as any)?.id
-  const { actionLoading, leaveChannel, archiveChannel } = useCommunications()
+  const { actionLoading, leaveChannel, archiveChannel, muteChannel } = useCommunications()
   const dispatch = useAppDispatch()
   const { toast } = useToast()
 
@@ -148,6 +149,37 @@ export function ContextPanel({
       setIsPinned((channel as any).is_pinned || false)
     }
   }, [channel])
+
+  // Sync notification/mute state with channel member data
+  useEffect(() => {
+    if (channel && currentUserId) {
+      const currentMember = channel.channel_members.find(
+        m => m.mongo_member_id === currentUserId
+      )
+      // notifications_enabled defaults to true if not set
+      setIsNotificationEnabled(currentMember?.notifications_enabled ?? true)
+    }
+  }, [channel, currentUserId])
+
+  // Handle mute toggle
+  const handleMuteToggle = useCallback(async () => {
+    if (!channel) return
+
+    setIsMuteLoading(true)
+    try {
+      const result = await muteChannel(channel.id, !isNotificationEnabled)
+      setIsNotificationEnabled(result.notifications_enabled)
+    } catch (error: any) {
+      console.error('Mute toggle error:', error)
+      toast({
+        title: "Failed to update notification settings",
+        description: error.message || "Something went wrong",
+        variant: "destructive"
+      })
+    } finally {
+      setIsMuteLoading(false)
+    }
+  }, [channel, isNotificationEnabled, muteChannel, toast])
 
   const handleDownload = useCallback((attachment: IAttachment) => {
     downloadAttachment(attachment)
@@ -438,12 +470,15 @@ export function ContextPanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsNotificationEnabled(!isNotificationEnabled)}
+                      onClick={handleMuteToggle}
+                      disabled={isMuteLoading}
                     >
-                      {isNotificationEnabled ? (
+                      {isMuteLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isNotificationEnabled ? (
                         <Bell className="h-4 w-4" />
                       ) : (
-                        <BellOff className="h-4 w-4" />
+                        <BellOff className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </TooltipTrigger>

@@ -524,6 +524,49 @@ export async function POST(
       })
     }
 
+    // Action: mute - Toggle mute/notification status for the channel
+    if (action === 'mute') {
+      const channelMember = await prisma.channel_members.findFirst({
+        where: { channel_id: channelId, mongo_member_id: userId }
+      })
+
+      if (!channelMember) {
+        return createErrorResponse('You are not a member of this channel', 404)
+      }
+
+      // Toggle the mute status (notifications_enabled: false = muted)
+      const isMuting = channelMember.notifications_enabled // if enabled, we're muting
+
+      const updated = await prisma.channel_members.update({
+        where: { id: channelMember.id },
+        data: { notifications_enabled: !isMuting }
+      })
+
+      // Broadcast mute change to user (non-blocking)
+      broadcastToUser({
+        userId,
+        event: 'new_message',
+        payload: { 
+          id: channelId, 
+          type: 'mute_update', 
+          channel: { 
+            id: channelId, 
+            notifications_enabled: updated.notifications_enabled 
+          } 
+        }
+      }).catch(err => logger.debug('Failed to broadcast mute change:', err))
+
+      return NextResponse.json({
+        success: true,
+        data: { 
+          channel_id: channelId, 
+          notifications_enabled: updated.notifications_enabled,
+          is_muted: !updated.notifications_enabled 
+        },
+        message: updated.notifications_enabled ? 'Notifications enabled' : 'Notifications muted'
+      })
+    }
+
     // Action: leave - Leave the channel
     if (action === 'leave') {
       const channel = await prisma.channels.findUnique({
