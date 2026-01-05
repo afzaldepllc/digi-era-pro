@@ -28,6 +28,7 @@ import { useChatAttachments } from "@/hooks/use-chat-attachments"
 import { formatDistanceToNow } from "date-fns"
 import Image from "next/image"
 import { AttachmentShareMenu } from "./attachment-share-menu"
+import { communicationLogger as logger } from "@/lib/logger"
 
 interface AttachmentPreviewProps {
   attachment: IAttachment
@@ -443,7 +444,7 @@ export const AttachmentPreview = memo(function AttachmentPreview({
     try {
       await downloadAttachment(attachment)
     } catch (error) {
-      console.error('Download failed:', error)
+      logger.error('Download failed:', error)
     } finally {
       setIsDownloading(false)
     }

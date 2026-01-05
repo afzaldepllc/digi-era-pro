@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import useVoiceRecorder from '@/hooks/use-voice-recorder'
+import { communicationLogger as logger } from "@/lib/logger"
 
 interface VoiceRecorderProps {
   onSendVoice: (audioBlob: Blob, duration: number) => Promise<void>
@@ -146,7 +147,7 @@ export const VoiceRecorder = memo(function VoiceRecorder({
           }
         }, 50)
       }).catch((err) => {
-        console.error('Playback failed:', err)
+        logger.error('Playback failed:', err)
         toast({
           title: "Playback Error",
           description: "Unable to play the audio. Try recording again.",
@@ -188,7 +189,7 @@ export const VoiceRecorder = memo(function VoiceRecorder({
       resetRecording()
       setPlaybackProgress(0)
     } catch (err) {
-      console.error('Failed to send voice message:', err)
+      logger.error('Failed to send voice message:', err)
       toast({
         title: "Send Failed",
         description: "Failed to send voice message. Please try again.",

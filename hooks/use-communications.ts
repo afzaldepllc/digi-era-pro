@@ -388,7 +388,7 @@ export function useCommunications() {
 
     // For now, we don't have a Redux state for pinned users, so we'll rely on components to refetch
     // In the future, we could add a pinnedUsers state to the slice
-    console.log(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
+    logger.info(`User ${data.pinned_user_id} ${data.is_pinned ? 'pinned' : 'unpinned'}`)
   }, [sessionUserId])
 
   // Handle reaction added (real-time) - WhatsApp style
@@ -1618,13 +1618,13 @@ export function useCommunications() {
    * Otherwise, it will be added.
    */
   const toggleReaction = useCallback(async (messageId: string, channelId: string, emoji: string) => {
-    console.log(`🚀 [toggleReaction] Called with:`, { messageId, channelId, emoji, sessionUserId })
+    logger.debug('toggleReaction called:', { messageId, channelId, emoji, sessionUserId })
     
     if (!sessionUserId) return
     
     // Validate emoji parameter before proceeding
     if (!emoji || emoji.length > 10 || emoji.includes('-') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emoji)) {
-      console.error('❌ [toggleReaction] Invalid emoji received:', emoji)
+      logger.error('Invalid emoji received:', emoji)
       toastRef.current({
         title: "Error",
         description: "Invalid emoji detected. Please try again.",
@@ -1642,7 +1642,7 @@ export function useCommunications() {
       )
 
       if (existingReaction) {
-        console.log(`➖ [toggleReaction] Removing existing reaction:`, existingReaction)
+        logger.debug('Removing existing reaction:', existingReaction.id)
         // Optimistically remove the reaction
         dispatch(removeReactionFromMessage({
           channelId,
@@ -1652,7 +1652,7 @@ export function useCommunications() {
           emoji
         }))
       } else {
-        console.log(`➕ [toggleReaction] Adding new reaction with emoji:`, emoji)
+        logger.debug('Adding new reaction with emoji:', emoji)
         // Optimistically add the reaction with proper user info
         const tempReactionId = crypto.randomUUID()
         const optimisticReaction = {
@@ -1677,7 +1677,7 @@ export function useCommunications() {
         emoji: emoji
       }
       
-      console.log(`📡 [toggleReaction] Sending API request with data:`, apiData)
+      logger.debug('Sending reaction API request:', apiData)
 
       // Send to API (toggle behavior handled on server)
       const result = await apiRequest('/api/communication/reactions', {
@@ -1685,7 +1685,7 @@ export function useCommunications() {
         body: JSON.stringify(apiData)
       }, false) // Don't show error toast, we handle it ourselves
 
-      console.log(`✅ [toggleReaction] API response:`, result)
+      logger.debug('Reaction API response:', { action: result?.action })
       logger.debug('Reaction toggled successfully:', { 
         action: result?.action,
         emoji,
@@ -1693,7 +1693,6 @@ export function useCommunications() {
         userId: sessionUserId 
       })
     } catch (error: any) {
-      console.error('❌ [toggleReaction] Error:', error)
       logger.error('Failed to toggle reaction:', error)
       
       // Check if user already reacted with this emoji (for reverting optimistic update)

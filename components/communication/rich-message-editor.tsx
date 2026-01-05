@@ -253,7 +253,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     activeEditMessage?.id,
                     activeEditMessage ? Array.from(attachmentsToRemove) : undefined
                 )
-                console.log("Send requested from editor, success:", success)
+                // Message sent successfully, clear editor state
                 if (success) {
                     editor.commands.setContent('')
                     setAttachments([])

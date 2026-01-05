@@ -28,6 +28,7 @@ import {
 import { IAttachment } from "@/types/communication"
 import { formatFileSize, formatDuration } from "@/lib/utils/file-preview"
 import { AttachmentShareMenu } from "./attachment-share-menu"
+import { communicationLogger as logger } from "@/lib/logger"
 
 interface WhatsAppAttachmentGridProps {
   attachments: IAttachment[]
@@ -320,7 +321,7 @@ export const WhatsAppAttachmentGrid = memo(function WhatsAppAttachmentGrid({
         document.body.removeChild(a)
       }
     } catch (error) {
-      console.error('Download failed:', error)
+      logger.error('Download failed:', error)
     }
   }, [])
   

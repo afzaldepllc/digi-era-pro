@@ -41,6 +41,7 @@ import {
 import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns"
 import Image from "next/image"
 import { AttachmentShareMenu } from "./attachment-share-menu"
+import { communicationLogger as logger } from "@/lib/logger"
 
 type GalleryFilter = 'all' | 'media' | 'documents' | 'links'
 
@@ -456,7 +457,7 @@ export const AttachmentGallery = memo(function AttachmentGallery({
         })
         setAttachments(result.attachments)
       } catch (error) {
-        console.error('Failed to load gallery:', error)
+        logger.error('Failed to load gallery:', error)
       } finally {
         setIsLoading(false)
       }

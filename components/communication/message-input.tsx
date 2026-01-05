@@ -194,7 +194,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
               existingAttachments={existingAttachments}
               onAttachmentRemove={(attachmentId) => {
                 // This will be handled by the parent component
-                console.log('Attachment to remove:', attachmentId)
+                // Attachment removal is delegated to parent's onAttachmentRemove prop
               }}
               onCancelReply={() => setReplyTo(null)}
               onCancelEdit={() => setEditMessage(null)}

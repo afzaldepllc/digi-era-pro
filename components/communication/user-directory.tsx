@@ -21,6 +21,8 @@ import { useSession } from "next-auth/react"
 import { User } from "@/types"
 import { formatDistanceToNow } from "date-fns"
 import { HtmlTextRenderer } from "@/components/shared/html-text-renderer"
+import { communicationLogger as logger } from "@/lib/logger"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserDirectoryProps {
   onStartDM?: (userId: string) => void
@@ -35,6 +37,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
   const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds, pinUser, pinChannel } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
+  const { toast } = useToast()
   
   const currentUserId = (session?.user as any)?.id
 
@@ -178,7 +181,7 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
 
   const handleStartDM = async (user: User) => {
     if (!(session?.user as any)?.id) {
-      console.error('No current user found or user id missing')
+      logger.error('No current user found or user id missing')
       return
     }
 
@@ -211,7 +214,12 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
         }
       }
     } catch (error) {
-      console.error('Failed to create DM:', error)
+      logger.error('Failed to create DM:', error)
+      toast({
+        title: "Failed to start conversation",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      })
     }
   }
 
@@ -239,7 +247,12 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       try {
         await pinUser(userId, isPinned)
       } catch (error) {
-        console.error('Failed to toggle pin:', error)
+        logger.error('Failed to toggle pin:', error)
+        toast({
+          title: "Failed to pin user",
+          description: "Something went wrong. Please try again.",
+          variant: "destructive"
+        })
       } finally {
         setPinLoading(null)
       }
@@ -252,7 +265,12 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
       await pinChannel(channelId, isPinned)
       // The channel update will propagate through Redux and update pinnedUsers via useMemo
     } catch (error) {
-      console.error('Failed to toggle pin:', error)
+      logger.error('Failed to toggle pin:', error)
+      toast({
+        title: "Failed to pin channel",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setPinLoading(null)
     }

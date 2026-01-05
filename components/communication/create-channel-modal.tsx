@@ -16,6 +16,7 @@ import { useDepartments } from "@/hooks/use-departments";
 import { useProjects } from "@/hooks/use-projects";
 import { useUsers } from "@/hooks/use-users";
 import { useClients } from '@/hooks/use-clients'
+import { communicationLogger as logger } from "@/lib/logger"
 
 type ChannelType = 'group' | 'department' | 'department-category' | 'multi-category' | 'project' | 'client-support' | 'dm'
 type DepartmentCategory = 'sales' | 'support' | 'it' | 'management'
@@ -146,7 +147,7 @@ export function CreateChannelModal({
       }
 
       // Call API
-      console.log('📤 Creating channel with payload:', payload)
+      logger.debug('Creating channel with payload:', payload)
       const response = await fetch('/api/communication/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -159,7 +160,7 @@ export function CreateChannelModal({
       }
 
       const data = await response.json()
-      console.log('✅ Channel created response:', data)
+      logger.debug('Channel created successfully:', data.data?.id)
 
       if (!data.success || !data.data) {
         throw new Error(data.error || 'Failed to create channel - invalid response')
@@ -174,9 +175,9 @@ export function CreateChannelModal({
       if (onChannelCreatedRaw) {
         try {
           await onChannelCreatedRaw(data.data)
-          console.log('✅ Channel added to Redux store via onChannelCreatedRaw callback')
+          logger.debug('Channel added to Redux store via callback')
         } catch (storeError) {
-          console.warn('⚠️ Failed to add channel to store:', storeError)
+          logger.warn('Failed to add channel to store:', storeError)
         }
       }
 
@@ -184,7 +185,7 @@ export function CreateChannelModal({
       // The channel will be available in Redux store via:
       // 1. Optimistic update from onChannelCreatedRaw (immediate)
       // 2. OR realtime update via onChannelUpdate handler (backup)
-      console.log('📢 Calling onChannelCreated callback with channel:', data.data.id)
+      logger.debug('Calling onChannelCreated callback:', data.data.id)
       onChannelCreated?.(data.data)
       onClose()
 
@@ -203,7 +204,7 @@ export function CreateChannelModal({
       setAdminOnlyAdd(false)
 
     } catch (error: any) {
-      console.error('❌ Error creating channel:', error)
+      logger.error('Error creating channel:', error)
       toast({
         title: 'Error',
         description: error.message || 'Failed to create channel',

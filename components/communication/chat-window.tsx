@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { communicationLogger as logger } from "@/lib/logger"
 // import { ResizableSidebar } from "./resizable-sidebar"
 
 export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExpanded, fullscreenRef, onFullscreenChange }: ChatWindowProps) {
@@ -175,7 +176,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
 
       handleStopTyping()
     } catch (error) {
-      console.error('Failed to send voice message:', error)
+      logger.error('Failed to send voice message:', error)
       throw error
     }
   }, [channelId, sendMessage, handleStopTyping])
@@ -206,7 +207,7 @@ export function ChatWindow({ channelId, className, onToggleSidebar, isSidebarExp
       setEditingMessage(null) // Clear editing state on success
     } catch (error) {
       // Keep editing state on error so user can retry
-      console.error('Failed to edit message:', error)
+      logger.error('Failed to edit message:', error)
     }
   }, [updateMessage])
 

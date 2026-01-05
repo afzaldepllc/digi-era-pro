@@ -64,6 +64,7 @@ import { updateChannel } from "@/store/slices/communicationSlice"
 import { useAppDispatch } from "@/hooks/redux"
 import ChannelSettingsModal from "./channel-settings-modal"
 import { useToast } from "@/hooks/use-toast"
+import { communicationLogger as logger } from "@/lib/logger"
 
 interface AttachmentWithUploader extends IAttachment {
   uploaded_by?: string
@@ -133,7 +134,7 @@ export function ContextPanel({
         })
         setAttachments(result.attachments)
       } catch (error) {
-        console.error('Failed to load attachments:', error)
+        logger.error('Failed to load attachments:', error)
         setAttachmentError('Failed to load files')
       } finally {
         setAttachmentsLoading(false)
@@ -170,7 +171,7 @@ export function ContextPanel({
       const result = await muteChannel(channel.id, !isNotificationEnabled)
       setIsNotificationEnabled(result.notifications_enabled)
     } catch (error: any) {
-      console.error('Mute toggle error:', error)
+      logger.error('Mute toggle error:', error)
       toast({
         title: "Failed to update notification settings",
         description: error.message || "Something went wrong",
@@ -224,8 +225,12 @@ export function ContextPanel({
       // Note: Real-time updates will handle UI refresh for other users
       // The channel data has been updated immediately for current user
     } catch (error: any) {
-      console.error('Remove member error:', error)
-      // Could add toast notification here if needed
+      logger.error('Remove member error:', error)
+      toast({
+        title: "Failed to remove member",
+        description: error.message || "Something went wrong",
+        variant: "destructive"
+      })
     } finally {
       setIsRemovingMember(false)
     }
@@ -242,8 +247,12 @@ export function ContextPanel({
       await onPinChannel(channel.id, currentPinned)
       setIsPinned(!currentPinned)
     } catch (error: any) {
-      console.error('Pin toggle error:', error)
-      // Could add toast notification here if needed
+      logger.error('Pin toggle error:', error)
+      toast({
+        title: "Failed to pin channel",
+        description: error.message || "Something went wrong",
+        variant: "destructive"
+      })
     } finally {
       setPinLoading(false)
     }
