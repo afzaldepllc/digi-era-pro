@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
           select: { id: true }
         })
         
-        const messageIdsArray = messageIds.map(m => m.id)
+        const messageIdsArray = messageIds.map((m: { id: string }) => m.id)
         
         if (messageIdsArray.length > 0) {
           // Count read receipts for those message ids

@@ -236,7 +236,7 @@ export async function GET(request: NextRequest) {
       `
       const totalCount = parseInt(totalResult[0].count)
 
-      const transformedMessages = messages.map(msg => transformMessageWithSender(msg)).filter(Boolean)
+      const transformedMessages = messages.map((msg: Record<string, unknown>) => transformMessageWithSender(msg)).filter(Boolean)
 
       return NextResponse.json({
         success: true,
@@ -606,9 +606,9 @@ export async function POST(request: NextRequest) {
         logger.info(`Broadcasting to ${members.length} channel members, sender: ${senderId}`)
 
         // Filter out sender and broadcast to all other members in parallel
-        const recipientMembers = members.filter(member => String(member.mongo_member_id) !== String(senderId))
+        const recipientMembers = members.filter((member: { mongo_member_id: string }) => String(member.mongo_member_id) !== String(senderId))
         
-        const notificationPromises = recipientMembers.map((member) =>
+        const notificationPromises = recipientMembers.map((member: { mongo_member_id: string }) =>
           broadcastToUser({
             userId: member.mongo_member_id,
             event: 'new_message',

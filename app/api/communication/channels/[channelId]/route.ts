@@ -20,7 +20,7 @@ import { genericApiRoutesMiddleware } from '@/lib/middleware/route-middleware'
 import { broadcastToChannel, broadcastToUser, broadcastMemberChange, broadcastChannelUpdate } from '@/lib/communication/broadcast'
 import { apiLogger as logger } from '@/lib/logger'
 import { z } from 'zod'
-import type { channels } from '@prisma/client'
+import type { Prisma, channels } from '.prisma/client'
 
 // ============================================
 // Type Definitions
@@ -74,7 +74,7 @@ function createErrorResponse(message: string, status: number, details?: unknown)
   return NextResponse.json({
     success: false,
     error: message,
-    ...(details && { details })
+    ...(details ? { details } : {})
   }, { status })
 }
 

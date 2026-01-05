@@ -365,15 +365,16 @@ export async function DELETE(
       })
 
       // Delete files from S3
+      type AttachmentWithS3 = { id: string; s3_key: string | null; file_name: string }
       const s3DeletePromises = attachments
-        .filter(att => att.s3_key) // Only delete if s3_key exists
-        .map(att => S3Service.deleteFile(att.s3_key!))
+        .filter((att: AttachmentWithS3) => att.s3_key) // Only delete if s3_key exists
+        .map((att: AttachmentWithS3) => S3Service.deleteFile(att.s3_key!))
 
       const s3DeleteResults = await Promise.allSettled(s3DeletePromises)
       const s3DeleteErrors = s3DeleteResults
-        .filter(result => result.status === 'rejected')
-        .map((result, index) => ({
-          file: attachments.filter(att => att.s3_key)[index]?.file_name || 'unknown',
+        .filter((result: PromiseSettledResult<unknown>) => result.status === 'rejected')
+        .map((result: PromiseSettledResult<unknown>, index: number) => ({
+          file: attachments.filter((att: AttachmentWithS3) => att.s3_key)[index]?.file_name || 'unknown',
           error: (result as PromiseRejectedResult).reason
         }))
 

@@ -261,8 +261,19 @@ export async function GET(request: NextRequest) {
     })
 
     // Refresh presigned URLs for attachments
+    type AttachmentRecord = {
+      id: string
+      file_url: string | null
+      s3_key: string | null
+      message_id: string
+      file_name: string
+      file_type: string | null
+      file_size: number | null
+      created_at: Date
+      mongo_uploader_id?: string
+    }
     const enrichedAttachments = await Promise.all(
-      attachments.map(async (attachment) => {
+      attachments.map(async (attachment: AttachmentRecord) => {
         let fileUrl = attachment.file_url
 
         // Refresh presigned URL if we have an S3 key
