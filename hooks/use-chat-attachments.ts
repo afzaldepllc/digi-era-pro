@@ -227,6 +227,78 @@ export function useChatAttachments() {
     window.open(attachment.file_url, '_blank')
   }, [toast])
 
+  // Forward attachment to multiple channels
+  const forwardAttachment = useCallback(async (
+    attachmentId: string,
+    targetChannelIds: string[],
+    message?: string
+  ): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/communication/attachments', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attachmentId,
+          targetChannelIds,
+          message
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Forward failed')
+      }
+
+      toast({
+        title: 'Attachment Forwarded',
+        description: `Sent to ${targetChannelIds.length} chat${targetChannelIds.length > 1 ? 's' : ''}`,
+        variant: 'default'
+      })
+
+      return true
+    } catch (error) {
+      console.error('Forward failed:', error)
+      toast({
+        title: 'Forward Failed',
+        description: error instanceof Error ? error.message : 'Could not forward the attachment',
+        variant: 'destructive'
+      })
+      return false
+    }
+  }, [toast])
+
+  // Copy attachment link to clipboard
+  const copyAttachmentLink = useCallback(async (attachment: IAttachment): Promise<boolean> => {
+    if (!attachment.file_url) {
+      toast({
+        title: 'Copy Failed',
+        description: 'File URL not available',
+        variant: 'destructive'
+      })
+      return false
+    }
+
+    try {
+      await navigator.clipboard.writeText(attachment.file_url)
+      toast({
+        title: 'Link Copied',
+        description: 'Attachment link copied to clipboard',
+        variant: 'default'
+      })
+      return true
+    } catch (error) {
+      toast({
+        title: 'Copy Failed',
+        description: 'Could not copy link to clipboard',
+        variant: 'destructive'
+      })
+      return false
+    }
+  }, [toast])
+
   return {
     // Upload
     uploadAttachments,
@@ -240,6 +312,8 @@ export function useChatAttachments() {
     // Actions
     downloadAttachment,
     previewAttachment,
+    forwardAttachment,
+    copyAttachmentLink,
     
     // State
     error

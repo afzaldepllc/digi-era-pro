@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   X,
   Users,
@@ -21,7 +22,12 @@ import {
   Download,
   Eye,
   UserMinus,
-  LogOut
+  LogOut,
+  Forward,
+  Share2,
+  CheckSquare,
+  Square,
+  Grid3X3
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IChannel, IParticipant, IAttachment } from "@/types/communication"
@@ -51,9 +57,13 @@ import {
   getExtensionColor,
   formatFileSize
 } from "@/components/communication/attachment-preview"
+import { AttachmentShareMenu } from "@/components/communication/attachment-share-menu"
+import { ChatSelectorModal } from "@/components/communication/chat-selector-modal"
+import { AttachmentGallery } from "@/components/communication/attachment-gallery"
 import { updateChannel } from "@/store/slices/communicationSlice"
 import { useAppDispatch } from "@/hooks/redux"
 import ChannelSettingsModal from "./channel-settings-modal"
+import { useToast } from "@/hooks/use-toast"
 
 interface AttachmentWithUploader extends IAttachment {
   uploaded_by?: string
@@ -84,6 +94,12 @@ export function ContextPanel({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [showAllAttachments, setShowAllAttachments] = useState(false)
 
+  // Multi-select state for attachments
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedAttachments, setSelectedAttachments] = useState<Set<string>>(new Set())
+  const [showChatSelector, setShowChatSelector] = useState(false)
+  const [showGallery, setShowGallery] = useState(false)
+
   // Remove member state
   const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState<string | null>(null)
   const [isRemovingMember, setIsRemovingMember] = useState(false)
@@ -91,11 +107,12 @@ export function ContextPanel({
   // Channel settings modal state
   const [showChannelSettings, setShowChannelSettings] = useState(false)
 
-  const { fetchChannelAttachments, downloadAttachment, previewAttachment } = useChatAttachments()
+  const { fetchChannelAttachments, downloadAttachment, previewAttachment, forwardAttachment } = useChatAttachments()
   const { data: session } = useSession()
   const currentUserId = (session?.user as any)?.id
   const { actionLoading, leaveChannel, archiveChannel } = useCommunications()
   const dispatch = useAppDispatch()
+  const { toast } = useToast()
 
   // Fetch attachments when channel changes
   useEffect(() => {
@@ -200,6 +217,43 @@ export function ContextPanel({
     }
   }, [channel, onPinChannel])
 
+  // Toggle attachment selection
+  const toggleAttachmentSelection = useCallback((attachmentId: string) => {
+    setSelectedAttachments(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(attachmentId)) {
+        newSet.delete(attachmentId)
+      } else {
+        newSet.add(attachmentId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // Handle forward selected attachments
+  const handleForwardSelected = useCallback(async (channelIds: string[], message?: string) => {
+    if (selectedAttachments.size === 0) return
+
+    const selectedAtts = attachments.filter(a => selectedAttachments.has(a.id))
+    let successCount = 0
+
+    for (const att of selectedAtts) {
+      const success = await forwardAttachment(att.id, channelIds, message)
+      if (success) successCount++
+    }
+
+    if (successCount > 0) {
+      toast({
+        title: 'Attachments Forwarded',
+        description: `${successCount} file(s) sent to ${channelIds.length} chat(s)`,
+      })
+      setSelectedAttachments(new Set())
+      setSelectMode(false)
+    }
+
+    setShowChatSelector(false)
+  }, [selectedAttachments, attachments, forwardAttachment, toast])
+
   if (!isVisible || !channel) {
     return null
   }
@@ -221,17 +275,31 @@ export function ContextPanel({
     deadline: '2025-12-31'
   } : null
 
-  // Render file item
+  // Render file item with selection support
   const renderFileItem = (attachment: AttachmentWithUploader) => {
     const category = getFileCategory(attachment.file_type, attachment.file_name)
     const Icon = getFileIcon(category)
     const colorClass = getExtensionColor(category)
+    const isSelected = selectedAttachments.has(attachment.id)
 
     return (
       <div
         key={attachment.id}
-        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer group transition-colors"
+        className={cn(
+          "flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer group transition-colors",
+          isSelected && "bg-primary/10 ring-1 ring-primary"
+        )}
+        onClick={() => selectMode && toggleAttachmentSelection(attachment.id)}
       >
+        {/* Selection checkbox in select mode */}
+        {selectMode && (
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => toggleAttachmentSelection(attachment.id)}
+            className="shrink-0"
+          />
+        )}
+
         <div className={cn("h-8 w-8 rounded flex items-center justify-center shrink-0", colorClass)}>
           <Icon className="h-4 w-4" />
         </div>
@@ -255,44 +323,58 @@ export function ContextPanel({
           </div>
         </div>
 
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handlePreview(attachment)
-                }}
-              >
-                <Eye className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Preview</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDownload(attachment)
-                }}
-              >
-                <Download className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Download</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        {/* Actions - show share menu and download */}
+        {!selectMode && (
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <AttachmentShareMenu
+              attachment={attachment}
+              onForward={(att) => {
+                setSelectedAttachments(new Set([att.id]))
+                setShowChatSelector(true)
+              }}
+              variant="icon"
+              size="sm"
+              className="h-6 w-6 p-0"
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handlePreview(attachment)
+                  }}
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Preview</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownload(attachment)
+                  }}
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Download</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )
+        }
       </div>
     )
   }
@@ -559,25 +641,96 @@ export function ContextPanel({
                     )}
                   </h4>
                 </div>
-                {attachments.length > 3 && !showAllAttachments && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAllAttachments(true)}
-                  >
-                    View all
-                  </Button>
-                )}
-                {showAllAttachments && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAllAttachments(false)}
-                  >
-                    Show less
-                  </Button>
-                )}
+                <div className="flex items-center gap-1">
+                  {/* Gallery view button */}
+                  {attachments.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setShowGallery(true)}
+                        >
+                          <Grid3X3 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>View Gallery</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+
+                  {/* Multi-select toggle */}
+                  {attachments.length > 1 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={selectMode ? "secondary" : "ghost"}
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => {
+                            setSelectMode(!selectMode)
+                            if (selectMode) {
+                              setSelectedAttachments(new Set())
+                            }
+                          }}
+                        >
+                          <CheckSquare className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{selectMode ? 'Cancel selection' : 'Select multiple'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+
+                  {!selectMode && attachments.length > 3 && !showAllAttachments && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllAttachments(true)}
+                    >
+                      View all
+                    </Button>
+                  )}
+                  {!selectMode && showAllAttachments && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllAttachments(false)}
+                    >
+                      Show less
+                    </Button>
+                  )}
+                </div>
               </div>
+
+              {/* Multi-select action bar */}
+              {selectMode && selectedAttachments.size > 0 && (
+                <div className="flex items-center justify-between p-2 bg-primary/10 rounded-lg">
+                  <span className="text-sm font-medium">
+                    {selectedAttachments.size} selected
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedAttachments(new Set())}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setShowChatSelector(true)}
+                    >
+                      <Forward className="h-4 w-4 mr-1" />
+                      Forward
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1">
                 {attachmentsLoading ? (
@@ -634,6 +787,34 @@ export function ContextPanel({
           isOpen={showChannelSettings}
           onClose={() => setShowChannelSettings(false)}
           channel={channel}
+        />
+      )}
+
+      {/* Chat Selector for forwarding */}
+      <ChatSelectorModal
+        isOpen={showChatSelector}
+        onClose={() => {
+          setShowChatSelector(false)
+          setSelectedAttachments(new Set())
+          setSelectMode(false)
+        }}
+        onSelect={handleForwardSelected}
+        title="Forward Attachments"
+        description={`Forward ${selectedAttachments.size} file(s) to selected chats`}
+        multiSelect={true}
+      />
+
+      {/* Attachment Gallery */}
+      {channel && (
+        <AttachmentGallery
+          channelId={channel.id}
+          isOpen={showGallery}
+          onClose={() => setShowGallery(false)}
+          onForward={(atts) => {
+            setSelectedAttachments(new Set(atts.map(a => a.id)))
+            setShowChatSelector(true)
+            setShowGallery(false)
+          }}
         />
       )}
     </TooltipProvider>

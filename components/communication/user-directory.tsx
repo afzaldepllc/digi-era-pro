@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, memo } from "react"
+import { useState, useEffect, useMemo, memo, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,35 +31,32 @@ interface UserDirectoryProps {
 export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelSelect, className }: UserDirectoryProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [pinnedUsers, setPinnedUsers] = useState<Set<string>>(new Set())
   const [pinLoading, setPinLoading] = useState<string | null>(null)
-  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds, pinUser } = useCommunications()
+  const { channels, createChannel, loading: channelLoading, selectChannel, onlineUserIds, pinUser, pinChannel } = useCommunications()
   const { users, loading: usersLoading } = useUsers()
   const { data: session } = useSession()
   
   const currentUserId = (session?.user as any)?.id
 
-  // Load pinned users from localStorage
-  useEffect(() => {
-    if (currentUserId) {
-      const stored = localStorage.getItem(`pinnedUsers_${currentUserId}`)
-      if (stored) {
-        try {
-          const pinnedArray = JSON.parse(stored)
-          setPinnedUsers(new Set(pinnedArray))
-        } catch (error) {
-          console.error('Failed to parse pinned users from localStorage:', error)
+  // Derive pinned users from pinned DM channels (Feature 30: Pin Sync)
+  // This ensures pin status is always in sync between user_directory and chat_lists
+  const pinnedUsers = useMemo(() => {
+    if (!currentUserId) return new Set<string>()
+    
+    const pinnedUserIds = new Set<string>()
+    channels.forEach(channel => {
+      if (channel.type === 'dm' && channel.is_pinned) {
+        // Find the other user in this DM channel
+        const otherMember = channel.channel_members.find(
+          m => m.mongo_member_id !== currentUserId
+        )
+        if (otherMember) {
+          pinnedUserIds.add(otherMember.mongo_member_id)
         }
       }
-    }
-  }, [currentUserId])
-
-  // Save pinned users to localStorage
-  useEffect(() => {
-    if (currentUserId) {
-      localStorage.setItem(`pinnedUsers_${currentUserId}`, JSON.stringify(Array.from(pinnedUsers)))
-    }
-  }, [pinnedUsers, currentUserId])
+    })
+    return pinnedUserIds
+  }, [channels, currentUserId])
 
   // Filter active users (exclude current user)
   const activeUsers = useMemo(() => {
@@ -218,22 +215,42 @@ export const UserDirectory = memo(function UserDirectory({ onStartDM, onChannelS
     }
   }
 
+  // Get the DM channel for a user (for pin sync)
+  const getUserDMChannelId = useCallback((userId: string): string | null => {
+    if (!currentUserId) return null
+    
+    const dmChannel = channels.find(channel => {
+      if (channel.type !== 'dm') return false
+      const memberIds = channel.channel_members.map(m => m.mongo_member_id)
+      return memberIds.includes(currentUserId) && memberIds.includes(userId)
+    })
+    
+    return dmChannel?.id || null
+  }, [channels, currentUserId])
+
   const handlePinToggle = async (userId: string) => {
     const isPinned = pinnedUsers.has(userId)
-    setPinLoading(userId)
+    const channelId = getUserDMChannelId(userId)
     
+    // If no DM channel exists, we need to create one first or use the old API
+    if (!channelId) {
+      // Use the legacy pinUser API for users without DM channels
+      setPinLoading(userId)
+      try {
+        await pinUser(userId, isPinned)
+      } catch (error) {
+        console.error('Failed to toggle pin:', error)
+      } finally {
+        setPinLoading(null)
+      }
+      return
+    }
+    
+    // Pin/unpin the DM channel - this syncs with channel list
+    setPinLoading(userId)
     try {
-      await pinUser(userId, isPinned)
-      // Update local state
-      setPinnedUsers(prev => {
-        const newSet = new Set(prev)
-        if (isPinned) {
-          newSet.delete(userId)
-        } else {
-          newSet.add(userId)
-        }
-        return newSet
-      })
+      await pinChannel(channelId, isPinned)
+      // The channel update will propagate through Redux and update pinnedUsers via useMemo
     } catch (error) {
       console.error('Failed to toggle pin:', error)
     } finally {

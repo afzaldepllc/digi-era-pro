@@ -825,6 +825,136 @@ export const attachmentOps = {
     return prisma.attachments.delete({
       where: { id: attachmentId }
     })
+  },
+
+  /**
+   * Forward attachment to multiple channels
+   * Creates copies of the attachment record linked to new messages
+   */
+  async forward(data: {
+    attachmentId: string
+    targetChannelIds: string[]
+    senderId: string
+    optionalMessage?: string
+  }) {
+    const { attachmentId, targetChannelIds, senderId, optionalMessage } = data
+
+    // Get original attachment
+    const original = await prisma.attachments.findUnique({
+      where: { id: attachmentId }
+    })
+
+    if (!original) {
+      throw new Error('Attachment not found')
+    }
+
+    const results = []
+
+    for (const channelId of targetChannelIds) {
+      // Create a forwarded message in the target channel
+      // Note: We mark forwarded messages with a special prefix in content
+      // A future migration can add is_forwarded column if needed
+      const forwardedContent = optionalMessage 
+        ? `[Forwarded] ${optionalMessage}\n📎 ${original.file_name}`
+        : `[Forwarded] 📎 ${original.file_name}`
+      
+      const message = await prisma.messages.create({
+        data: {
+          channel_id: channelId,
+          mongo_sender_id: senderId,
+          content: forwardedContent
+        }
+      })
+
+      // Create attachment copy linked to the new message
+      const forwardedAttachment = await prisma.attachments.create({
+        data: {
+          message_id: message.id,
+          channel_id: channelId,
+          mongo_uploader_id: senderId,
+          file_name: original.file_name,
+          file_url: original.file_url,
+          s3_key: original.s3_key,
+          s3_bucket: original.s3_bucket,
+          file_size: original.file_size,
+          file_type: original.file_type
+        }
+      })
+
+      results.push({
+        channelId,
+        messageId: message.id,
+        attachmentId: forwardedAttachment.id
+      })
+    }
+
+    return results
+  },
+
+  /**
+   * Get attachments grouped by date for gallery view
+   */
+  async getGalleryByChannel(
+    channelId: string, 
+    options?: { 
+      category?: 'all' | 'images' | 'videos' | 'documents' | 'audio'
+      limit?: number
+      offset?: number 
+    }
+  ) {
+    const { category = 'all', limit = 100, offset = 0 } = options ?? {}
+
+    // Build file type filter based on category
+    let fileTypeFilter: { contains?: string; startsWith?: string } | undefined
+
+    switch (category) {
+      case 'images':
+        fileTypeFilter = { startsWith: 'image/' }
+        break
+      case 'videos':
+        fileTypeFilter = { startsWith: 'video/' }
+        break
+      case 'audio':
+        fileTypeFilter = { startsWith: 'audio/' }
+        break
+      case 'documents':
+        // Documents are everything that's not image/video/audio
+        break
+    }
+
+    const whereClause: { channel_id: string; file_type?: { startsWith?: string; not?: { startsWith: string }; AND?: Array<{ not: { startsWith: string } }> } } = {
+      channel_id: channelId
+    }
+
+    if (category === 'documents') {
+      // Exclude images, videos, and audio
+      whereClause.file_type = {
+        AND: [
+          { not: { startsWith: 'image/' } },
+          { not: { startsWith: 'video/' } },
+          { not: { startsWith: 'audio/' } }
+        ]
+      } as any
+    } else if (fileTypeFilter) {
+      whereClause.file_type = fileTypeFilter
+    }
+
+    const attachments = await prisma.attachments.findMany({
+      where: whereClause,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        messages: {
+          select: {
+            mongo_sender_id: true,
+            created_at: true
+          }
+        }
+      }
+    })
+
+    return attachments
   }
 }
 

@@ -19,12 +19,15 @@ import {
   Maximize2,
   Eye,
   Mic,
-  FileAudio
+  FileAudio,
+  Forward,
+  Share2
 } from "lucide-react"
 import { IAttachment } from "@/types/communication"
 import { useChatAttachments } from "@/hooks/use-chat-attachments"
 import { formatDistanceToNow } from "date-fns"
 import Image from "next/image"
+import { AttachmentShareMenu } from "./attachment-share-menu"
 
 interface AttachmentPreviewProps {
   attachment: IAttachment
@@ -32,6 +35,8 @@ interface AttachmentPreviewProps {
   size?: "sm" | "md" | "lg"
   showDownload?: boolean
   showPreview?: boolean
+  showShare?: boolean
+  onForward?: (attachment: IAttachment) => void
 }
 
 interface AttachmentGridProps {
@@ -373,7 +378,9 @@ export const AttachmentPreview = memo(function AttachmentPreview({
   className,
   size = "md",
   showDownload = true,
-  showPreview = true
+  showPreview = true,
+  showShare = false,
+  onForward
 }: AttachmentPreviewProps) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -424,20 +431,31 @@ export const AttachmentPreview = memo(function AttachmentPreview({
               <span className="text-white text-xs truncate flex-1 mr-2">
                 {attachment.file_name}
               </span>
-              {showDownload && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-white hover:bg-white/20"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDownload()
-                  }}
-                  disabled={isDownloading}
-                >
-                  <Download className="h-3 w-3" />
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                {showShare && (
+                  <AttachmentShareMenu 
+                    attachment={attachment}
+                    onForward={onForward}
+                    variant="icon"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-white hover:bg-white/20"
+                  />
+                )}
+                {showDownload && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-white hover:bg-white/20"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownload()
+                    }}
+                    disabled={isDownloading}
+                  >
+                    <Download className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -468,15 +486,25 @@ export const AttachmentPreview = memo(function AttachmentPreview({
                     <p className="font-medium">{attachment.file_name}</p>
                     <p className="text-sm opacity-80">{formatFileSize(attachment.file_size)}</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleDownload}
-                    disabled={isDownloading}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {showShare && (
+                      <AttachmentShareMenu 
+                        attachment={attachment}
+                        onForward={onForward}
+                        variant="button"
+                        size="sm"
+                      />
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleDownload}
+                      disabled={isDownloading}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -533,6 +561,15 @@ export const AttachmentPreview = memo(function AttachmentPreview({
           <p className="text-sm font-medium truncate">{attachment.file_name}</p>
           <p className="text-xs text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
           <div className="flex gap-1 mt-2">
+            {showShare && (
+              <AttachmentShareMenu 
+                attachment={attachment}
+                onForward={onForward}
+                variant="button"
+                size="sm"
+                className="flex-1 h-7 text-xs"
+              />
+            )}
             {showPreview && (
               <Button
                 variant="outline"
@@ -577,6 +614,15 @@ export const AttachmentPreview = memo(function AttachmentPreview({
         <p className="text-xs text-muted-foreground">{formatFileSize(attachment.file_size)}</p>
       </div>
       <div className="flex gap-1 shrink-0">
+        {showShare && (
+          <AttachmentShareMenu 
+            attachment={attachment}
+            onForward={onForward}
+            variant="icon"
+            size="sm"
+            className="h-8 w-8 p-0"
+          />
+        )}
         {showPreview && attachment.file_url && (
           <Button
             variant="ghost"

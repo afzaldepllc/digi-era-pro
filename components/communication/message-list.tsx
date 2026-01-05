@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Check,
   CheckCheck,
@@ -17,11 +18,15 @@ import {
   CornerDownRight,
   Loader2,
   Smile,
-  EyeOff
+  EyeOff,
+  Forward,
+  CheckSquare,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ICommunication, ITypingIndicator, IParticipant, IAttachment, IGroupedReaction } from "@/types/communication"
 import { AttachmentGrid } from "./attachment-preview"
+import { WhatsAppAttachmentGrid } from "./whatsapp-attachment-grid"
 import { AudioPlayer } from "./attachment-preview"
 import { QuickReactionBar, MessageReactions } from "./reaction-picker"
 import { formatDistanceToNow, format } from "date-fns"
@@ -55,11 +60,16 @@ interface MessageListProps {
   onReaction?: (messageId: string, emoji: string) => void
   onScrollToMessage?: (messageId: string) => void
   onLoadMore?: () => Promise<{ messages: ICommunication[]; hasMore: boolean }>
+  onForwardMessages?: (messageIds: string[]) => void
   hasMoreMessages?: boolean
   isLoadingMore?: boolean
   className?: string
   readReceipts?: IReadReceipt[] // Array of read receipts for all messages in this channel
   channel_members?: IParticipant[] // For showing who read
+  selectMode?: boolean
+  selectedMessageIds?: Set<string>
+  onSelectionChange?: (selectedIds: Set<string>) => void
+  onToggleSelectMode?: () => void
 }
 
 export function MessageList({
@@ -75,11 +85,16 @@ export function MessageList({
   onReaction,
   onScrollToMessage,
   onLoadMore,
+  onForwardMessages,
   hasMoreMessages = true,
   isLoadingMore = false,
   className,
   readReceipts = [],
-  channel_members = []
+  channel_members = [],
+  selectMode = false,
+  selectedMessageIds = new Set(),
+  onSelectionChange,
+  onToggleSelectMode
 }: MessageListProps) {
   const [visibleMessages, setVisibleMessages] = useState(new Set<string>())
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -241,6 +256,29 @@ export function MessageList({
   const renderAttachments = (attachments: IAttachment[]) => {
     if (!attachments || attachments.length === 0) return null
 
+    // Use WhatsApp-style grid for media-heavy attachments
+    const hasMedia = attachments.some(a => {
+      const type = a.file_type?.toLowerCase() || ''
+      return type.startsWith('image/') || type.startsWith('video/')
+    })
+
+    if (hasMedia) {
+      return (
+        <div className="mt-2">
+          <WhatsAppAttachmentGrid 
+            attachments={attachments} 
+            maxVisible={4}
+            onForward={onForwardMessages ? (atts) => {
+              // For attachments, we need to forward via messages
+              // This opens the forward modal with the attachment IDs
+              // The parent component handles the actual forwarding
+            } : undefined}
+          />
+        </div>
+      )
+    }
+
+    // Use regular grid for documents/files
     return (
       <div className="mt-2">
         <AttachmentGrid attachments={attachments} />
@@ -369,6 +407,20 @@ export function MessageList({
       return <Check className="h-3 w-3 text-muted-foreground" />
     }
 
+    const isSelected = selectedMessageIds.has(message.id)
+
+    const handleMessageClick = () => {
+      if (selectMode && onSelectionChange) {
+        const newSelected = new Set(selectedMessageIds)
+        if (isSelected) {
+          newSelected.delete(message.id)
+        } else {
+          newSelected.add(message.id)
+        }
+        onSelectionChange(newSelected)
+      }
+    }
+
     return (
       <div
         data-message-id={message.id}
@@ -377,9 +429,23 @@ export function MessageList({
         }}
         className={cn(
           "flex gap-3 px-4 py-2 group transition-all duration-200 hover:bg-muted/30",
-          isOwn && "flex-row-reverse"
+          isOwn && "flex-row-reverse",
+          selectMode && "cursor-pointer",
+          isSelected && "bg-primary/10"
         )}
+        onClick={handleMessageClick}
       >
+        {/* Selection checkbox in select mode */}
+        {selectMode && (
+          <div className="flex items-start pt-2 shrink-0">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={handleMessageClick}
+              className="h-5 w-5"
+            />
+          </div>
+        )}
+        
         {/* Avatar */}
         <div className="shrink-0">
           {/* <Avatar className="h-8 w-8">
@@ -439,6 +505,27 @@ export function MessageList({
                     <DropdownMenuItem onClick={() => onEdit(message)}>
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Forward message */}
+                  {onForwardMessages && (
+                    <DropdownMenuItem onClick={() => onForwardMessages([message.id])}>
+                      <Forward className="h-4 w-4 mr-2" />
+                      Forward
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Select for multi-forward */}
+                  {onToggleSelectMode && (
+                    <DropdownMenuItem onClick={() => {
+                      onToggleSelectMode()
+                      if (onSelectionChange) {
+                        onSelectionChange(new Set([message.id]))
+                      }
+                    }}>
+                      <CheckSquare className="h-4 w-4 mr-2" />
+                      Select
                     </DropdownMenuItem>
                   )}
 
@@ -631,6 +718,47 @@ export function MessageList({
   return (
     <TooltipProvider>
       <>
+        {/* Multi-select action bar */}
+        {selectMode && (
+          <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-primary/10 border-b">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onToggleSelectMode?.()
+                  onSelectionChange?.(new Set())
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+              <span className="text-sm font-medium">
+                {selectedMessageIds.size} message{selectedMessageIds.size !== 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSelectionChange?.(new Set())}
+                disabled={selectedMessageIds.size === 0}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onForwardMessages?.(Array.from(selectedMessageIds))}
+                disabled={selectedMessageIds.size === 0}
+              >
+                <Forward className="h-4 w-4 mr-1" />
+                Forward ({selectedMessageIds.size})
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div
           ref={messagesContainerRef}

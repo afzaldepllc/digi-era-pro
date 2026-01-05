@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Image as ImageIcon, FileText, Smile, Type, TypeIcon, Quote, Reply, Mic } from "lucide-react"
+import { Bold, Italic, Strikethrough, List, ListOrdered, Link, Code, Paperclip, AtSign, Send, X, Smile, TypeIcon, Quote, Reply, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEditor, EditorContent } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
@@ -25,6 +25,7 @@ import HardBreak from '@tiptap/extension-hard-break'
 import { InlineEmojiPicker } from './emoji-picker'
 import { MentionPicker } from './mention-picker'
 import { VoiceRecorder } from './voice-recorder'
+import { MessageInputAttachmentStrip } from './message-input-attachment-strip'
 import { IAttachment, IChannelMember, ICommunication } from '@/types/communication'
 
 export interface RichMessageEditorRef {
@@ -424,7 +425,7 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                 validFiles.push(file)
             }
 
-            if (attachments.length + validFiles.length > 5) {
+            if (attachments.length + validFiles.length > 30) {
                 try { toast({ title: 'Too many files', description: 'You can only attach up to 5 files', variant: 'destructive' }) } catch (e) { }
                 // trim
                 const remain = 5 - attachments.length
@@ -591,43 +592,16 @@ const RichMessageEditor = forwardRef<RichMessageEditorRef, RichMessageEditorProp
                     </div>
                 )}
 
-                {/* Attachment previews */}
-                {(attachments.length > 0 || (existingAttachments.length > 0 && activeEditMessage)) && (
-                    <div className="p-2 flex flex-wrap gap-2 border-b">
-                        {/* Existing attachments (only in edit mode) */}
-                        {activeEditMessage && existingAttachments.map((attachment) => {
-                            const isMarkedForRemoval = attachmentsToRemove.has(attachment.id)
-                            return (
-                                <div key={attachment.id} className={cn(
-                                    "flex items-center gap-2 px-2 py-1 border rounded bg-muted/30",
-                                    isMarkedForRemoval && "opacity-50 line-through"
-                                )}>
-                                    {attachment.file_type?.startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                                    <span className="text-xs max-w-[160px] truncate">{attachment.file_name}</span>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        onClick={() => removeExistingAttachment(attachment.id)}
-                                        disabled={isMarkedForRemoval}
-                                    >
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            )
-                        })}
-                        
-                        {/* New attachments */}
-                        {attachments.map((file, idx) => (
-                            <div key={idx} className="flex items-center gap-2 px-2 py-1 border rounded bg-muted/30">
-                                {file.type.startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                                <span className="text-xs max-w-[160px] truncate">{file.name}</span>
-                                <Button variant="ghost" size="sm" onClick={() => removeAttachment(idx)}>
-                                    <X className="h-3 w-3" />
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {/* Attachment previews - Professional UI */}
+                <MessageInputAttachmentStrip
+                    files={attachments}
+                    existingAttachments={activeEditMessage ? existingAttachments : []}
+                    attachmentsToRemove={attachmentsToRemove}
+                    onRemoveFile={removeAttachment}
+                    onRemoveExisting={removeExistingAttachment}
+                    onAddMore={() => fileInputRef.current?.click()}
+                    maxFiles={5}
+                />
 
                 {/* Editor */}
                 <div className="relative">

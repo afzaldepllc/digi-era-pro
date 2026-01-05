@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('No files provided', 400)
     }
 
-    if (files.length > 10) {
-      return createErrorResponse('Maximum 10 files allowed per upload', 400)
+    if (files.length > 30) {
+      return createErrorResponse('Maximum 30 files allowed per upload', 400)
     }
 
     // Check if user is member of the channel
@@ -312,6 +312,97 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     logger.error('Error fetching attachments:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch attachments'
+    return createErrorResponse(errorMessage, 500)
+  }
+}
+// ============================================
+// PATCH /api/communication/attachments - Forward attachment to multiple channels
+// Feature 28: Share Attachments to Multiple Chats
+// ============================================
+const forwardSchema = z.object({
+  attachmentId: z.string().uuid(),
+  targetChannelIds: z.array(z.string().uuid()).min(1).max(10),
+  message: z.string().max(500).optional()
+})
+
+export async function PATCH(request: NextRequest) {
+  try {
+    // Apply middleware (rate limiting + authentication + permissions)
+    const { session } = await genericApiRoutesMiddleware(request, 'communication', 'create')
+
+    if (!session?.user?.id) {
+      return createErrorResponse('Unauthorized', 401)
+    }
+
+    const body = await request.json()
+
+    // Validate request body
+    const parseResult = forwardSchema.safeParse(body)
+    if (!parseResult.success) {
+      return createErrorResponse('Invalid request data', 400, parseResult.error.flatten())
+    }
+
+    const { attachmentId, targetChannelIds, message } = parseResult.data
+
+    // Verify user has access to the source attachment
+    const attachment = await prisma.attachments.findUnique({
+      where: { id: attachmentId }
+    })
+
+    if (!attachment) {
+      return createErrorResponse('Attachment not found', 404)
+    }
+
+    if (attachment.channel_id) {
+      const hasAccess = await channelOps.isMember(attachment.channel_id, session.user.id)
+      if (!hasAccess) {
+        return createErrorResponse('Access denied to source attachment', 403)
+      }
+    }
+
+    // Verify user is a member of all target channels
+    const accessChecks = await Promise.all(
+      targetChannelIds.map(channelId => channelOps.isMember(channelId, session.user.id))
+    )
+
+    const deniedChannels = targetChannelIds.filter((_, i) => !accessChecks[i])
+    if (deniedChannels.length > 0) {
+      return createErrorResponse(
+        `Access denied to target channels: ${deniedChannels.join(', ')}`,
+        403
+      )
+    }
+
+    // Forward the attachment to all target channels
+    const results = await attachmentOps.forward({
+      attachmentId,
+      targetChannelIds,
+      senderId: session.user.id,
+      optionalMessage: message
+    })
+
+    // Broadcast forwarded message events to target channels
+    for (const result of results) {
+      broadcastToChannel({
+        channelId: result.channelId,
+        event: 'new_message',
+        payload: {
+          channel_id: result.channelId,
+          message_id: result.messageId,
+          forwarded: true // Custom flag for client-side handling
+        }
+      }).catch(err => logger.error('Failed to broadcast forward event:', err))
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: results,
+      message: `Attachment forwarded to ${results.length} channel(s)`
+    })
+
+  } catch (error: unknown) {
+    logger.error('Error forwarding attachment:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Failed to forward attachment'
     return createErrorResponse(errorMessage, 500)
   }
 }
